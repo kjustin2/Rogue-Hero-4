@@ -1,0 +1,71 @@
+{
+  "name": "rogue-hero-4",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Rogue Hero 4, a PixiJS-backed tempo roguelike deck builder",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "node scripts/start-electron.mjs",
+    "test": "node mp-smoke.mjs && node mp-disconnect-test.mjs && node mp-4player-test.mjs && node mp-desync-test.mjs",
+    "test:mp4": "node mp-4player-test.mjs",
+    "test:smoke": "playwright test -c tests/playwright.config.js",
+    "test:smoke:headed": "playwright test -c tests/playwright.config.js --headed",
+    "test:smoke:ui": "playwright test -c tests/playwright.config.js --ui",
+    "serve": "node serve-static.mjs 8000",
+    "mp": "node mp-local.mjs",
+    "syntax": "node check-syntax.js",
+    "dist": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never",
+    "dist:linux": "electron-builder --linux --publish never"
+  },
+  "dependencies": {
+    "pixi.js": "^7.4.2"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "electron": "^34.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.roguehero4.game",
+    "productName": "Rogue Hero 4",
+    "copyright": "Copyright 2026",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "manifest.json",
+      "src/**/*",
+      "imgs/**/*",
+      "music/**/*",
+      "electron/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "imgs/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "imgs/icon.icns"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "imgs/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "imgs/icon.ico",
+      "shortcutName": "Rogue Hero 4"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Rogue Hero 4",
+  "short_name": "RogueHero4",
+  "start_url": ".",
+  "display": "fullscreen",
+  "background_color": "#0a0a12",
+  "theme_color": "#0a0a12",
+  "description": "A PixiJS-backed tempo roguelike deck builder",
+  "icons": []
+}
