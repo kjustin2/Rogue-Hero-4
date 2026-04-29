@@ -174,6 +174,7 @@ export class UI {
     if (this._bossEnemy) this._drawBossBar(ctx);
     this._drawHP(ctx);
     this._drawBudget(ctx);
+    this._drawShieldStatus(ctx);
     if (this.itemManager) this._drawRelics(ctx);
     if (this.enemies) this._drawMinimap(ctx);
     if (this.deckManager && this.cardDefs) this._drawHand(ctx);
@@ -562,9 +563,73 @@ export class UI {
   }
 
   // ── Relics — top left below AP
+  _drawShieldStatus(ctx) {
+    if (!this.player) return;
+    const list = (typeof window !== 'undefined' && window._players && window._players.count > 1)
+      ? window._players.list.filter(Boolean)
+      : [this.player];
+    const x = 18, y = 68;
+    const rowH = list.length > 1 ? 22 : 28;
+    const w = list.length > 1 ? 248 : 218;
+    const h = list.length * rowH + 10;
+    const now = performance.now() / 1000;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(6,14,22,0.86)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(143,246,255,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      const rowY = y + 7 + i * rowH;
+      const prefix = list.length > 1 ? `P${(p.playerIndex ?? i) + 1} ` : '';
+      let label = 'SHIELD READY';
+      let col = '#8ff6ff';
+      let frac = 1;
+      if (!p.alive || p.downed) {
+        label = 'SHIELD LOCKED';
+        col = '#667788';
+        frac = 0;
+      } else if (p.shielding) {
+        label = 'SHIELD ACTIVE';
+        col = '#ffffff';
+        frac = Math.max(0, Math.min(1, (p.shieldTimer || 0) / Math.max(0.01, p.shieldDuration || 0.82)));
+      } else if ((p.shieldCooldown || 0) > 0) {
+        label = `SHIELD ${p.shieldCooldown.toFixed(1)}s`;
+        col = '#4a8aa0';
+        const cdMax = (p.classPassives && p.classPassives.shieldCooldown) || 1.65;
+        frac = 1 - Math.max(0, Math.min(1, p.shieldCooldown / cdMax));
+      } else {
+        const pulse = 0.65 + 0.35 * Math.sin(now * Math.PI * 4);
+        col = `rgba(143,246,255,${pulse.toFixed(3)})`;
+      }
+
+      ctx.fillStyle = col;
+      this._drawFitText(ctx, prefix + label, x + 10, rowY + 11, 118, {
+        size: list.length > 1 ? 11 : 13, minSize: 8, weight: 'bold', align: 'left'
+      });
+
+      const barX = x + (list.length > 1 ? 130 : 128);
+      const barY = rowY + 3;
+      const barW = w - (barX - x) - 10;
+      const barH = list.length > 1 ? 9 : 12;
+      ctx.fillStyle = 'rgba(18,34,44,0.9)';
+      ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = (!p.alive || p.downed) ? '#3a4650' : (p.shielding ? '#ffffff' : '#8ff6ff');
+      ctx.fillRect(barX, barY, Math.max(0, Math.min(1, frac)) * barW, barH);
+      ctx.strokeStyle = 'rgba(170,245,255,0.5)';
+      ctx.strokeRect(barX, barY, barW, barH);
+    }
+    ctx.restore();
+  }
+
   _drawRelics(ctx) {
     if (!this.itemManager || !this.itemManager.equipped.length) return;
-    const y = 68;
+    const y = 108;
     const startX = 18;
     ctx.fillStyle = PAL.MUTED;
     ctx.font = '10px monospace';
@@ -857,12 +922,10 @@ export class UI {
 
       if (cardId && def) {
         // Card name — scale down font for long names to avoid overlapping AP badge
-        const nameFontSize = def.name.length > 11 ? 13 : 16;
         ctx.fillStyle = canAfford ? '#ffffff' : '#666';
-        ctx.font = `bold ${nameFontSize}px monospace`;
-        ctx.textAlign = 'center';
-        // Shift center right slightly to clear the AP badge on the left
-        ctx.fillText(def.name, x + CARD_W / 2 + 8, y + 32);
+        this._drawFitText(ctx, def.name, x + 42 + (CARD_W - 54) / 2, y + 32, CARD_W - 54, {
+          size: 16, minSize: 11, weight: 'bold'
+        });
 
         // Divider line under name
         ctx.strokeStyle = (def.color || '#5577aa') + (canAfford ? 'aa' : '44');
@@ -925,18 +988,20 @@ export class UI {
         const _dmgLbl = damageLabel(def);
         if (_dmgLbl) {
           ctx.fillStyle = canAfford ? '#ff8855' : '#553322';
-          ctx.font = 'bold 13px monospace';
-          ctx.fillText(_dmgLbl, x + CARD_W / 2, y + 84);
+          this._drawFitText(ctx, _dmgLbl, x + CARD_W / 2, y + 84, CARD_W - 18, {
+            size: 13, minSize: 9, weight: 'bold'
+          });
         }
         // Range — abstract label, not raw pixels
         ctx.fillStyle = canAfford ? '#888' : '#444';
-        ctx.font = '11px monospace';
-        ctx.fillText(`${rangeLabel(def.range)} range`, x + CARD_W / 2, y + 98);
+        this._drawFitText(ctx, `${rangeLabel(def.range)} range`, x + CARD_W / 2, y + 98, CARD_W - 18, {
+          size: 11, minSize: 8
+        });
 
         // Description — larger font, more line height
         ctx.fillStyle = canAfford ? '#cccccc' : '#555';
         ctx.font = '12px monospace';
-        this._wrapText(ctx, def.desc, x + 8, y + 116, CARD_W - 16, 15);
+        this._wrapText(ctx, def.desc, x + 8, y + 116, CARD_W - 16, 15, 5);
       }
 
       // Active indicator — small pill above card, no glow
@@ -1133,8 +1198,9 @@ export class UI {
       }
       ctx.textAlign = 'center';
       ctx.fillStyle = PAL.TEXT;
-      ctx.font = 'bold 20px monospace';
-      ctx.fillText(def.name, x + CARD_W / 2, y + 36);
+      this._drawFitText(ctx, def.name, x + CARD_W / 2, y + 36, CARD_W - 66, {
+        size: 20, minSize: 12, weight: 'bold'
+      });
       // Type glyph — anchored top-left (inside the color strip) so the
       // SLOT label in the top-right has clear space. Previously the glyph
       // sat at x+CARD_W-18 and overlapped "SLOT N".
@@ -1145,22 +1211,26 @@ export class UI {
       ctx.textAlign = 'center';
       ctx.fillStyle = rarCol;
       ctx.textAlign = 'center';
-      ctx.font = '14px monospace';
-      ctx.fillText((def.rarity || 'common').toUpperCase(), x + CARD_W / 2, y + 56);
+      this._drawFitText(ctx, (def.rarity || 'common').toUpperCase(), x + CARD_W / 2, y + 56, CARD_W - 24, {
+        size: 14, minSize: 10
+      });
       ctx.fillStyle = '#44aaff';
-      ctx.font = '15px monospace';
-      const _segs = [`${def.cost} AP`, `${rangeLabel(def.range)}`];
-      if (def.damage > 0) _segs.unshift(`${def.damage} DMG`);
-      ctx.fillText(_segs.join('  ·  '), x + CARD_W / 2, y + 78);
+      const _prepDmg = damageLabel(def);
+      const _segs = [_prepDmg || null, `${rangeLabel(def.range)} range`, `${def.cost} AP`].filter(Boolean);
+      this._drawFitText(ctx, _segs.join(' | '), x + CARD_W / 2, y + 78, CARD_W - 24, {
+        size: 15, minSize: 10
+      });
       ctx.fillStyle = def.tempoShift > 0 ? PAL.HOT : PAL.COLD;
-      ctx.font = 'bold 15px monospace';
-      ctx.fillText((def.tempoShift > 0 ? '+' : '') + def.tempoShift + ' Tempo', x + CARD_W / 2, y + 100);
+      this._drawFitText(ctx, (def.tempoShift > 0 ? '+' : '') + def.tempoShift + ' Tempo', x + CARD_W / 2, y + 100, CARD_W - 24, {
+        size: 15, minSize: 10, weight: 'bold'
+      });
       ctx.fillStyle = def.color || '#888';
-      ctx.font = 'bold 15px monospace';
-      ctx.fillText(def.type.toUpperCase(), x + CARD_W / 2, y + 122);
+      this._drawFitText(ctx, def.type.toUpperCase(), x + CARD_W / 2, y + 122, CARD_W - 24, {
+        size: 15, minSize: 10, weight: 'bold'
+      });
       ctx.fillStyle = PAL.MUTED;
       ctx.font = '14px monospace';
-      this._wrapText(ctx, def.desc, x + 10, y + 146, CARD_W - 20, 20);
+      this._wrapText(ctx, def.desc, x + 10, y + 146, CARD_W - 20, 20, 7);
       this.prepBoxes.push({ x, y, w: CARD_W, h: CARD_H, cardId });
     }
 
@@ -1196,9 +1266,9 @@ export class UI {
     ctx.fillRect(tx, ty, TW, 3);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 14px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(def.name, tx + TW / 2, ty + 22);
+    this._drawFitText(ctx, def.name, tx + TW / 2, ty + 22, TW - 20, {
+      size: 14, minSize: 10, weight: 'bold'
+    });
 
     ctx.strokeStyle = (def.color || '#5577aa') + '88';
     ctx.lineWidth = 1;
@@ -1215,17 +1285,19 @@ export class UI {
     const _draftDmg = damageLabel(def);
     if (_draftDmg) {
       ctx.fillStyle = '#ff9988';
-      ctx.font = 'bold 13px monospace';
-      ctx.fillText(`${_draftDmg}  ·  ${rangeLabel(def.range)}`, tx + TW / 2, ty + 82);
+      this._drawFitText(ctx, `${_draftDmg} | ${rangeLabel(def.range)}`, tx + TW / 2, ty + 82, TW - 20, {
+        size: 13, minSize: 9, weight: 'bold'
+      });
     }
 
     ctx.fillStyle = rarCol;
-    ctx.font = 'bold 9px monospace';
-    ctx.fillText((def.rarity || 'common').toUpperCase() + ' · ' + def.type.toUpperCase(), tx + TW / 2, ty + 98);
+    this._drawFitText(ctx, (def.rarity || 'common').toUpperCase() + ' | ' + def.type.toUpperCase(), tx + TW / 2, ty + 98, TW - 20, {
+      size: 9, minSize: 8, weight: 'bold'
+    });
 
     ctx.fillStyle = '#ccccdd';
     ctx.font = '10px monospace';
-    this._wrapText(ctx, def.desc, tx + 10, ty + 118, TW - 20, 14);
+    this._wrapText(ctx, def.desc, tx + 10, ty + 118, TW - 20, 14, 5);
 
     ctx.restore();
   }
@@ -1467,18 +1539,20 @@ export class UI {
 
       // Name
       ctx.fillStyle = PAL.TEXT;
-      ctx.font = 'bold 19px monospace';
-      ctx.fillText(def.name, CARD_W / 2, 102);
+      this._drawFitText(ctx, def.name, CARD_W / 2, 102, CARD_W - 28, {
+        size: 19, minSize: 12, weight: 'bold'
+      });
 
       // Rarity
       ctx.fillStyle = rarCol;
-      ctx.font = 'bold 13px monospace';
-      ctx.fillText(def.rarity.toUpperCase(), CARD_W / 2, 122);
+      this._drawFitText(ctx, def.rarity.toUpperCase(), CARD_W / 2, 122, CARD_W - 28, {
+        size: 13, minSize: 9, weight: 'bold'
+      });
 
       // Description
       ctx.fillStyle = '#ccc';
       ctx.font = '14px monospace';
-      this._wrapText(ctx, def.desc, 14, 148, CARD_W - 28, 20);
+      this._wrapText(ctx, def.desc, 14, 148, CARD_W - 28, 20, 5);
 
       // Wraith HP warning
       if (this.player && this.player._classPassives && this.player._classPassives.noHealingFromRelics &&
@@ -1568,9 +1642,10 @@ export class UI {
       ctx.stroke();
 
       ctx.fillStyle = PAL.TEXT;
-      ctx.font = 'bold 24px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(def.name, x + CARD_W / 2, y + 44);
+      this._drawFitText(ctx, def.name, x + CARD_W / 2, y + 44, CARD_W - 24, {
+        size: 24, minSize: 13, weight: 'bold'
+      });
 
       ctx.fillStyle = PAL.HOT;
       ctx.font = '18px monospace';
@@ -1579,12 +1654,15 @@ export class UI {
       // IDEA-02: show before/after damage
       const nextDmg = baseCard && baseCard.damage > 0 ? Math.round(baseCard.damage * (1 + 0.5 * (level + 1))) : null;
       ctx.fillStyle = PAL.FLOWING;
-      ctx.font = '17px monospace';
       if (nextDmg !== null && nextDmg > 0) {
-        ctx.fillText(`DMG: ${def.damage} → ${nextDmg}`, x + CARD_W / 2, y + 100);
+        this._drawFitText(ctx, `DMG: ${def.damage} -> ${nextDmg}`, x + CARD_W / 2, y + 100, CARD_W - 24, {
+          size: 17, minSize: 10
+        });
       } else {
         ctx.fillStyle = PAL.MUTED;
-        ctx.fillText('No damage', x + CARD_W / 2, y + 100);
+        this._drawFitText(ctx, 'No damage', x + CARD_W / 2, y + 100, CARD_W - 24, {
+          size: 17, minSize: 10
+        });
       }
 
       // Show tempo shift before/after
@@ -1593,14 +1671,17 @@ export class UI {
       ctx.fillStyle = '#88ccff';
       ctx.font = '15px monospace';
       if (nextTempo !== null) {
-        ctx.fillText(`Tempo: ${def.tempoShift > 0 ? '+' : ''}${def.tempoShift} → ${nextTempo > 0 ? '+' : ''}${nextTempo}`, x + CARD_W / 2, y + 124);
+        this._drawFitText(ctx, `Tempo: ${def.tempoShift > 0 ? '+' : ''}${def.tempoShift} -> ${nextTempo > 0 ? '+' : ''}${nextTempo}`, x + CARD_W / 2, y + 124, CARD_W - 24, {
+          size: 15, minSize: 9
+        });
       }
 
       // Show cost before/after
       const nextCost = (level + 1) >= 2 ? Math.max(0, (baseCard ? baseCard.cost : def.cost) - 1) : def.cost;
       ctx.fillStyle = nextCost < def.cost ? PAL.GOLD : PAL.MUTED;
-      ctx.font = '15px monospace';
-      ctx.fillText(`Cost: ${def.cost} AP → ${nextCost} AP`, x + CARD_W / 2, y + 148);
+      this._drawFitText(ctx, `Cost: ${def.cost} AP -> ${nextCost} AP`, x + CARD_W / 2, y + 148, CARD_W - 24, {
+        size: 15, minSize: 9
+      });
 
       ctx.fillStyle = '#44ff88';
       ctx.font = 'bold 16px monospace';
@@ -1739,9 +1820,10 @@ export class UI {
       ctx.strokeRect(x, y, CARD_W, CARD_H);
 
       ctx.fillStyle = PAL.TEXT;
-      ctx.font = 'bold 19px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(def.name, x + CARD_W / 2, y + 35);
+      this._drawFitText(ctx, def.name, x + CARD_W / 2, y + 35, CARD_W - 48, {
+        size: 19, minSize: 11, weight: 'bold'
+      });
       ctx.fillStyle = def.color || '#ddd';
       ctx.font = 'bold 22px monospace';
       ctx.fillText(cardGlyph(def.type), x + CARD_W - 18, y + 24);
@@ -1749,16 +1831,19 @@ export class UI {
       ctx.font = 'bold 17px monospace';
       ctx.fillText('Buy: 1 HP', x + CARD_W / 2, y + 62);
       ctx.fillStyle = '#44aaff';
-      ctx.font = '15px monospace';
-      ctx.fillText(`${def.cost} AP  ·  ${rangeLabel(def.range)} range`, x + CARD_W / 2, y + 87);
+      this._drawFitText(ctx, `${def.cost} AP | ${rangeLabel(def.range)} range`, x + CARD_W / 2, y + 87, CARD_W - 22, {
+        size: 15, minSize: 9
+      });
       ctx.fillStyle = def.tempoShift > 0 ? PAL.HOT : PAL.COLD;
-      ctx.font = '14px monospace';
-      ctx.fillText(`${def.tempoShift > 0 ? '+' : ''}${def.tempoShift} Tempo`, x + CARD_W / 2, y + 107);
+      this._drawFitText(ctx, `${def.tempoShift > 0 ? '+' : ''}${def.tempoShift} Tempo`, x + CARD_W / 2, y + 107, CARD_W - 22, {
+        size: 14, minSize: 9
+      });
       const _shopDmg = damageLabel(def);
       if (_shopDmg) {
         ctx.fillStyle = '#ff9988';
-        ctx.font = '14px monospace';
-        ctx.fillText(_shopDmg, x + CARD_W / 2, y + 125);
+        this._drawFitText(ctx, _shopDmg, x + CARD_W / 2, y + 125, CARD_W - 22, {
+          size: 14, minSize: 9
+        });
       }
       if (def.hpCost || def.selfDamage || def.cursed) {
         ctx.fillStyle = '#ff4455';
@@ -1767,11 +1852,13 @@ export class UI {
         if (def.hpCost) cw.push(`Costs ${def.hpCost} HP`);
         if (def.selfDamage) cw.push(`Costs ${def.selfDamage} HP`);
         if (def.cursed) cw.push('CURSED');
-        ctx.fillText(cw.join(' · '), x + CARD_W / 2, y + 143);
+        this._drawFitText(ctx, cw.join(' | '), x + CARD_W / 2, y + 143, CARD_W - 22, {
+          size: 12, minSize: 8, weight: 'bold'
+        });
       }
       ctx.fillStyle = PAL.MUTED;
       ctx.font = '12px monospace';
-      this._wrapText(ctx, def.desc, x + 12, y + 162, CARD_W - 24, 15);
+      this._wrapText(ctx, def.desc, x + 12, y + 162, CARD_W - 24, 15, 6);
       this.shopBoxes.push({ x, y, w: CARD_W, h: CARD_H, cardId: shopCards[i] });
     }
 
@@ -1899,32 +1986,29 @@ export class UI {
         ctx.stroke();
         // Card name
         ctx.fillStyle = PAL.TEXT;
-        ctx.font = 'bold 17px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(def.name, dcx + dCW / 2, dcy + 22);
+        this._drawFitText(ctx, def.name, dcx + dCW / 2, dcy + 22, dCW - 14, {
+          size: 17, minSize: 9, weight: 'bold'
+        });
         // Type + cost
         ctx.fillStyle = PAL.MUTED;
-        ctx.font = '13px monospace';
-        ctx.fillText(`${def.type} · ${def.cost}AP`, dcx + dCW / 2, dcy + 41);
+        this._drawFitText(ctx, `${def.type} | ${def.cost}AP`, dcx + dCW / 2, dcy + 41, dCW - 14, {
+          size: 13, minSize: 8
+        });
         // Damage + tempo
         if (def.damage > 0 || def.tempoShift !== 0) {
           const parts = [];
           if (def.damage > 0) parts.push(`${def.damage} DMG`);
           if (def.tempoShift !== 0) parts.push(`${def.tempoShift > 0 ? '+' : ''}${def.tempoShift} T`);
           ctx.fillStyle = def.tempoShift > 0 ? PAL.HOT : PAL.COLD;
-          ctx.font = '12px monospace';
-          ctx.fillText(parts.join('  '), dcx + dCW / 2, dcy + 58);
+          this._drawFitText(ctx, parts.join('  '), dcx + dCW / 2, dcy + 58, dCW - 14, {
+            size: 12, minSize: 8
+          });
         }
         // Description (truncated)
         ctx.fillStyle = '#aaa';
         ctx.font = '11px monospace';
-        const descMax = dCW - 16;
-        let descText = def.desc || '';
-        if (ctx.measureText(descText).width > descMax) {
-          while (descText.length > 0 && ctx.measureText(descText + '…').width > descMax) descText = descText.slice(0, -1);
-          descText += '…';
-        }
-        ctx.fillText(descText, dcx + dCW / 2, dcy + 74);
+        this._wrapText(ctx, def.desc, dcx + 8, dcy + 74, dCW - 16, 13, 2);
       }
     }
 
@@ -2042,20 +2126,25 @@ export class UI {
 
       const lvl = this.deckManager.upgrades[cardList[i]] || 0;
       ctx.fillStyle = PAL.TEXT;
-      ctx.font = 'bold 16px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(def.name + (lvl > 0 ? ' +' + lvl : ''), cx + CW / 2, cy + 28);
+      this._drawFitText(ctx, def.name + (lvl > 0 ? ' +' + lvl : ''), cx + CW / 2, cy + 28, CW - 48, {
+        size: 16, minSize: 9, weight: 'bold'
+      });
       ctx.fillStyle = rarCol;
-      ctx.font = '12px monospace';
-      ctx.fillText((def.rarity || 'common').toUpperCase(), cx + CW / 2, cy + 44);
+      this._drawFitText(ctx, (def.rarity || 'common').toUpperCase(), cx + CW / 2, cy + 44, CW - 16, {
+        size: 12, minSize: 8
+      });
       ctx.fillStyle = '#44aaff';
-      ctx.font = '13px monospace';
-      ctx.fillText(`${def.cost}AP · ${def.type}`, cx + CW / 2, cy + 62);
+      this._drawFitText(ctx, `${def.cost}AP | ${def.type}`, cx + CW / 2, cy + 62, CW - 16, {
+        size: 13, minSize: 8
+      });
       ctx.fillStyle = def.tempoShift > 0 ? PAL.HOT : PAL.COLD;
-      ctx.fillText((def.tempoShift > 0 ? '+' : '') + def.tempoShift + ' Tempo', cx + CW / 2, cy + 78);
+      this._drawFitText(ctx, (def.tempoShift > 0 ? '+' : '') + def.tempoShift + ' Tempo', cx + CW / 2, cy + 78, CW - 16, {
+        size: 13, minSize: 8
+      });
       ctx.fillStyle = '#ccc';
       ctx.font = '12px monospace';
-      this._wrapText(ctx, def.desc, cx + 8, cy + 96, CW - 16, 15);
+      this._wrapText(ctx, def.desc, cx + 8, cy + 96, CW - 16, 15, 3);
     }
 
     // Relics section
@@ -2087,15 +2176,17 @@ export class UI {
         ctx.roundRect(rx, ry, RW, RH, 6);
         ctx.stroke();
         ctx.fillStyle = PAL.TEXT;
-        ctx.font = 'bold 14px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(def.name, rx + RW / 2, ry + 22);
+        this._drawFitText(ctx, def.name, rx + RW / 2, ry + 22, RW - 16, {
+          size: 14, minSize: 9, weight: 'bold'
+        });
         ctx.fillStyle = rarCol;
-        ctx.font = '12px monospace';
-        ctx.fillText(def.rarity.toUpperCase(), rx + RW / 2, ry + 38);
+        this._drawFitText(ctx, def.rarity.toUpperCase(), rx + RW / 2, ry + 38, RW - 16, {
+          size: 12, minSize: 8
+        });
         ctx.fillStyle = '#bbb';
         ctx.font = '12px monospace';
-        this._wrapText(ctx, def.desc, rx + 8, ry + 54, RW - 16, 13);
+        this._wrapText(ctx, def.desc, rx + 8, ry + 54, RW - 16, 13, 2);
       }
     }
 
@@ -2156,27 +2247,33 @@ export class UI {
       ctx.strokeRect(x, y, CARD_W, CARD_H);
 
       ctx.fillStyle = PAL.TEXT;
-      ctx.font = 'bold 22px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(def.name, x + CARD_W / 2, y + 36);
+      this._drawFitText(ctx, def.name, x + CARD_W / 2, y + 36, CARD_W - 48, {
+        size: 22, minSize: 11, weight: 'bold'
+      });
       ctx.fillStyle = def.color || '#ddd';
       ctx.font = 'bold 22px monospace';
       ctx.fillText(cardGlyph(def.type), x + CARD_W - 20, y + 26);
       ctx.fillStyle = '#ff8855';
-      ctx.font = 'bold 18px monospace';
-      ctx.fillText(damageLabel(def) || '0 DMG', x + CARD_W / 2, y + 62);
+      this._drawFitText(ctx, damageLabel(def) || '0 DMG', x + CARD_W / 2, y + 62, CARD_W - 20, {
+        size: 18, minSize: 10, weight: 'bold'
+      });
       ctx.fillStyle = '#44aaff';
-      ctx.font = '15px monospace';
-      ctx.fillText(`${def.cost} AP  ·  ${rangeLabel(def.range)}`, x + CARD_W / 2, y + 84);
+      this._drawFitText(ctx, `${def.cost} AP | ${rangeLabel(def.range)}`, x + CARD_W / 2, y + 84, CARD_W - 20, {
+        size: 15, minSize: 9
+      });
       ctx.fillStyle = def.tempoShift > 0 ? PAL.HOT : PAL.COLD;
-      ctx.font = '14px monospace';
-      ctx.fillText((def.tempoShift > 0 ? '+' : '') + def.tempoShift + ' Tempo', x + CARD_W / 2, y + 106);
+      this._drawFitText(ctx, (def.tempoShift > 0 ? '+' : '') + def.tempoShift + ' Tempo', x + CARD_W / 2, y + 106, CARD_W - 20, {
+        size: 14, minSize: 9
+      });
       ctx.fillStyle = def.color || '#888';
-      ctx.font = 'bold 13px monospace';
-      ctx.fillText(def.type.toUpperCase(), x + CARD_W / 2, y + 126);
+      this._drawFitText(ctx, def.type.toUpperCase(), x + CARD_W / 2, y + 126, CARD_W - 20, {
+        size: 13, minSize: 9, weight: 'bold'
+      });
       ctx.fillStyle = PAL.MUTED;
       ctx.font = '13px monospace';
-      this._wrapText(ctx, def.desc, x + 10, y + 150, CARD_W - 20, 17);
+      const maxDescLines = Math.max(3, Math.floor((CARD_H - 178) / 17));
+      this._wrapText(ctx, def.desc, x + 10, y + 150, CARD_W - 20, 17, maxDescLines);
 
       if (isHovered) {
         ctx.fillStyle = PAL.CRITICAL;
@@ -2197,6 +2294,93 @@ export class UI {
   }
 
   // ─────────────────────────────────────��─────────────────────────
+  _fontSpec(size, weight = '', family = 'monospace') {
+    return `${weight ? weight + ' ' : ''}${size}px ${family}`;
+  }
+
+  _ellipsizeText(ctx, text, maxWidth) {
+    let out = String(text || '');
+    if (ctx.measureText(out).width <= maxWidth) return out;
+    const suffix = '...';
+    while (out.length > 0 && ctx.measureText(out + suffix).width > maxWidth) {
+      out = out.slice(0, -1);
+    }
+    return out ? out + suffix : suffix;
+  }
+
+  _drawFitText(ctx, text, x, y, maxWidth, opts = {}) {
+    if (text == null || maxWidth <= 0) return 0;
+    const prevFont = ctx.font;
+    const prevAlign = ctx.textAlign;
+    const prevBaseline = ctx.textBaseline;
+    const size = opts.size || 12;
+    const minSize = opts.minSize || Math.max(8, size - 4);
+    const weight = opts.weight || '';
+    const family = opts.family || 'monospace';
+    let fontSize = size;
+    let label = String(text);
+
+    ctx.textAlign = opts.align || 'center';
+    ctx.textBaseline = opts.baseline || 'alphabetic';
+    ctx.font = this._fontSpec(fontSize, weight, family);
+    while (fontSize > minSize && ctx.measureText(label).width > maxWidth) {
+      fontSize--;
+      ctx.font = this._fontSpec(fontSize, weight, family);
+    }
+    label = this._ellipsizeText(ctx, label, maxWidth);
+    ctx.fillText(label, x, y);
+
+    ctx.font = prevFont;
+    ctx.textAlign = prevAlign;
+    ctx.textBaseline = prevBaseline;
+    return fontSize;
+  }
+
+  _wrapTextLinesMeasured(ctx, text, maxWidth, maxLines = Infinity) {
+    if (!text) return [];
+    const words = String(text).split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = '';
+    let truncated = false;
+    const pushWordFragments = (word) => {
+      let part = '';
+      for (const ch of word) {
+        if (part && ctx.measureText(part + ch).width > maxWidth) {
+          lines.push(part);
+          part = ch;
+          if (lines.length >= maxLines) { truncated = true; return false; }
+        } else {
+          part += ch;
+        }
+      }
+      line = part;
+      return true;
+    };
+
+    for (const word of words) {
+      const testLine = line ? line + ' ' + word : word;
+      if (ctx.measureText(testLine).width <= maxWidth) {
+        line = testLine;
+        continue;
+      }
+      if (line) {
+        lines.push(line);
+        line = '';
+        if (lines.length >= maxLines) { truncated = true; break; }
+      }
+      if (ctx.measureText(word).width > maxWidth) {
+        if (!pushWordFragments(word)) break;
+      } else {
+        line = word;
+      }
+    }
+    if (line && lines.length < maxLines) lines.push(line);
+    if (truncated && lines.length > 0) {
+      lines[lines.length - 1] = this._ellipsizeText(ctx, lines[lines.length - 1], maxWidth);
+    }
+    return lines;
+  }
+
   // Returns array of wrapped lines without drawing (uses approximate char width for monospace)
   _wrapTextLines(text, maxWidth, fontSize) {
     if (!text) return [];
@@ -2214,24 +2398,16 @@ export class UI {
     return lines;
   }
 
-  _wrapText(ctx, text, x, y, maxWidth, lineHeight) {
+  _wrapText(ctx, text, x, y, maxWidth, lineHeight, maxLines = Infinity) {
     if (!text) return;
     const prevAlign = ctx.textAlign;
     ctx.textAlign = 'center';
-    const words = text.split(' ');
-    let line = '';
-    for (let n = 0; n < words.length; n++) {
-      const testLine = line + words[n] + ' ';
-      if (ctx.measureText(testLine).width > maxWidth && n > 0) {
-        ctx.fillText(line.trim(), x + maxWidth / 2, y);
-        line = words[n] + ' ';
-        y += lineHeight;
-      } else {
-        line = testLine;
-      }
+    const lines = this._wrapTextLinesMeasured(ctx, text, maxWidth, maxLines);
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i].trim(), x + maxWidth / 2, y + i * lineHeight);
     }
-    ctx.fillText(line.trim(), x + maxWidth / 2, y);
     ctx.textAlign = prevAlign;
+    return lines.length * lineHeight;
   }
 }
 

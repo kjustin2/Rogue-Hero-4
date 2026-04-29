@@ -8,7 +8,7 @@ import { TempoSystem } from './tempo.js';
 import { CombatManager } from './Combat.js';
 import { ParticleSystem } from './Particles.js';
 import { AudioSynthesizer } from './audio.js';
-import { UI, rangeLabel } from './ui.js';
+import { UI, rangeLabel, damageLabel } from './ui.js';
 import { RoomManager } from './room.js';
 import { DeckManager, CardDefinitions, CARD_UNLOCK_TIERS, RH4_FAST_CARD_IDS } from './DeckManager.js';
 import { RunManager } from './RunManager.js';
@@ -1732,11 +1732,13 @@ function _drawRecentlyPlayedGhost(ctx) {
   ctx.textAlign = 'left';
   ctx.fillText('JUST PLAYED', x + 10, y + 14);
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 16px monospace';
-  ctx.fillText(def.name, x + 10, y + 34);
+  ui._drawFitText(ctx, def.name, x + 10, y + 34, 180, {
+    size: 16, minSize: 9, weight: 'bold', align: 'left'
+  });
   ctx.fillStyle = '#88aacc';
-  ctx.font = '10px monospace';
-  ctx.fillText('AP ' + def.cost + (def.tempoShift ? '   tempo ' + (def.tempoShift > 0 ? '+' : '') + def.tempoShift : ''), x + 10, y + 50);
+  ui._drawFitText(ctx, 'AP ' + def.cost + (def.tempoShift ? '   tempo ' + (def.tempoShift > 0 ? '+' : '') + def.tempoShift : ''), x + 10, y + 50, 180, {
+    size: 10, minSize: 8, align: 'left'
+  });
   ctx.restore();
 }
 
@@ -8846,9 +8848,10 @@ function drawDraftScreen() {
 
     // Card name
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 24px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(def.name, x + CARD_W / 2, startY + 52);
+    ui._drawFitText(ctx, def.name, x + CARD_W / 2, startY + 52, CARD_W - 34, {
+      size: 24, minSize: 13, weight: 'bold'
+    });
 
     // Divider
     ctx.strokeStyle = (def.color || '#5588cc') + '88';
@@ -8867,24 +8870,28 @@ function drawDraftScreen() {
 
     // Tempo shift
     ctx.fillStyle = def.tempoShift > 0 ? '#ffaa55' : '#55bbff';
-    ctx.font = 'bold 17px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText((def.tempoShift > 0 ? '+' : '') + def.tempoShift + ' TEMPO', x + CARD_W / 2 + 12, startY + 92);
+    ui._drawFitText(ctx, (def.tempoShift > 0 ? '+' : '') + def.tempoShift + ' TEMPO', x + CARD_W / 2 + 12, startY + 92, CARD_W - 58, {
+      size: 17, minSize: 10, weight: 'bold'
+    });
 
     // Type + range
     ctx.fillStyle = def.color || '#888';
-    ctx.font = 'bold 14px monospace';
-    ctx.fillText(def.type.toUpperCase(), x + CARD_W / 2, startY + 116);
+    ui._drawFitText(ctx, def.type.toUpperCase(), x + CARD_W / 2, startY + 116, CARD_W - 28, {
+      size: 14, minSize: 9, weight: 'bold'
+    });
     ctx.fillStyle = '#667';
-    ctx.font = '13px monospace';
-    ctx.fillText(`${rangeLabel(def.range)} range`, x + CARD_W / 2, startY + 134);
+    ui._drawFitText(ctx, `${rangeLabel(def.range)} range`, x + CARD_W / 2, startY + 134, CARD_W - 28, {
+      size: 13, minSize: 9
+    });
 
     // DMG
     let dmgLineY = startY + 164;
     if (def.damage > 0) {
       ctx.fillStyle = '#ff9988';
-      ctx.font = 'bold 20px monospace';
-      ctx.fillText(`${def.damage} DMG`, x + CARD_W / 2, dmgLineY);
+      ui._drawFitText(ctx, damageLabel(def) || `${def.damage} DMG`, x + CARD_W / 2, dmgLineY, CARD_W - 28, {
+        size: 20, minSize: 10, weight: 'bold'
+      });
       dmgLineY += 22;
     }
     // HP cost / cursed / self-damage indicators
@@ -8896,7 +8903,9 @@ function drawDraftScreen() {
       if (def.selfDamage) costParts.push(`Costs ${def.selfDamage} HP`);
       if (def.selfDamagePerHit) costParts.push(`${def.selfDamagePerHit} HP/hit`);
       if (def.cursed) costParts.push('CURSED');
-      ctx.fillText(costParts.join(' · '), x + CARD_W / 2, dmgLineY);
+      ui._drawFitText(ctx, costParts.join(' | '), x + CARD_W / 2, dmgLineY, CARD_W - 28, {
+        size: 14, minSize: 8, weight: 'bold'
+      });
       dmgLineY += 18;
     }
     // Slot width indicator
@@ -8910,7 +8919,9 @@ function drawDraftScreen() {
     // Description
     ctx.fillStyle = '#bbbbc8';
     ctx.font = '13px monospace';
-    ui._wrapText(ctx, def.desc, x + 14, Math.max(dmgLineY, startY + 196), CARD_W - 28, 18);
+    const descY = Math.max(dmgLineY, startY + 196);
+    const descLines = Math.max(3, Math.floor((startY + CARD_H - 46 - descY) / 18));
+    ui._wrapText(ctx, def.desc, x + 14, descY, CARD_W - 28, 18, descLines);
 
     // Pick CTA
     ctx.fillStyle = rarCol;

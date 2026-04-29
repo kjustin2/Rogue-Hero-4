@@ -375,14 +375,6 @@ export class Player extends Entity {
 }
 
 function drawHelpers(ctx, player, tempo) {
-  // Shield available indicator (small text)
-  if (!player.shielding && player.shieldCooldown <= 0) {
-    ctx.fillStyle = 'rgba(120,235,255,0.45)';
-    ctx.font = '8px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('SPACE SHIELD', player.x, player.y + player.r + 14);
-  }
-
   // ── P1 / P2 tag (co-op only) ────────────────────────────────────
   // Small pill above each player's head so in the chaos of a fight you can
   // tell at a glance which blob is yours. Halo color matches the HUD / HP
