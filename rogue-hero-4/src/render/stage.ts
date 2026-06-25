@@ -51,8 +51,12 @@ export class Stage {
     else this.renderer.render(this.view.scene, this.view.camera);
   }
 
-  frameStats(): { drawCalls: number; triangles: number } {
-    const r = this.renderer.info.render;
-    return { drawCalls: r.calls, triangles: r.triangles };
+  frameStats(): { drawCalls: number; triangles: number; geometries: number; textures: number; programs: number } {
+    const info = this.renderer.info;
+    return {
+      drawCalls: info.render.calls, triangles: info.render.triangles,
+      geometries: info.memory.geometries, textures: info.memory.textures,
+      programs: info.programs?.length ?? 0,
+    };
   }
 }

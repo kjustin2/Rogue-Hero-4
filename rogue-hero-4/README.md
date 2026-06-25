@@ -24,6 +24,8 @@ npm run typecheck   # tsc --noEmit
 npm run build       # typecheck + vite build
 npm run smoke       # real-browser boot test (non-black frame, input, no errors)
 npm run test:e2e    # core-loop assertions
+npm run perf        # deterministic perf + leak gate vs perf-baseline.json
+npm run audit       # a bot plays full runs, checking invariants + balance
 npm run tour        # screenshot every scenario -> shots/
 npm run doctor      # contact sheet + HEALTH report -> shots/
 ```

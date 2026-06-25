@@ -64,13 +64,14 @@ function startRun(charId: string): void {
   audio.resume(); audio.startMusic();
 }
 
+function chooseRelic(id: string): void {
+  world.applyRelic(id); world.nextRoom();
+  view.setBiome(world.biome.fog, world.biome.accent);
+  hud.hideOverlay(); mode = 'playing';
+}
 function toDraft(): void {
   world.rollDraft(); mode = 'draft';
-  hud.showDraft(world.draftOptions, (id) => {
-    world.applyRelic(id); world.nextRoom();
-    view.setBiome(world.biome.fog, world.biome.accent);
-    hud.hideOverlay(); mode = 'playing';
-  });
+  hud.showDraft(world.draftOptions, chooseRelic);
 }
 
 function toEnd(win: boolean): void {
@@ -81,8 +82,20 @@ function toEnd(win: boolean): void {
 }
 
 // ---- input ----------------------------------------------------------------
+// Movement lives in one channel (world.setMove): keyboard writes it on key events,
+// and tests/AI can write it directly without a per-frame poll clobbering them.
+function syncMove(): void {
+  let x = 0, z = 0;
+  if (keys.has('KeyW') || keys.has('ArrowUp')) z -= 1;
+  if (keys.has('KeyS') || keys.has('ArrowDown')) z += 1;
+  if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
+  if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
+  if (world.player) world.setMove(x, z);
+}
 window.addEventListener('keydown', (e) => {
+  if (keys.has(e.code) && !e.repeat) { /* already tracked */ }
   keys.add(e.code);
+  syncMove();
   if (mode !== 'playing') return;
   if (e.code === 'Digit1') world.castCard(0);
   if (e.code === 'Digit2') world.castCard(1);
@@ -90,7 +103,8 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Digit4') world.castCard(3);
   if (e.code === 'Space') { e.preventDefault(); castByKind('dash'); }
 });
-window.addEventListener('keyup', (e) => keys.delete(e.code));
+window.addEventListener('keyup', (e) => { keys.delete(e.code); syncMove(); });
+window.addEventListener('blur', () => { keys.clear(); if (world.player) world.setMove(0, 0); });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('mousedown', (e) => {
   audio.resume();
@@ -112,19 +126,10 @@ function castByKind(kind: string): void {
   if (i >= 0) world.castCard(i);
 }
 
-function readMoveInput(): void {
-  if (mode !== 'playing') return;
-  let x = 0, z = 0;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) z -= 1;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) z += 1;
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
-  world.setMove(x, z);
-}
-
 // ---- damage floaters ------------------------------------------------------
+const floatScratch = new THREE.Vector3();
 bus.on('damage', (p) => {
-  const v = new THREE.Vector3(p.x, 1.4, p.z).project(view.camera);
+  const v = floatScratch.set(p.x, 1.4, p.z).project(view.camera);
   const sx = (v.x * 0.5 + 0.5) * canvas.clientWidth;
   const sy = (-v.y * 0.5 + 0.5) * canvas.clientHeight;
   const text = p.heal ? `+${p.amount}` : `-${p.amount}`;
@@ -135,12 +140,17 @@ bus.on('sfx', (p) => audio.play(p.name, p.vol ?? 1));
 
 // ---- loop -----------------------------------------------------------------
 let last = performance.now();
+let frameMsEMA = 16;
 function frame(now: number): void {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const rawMs = now - last;
+  const dt = Math.min(0.05, rawMs / 1000); last = now;
+  frameMsEMA = frameMsEMA * 0.9 + rawMs * 0.1;
   hudEl.style.display = mode === 'playing' ? 'block' : 'none';
   if (mode === 'playing') {
-    readMoveInput();
-    world.tick(dt);
+    // hitstop: freeze-frame the sim briefly on crashes / boss death for punch (render stays smooth)
+    const simDt = world.hitstop > 0 ? dt * 0.12 : dt;
+    if (world.hitstop > 0) world.hitstop = Math.max(0, world.hitstop - dt);
+    world.tick(simDt);
     if (!world.player.alive) toEnd(false);
     else if (world.bossDefeated) toEnd(true);
     else if (world.playerInPortal()) toDraft();
@@ -188,15 +198,20 @@ function expose(): void {
     world, bus, view, stage, audio,
     version: '0.2.0', lowfx: LOWFX,
     get mode() { return mode; },
-    start: startRun, toTitle, toSelect,
+    start: startRun, toTitle, toSelect, chooseRelic,
     scenario, scenarios: () => ['title', 'select', 'combat', 'swarm', 'boss', 'crit', 'cold', 'hot', 'draft', 'gameover', 'win'],
     setMove: (x: number, z: number) => world.setMove(x, z),
     aimAt: (x: number, z: number) => world.setAim(x, z),
     cast: (i: number) => world.castCard(i),
     frameStats: () => ({
       ...stage.frameStats(),
+      ...view.counts(),
       mode, depth: world.run.depth, enemies: world.aliveCount(),
-      hp: world.player?.hp ?? 0, tempo: world.player?.tempo ?? 0,
+      frameMs: Math.round(frameMsEMA * 10) / 10,
+      projectiles: world.projectiles.length,
+      activeProj: world.projectiles.reduce((n, p) => n + (p.active ? 1 : 0), 0),
+      pickups: world.pickups.length,
+      hp: world.player?.hp ?? 0, maxHp: world.player?.maxHp ?? 0, tempo: world.player?.tempo ?? 0,
       kills: world.run.kills,
     }),
   };

@@ -1,0 +1,38 @@
+{
+  "combat": {
+    "drawCalls": 74,
+    "triangles": 2016,
+    "activeProj": 3,
+    "enemies": 6,
+    "frameMs": 19.5,
+    "geomLeak": 2,
+    "geometries": 18,
+    "textures": 1,
+    "programs": 5,
+    "projPool": 150
+  },
+  "swarm": {
+    "drawCalls": 95,
+    "triangles": 3284,
+    "activeProj": 3,
+    "enemies": 16,
+    "frameMs": 19.7,
+    "geomLeak": 0,
+    "geometries": 18,
+    "textures": 1,
+    "programs": 5,
+    "projPool": 150
+  },
+  "boss": {
+    "drawCalls": 73,
+    "triangles": 2730,
+    "activeProj": 16,
+    "enemies": 3,
+    "frameMs": 20.5,
+    "geomLeak": 0,
+    "geometries": 23,
+    "textures": 1,
+    "programs": 5,
+    "projPool": 150
+  }
+}

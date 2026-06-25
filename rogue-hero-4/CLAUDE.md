@@ -42,6 +42,13 @@ select`. Keep it in sync with public fields when you add systems.
 - `npm run smoke` — Edge via puppeteer-core, `?lowfx`: asserts a **non-black** frame,
   player moves, a cast shifts tempo, zero console errors.
 - `npm run test:e2e` — drives `__game` through the core loop with `check()` assertions.
+- `npm run perf` — deterministic perf gate: peak draw calls/triangles, GPU resource
+  stability (geometries must not climb = no leak), pool bounds, vs `perf-baseline.json`
+  (`npm run perf -- --update` rewrites it). Headless fps is software-bound; gate on these.
+- `npm run audit` — a bot actually PLAYS runs (kite/aim/cast/dodge/draft/retry) for a
+  wall-time budget (`AUDIT_MS`), asserting invariants every frame (NaN, tempo OOB, arena
+  escape, soft-locked rooms, leaks) and reporting a balance signal (depth/deaths/wins/HP
+  floor). The fastest way to catch a soft-lock or a "can't-win" regression.
 - `npm run tour` — full-FX screenshot of every scenario → `shots/tour-*.png`.
 - `npm run doctor` — shoot every scenario into ONE captioned `shots/contact.png` +
   `shots/HEALTH.md` (luma / draw calls / black-frame + error flags). Read the sheet.

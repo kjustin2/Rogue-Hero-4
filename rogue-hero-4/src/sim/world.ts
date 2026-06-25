@@ -57,7 +57,10 @@ export class World {
   bossDefeated = false;
   draftOptions: RelicDef[] = [];
   shake = 0;
+  hitstop = 0;
   boss: Enemy | null = null;
+  private reinforced = false;
+  private waveBudget = 0;
   private nextId = 1;
 
   constructor(bus: Bus) { this.bus = bus; }
@@ -90,6 +93,7 @@ export class World {
     for (const p of this.projectiles) p.active = false;
     this.portalOpen = false;
     this.boss = null;
+    this.reinforced = false;
     const pl = this.player;
     pl.x = 0; pl.z = ARENA - 9; pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0;
     pl.iframe = 0.6; pl.combo = 0;
@@ -102,12 +106,12 @@ export class World {
     }
   }
 
-  private spawnWave(depth: number): void {
-    const budget = Math.min(3 + depth * 2, 20);
+  private spawnWave(depth: number, count = Math.min(4 + Math.round(depth * 2.4), 24)): void {
+    this.waveBudget = count;
     const pool: EnemyKind[] = ['darter', 'darter'];
     if (depth >= 2) pool.push('brute', 'caster');
     if (depth >= 3) pool.push('splitter', 'darter');
-    for (let i = 0; i < budget; i++) {
+    for (let i = 0; i < count; i++) {
       const kind = this.rng.pick(pool);
       const elite = depth >= 2 && this.rng.next() < 0.05 * depth;
       const a = this.rng.range(Math.PI * 0.15, Math.PI * 0.85); // upper arc, away from player
@@ -237,7 +241,7 @@ export class World {
     this.bus.emit('sfx', { name: 'kill', vol: e.def.kind === 'boss' ? 0.9 : 0.5 });
     if (this.player.relics.has('siphon')) this.heal(5);
     if (e.def.kind === 'boss') {
-      this.bossDefeated = true; this.boss = null; this.shake += 1.4;
+      this.bossDefeated = true; this.boss = null; this.shake += 1.4; this.hitstop = 0.1;
       this.bus.emit('fx:shake', { power: 1.4 });
       this.bus.emit('run:win', {});
       return;
@@ -248,7 +252,7 @@ export class World {
         const c = this.spawnEnemy('darter', e.x + Math.cos(a) * 1.5, e.z + Math.sin(a) * 1.5, false);
         c.hp = c.maxHp = Math.round(c.maxHp * 0.6);
       }
-    } else if (e.elite || this.rng.next() < 0.12) {
+    } else if (e.elite || this.rng.next() < 0.18) {
       this.pickups.push({ x: e.x, z: e.z, life: 14 });
     }
   }
@@ -298,7 +302,7 @@ export class World {
       this.hitEnemy(e, hot ? dmg : dmg * 0.5, dx / d, dz / d);
       if (!hot) { e.stun = 1.6; e.slow = 2.5; }
     }
-    pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0.6; this.shake += 1;
+    pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0.6; this.shake += 1; this.hitstop = 0.05;
     this.bus.emit('tempo:crash', { hot });
     this.bus.emit('fx:crash', { x: pl.x, z: pl.z, hot });
     this.bus.emit('fx:shake', { power: 1 });
@@ -368,7 +372,7 @@ export class World {
         e.cd -= dt;
         if (e.cd <= 0) {
           const ang = Math.atan2(dz, dx);
-          this.spawnProjectile(e.x, e.z, ang, 16, e.def.damage, e.def.color, false, 0, 2.4);
+          this.spawnProjectile(e.x, e.z, ang, 19, e.def.damage, e.def.color, false, 0, 2.4);
           e.cd = (e.def.fireRate ?? 1.5) * (e.phase >= 1 ? 0.6 : 1);
         }
         if (e.def.kind === 'boss') this.bossUpdate(e, dt, d);
@@ -385,19 +389,22 @@ export class World {
   }
 
   private bossUpdate(e: Enemy, dt: number, distToPlayer: number): void {
-    if (e.hp < e.maxHp * 0.5 && e.phase < 1) { e.phase = 1; this.shake += 0.8; }
+    if (e.hp < e.maxHp * 0.5 && e.phase < 1) { e.phase = 1; this.shake += 1; this.hitstop = 0.06; }
+    const base = Math.atan2(this.player.z - e.z, this.player.x - e.x);
     e.patternCd -= dt;
     if (e.patternCd <= 0) {
       const n = e.phase >= 1 ? 16 : 10;
-      const base = Math.atan2(this.player.z - e.z, this.player.x - e.x);
+      const spin = this.t * 0.55; // slowly rotating ring
       for (let k = 0; k < n; k++) {
-        this.spawnProjectile(e.x, e.z, base + (k / n) * Math.PI * 2, 13, e.def.damage * 0.7, NEON.cyan, false, 0, 3);
+        this.spawnProjectile(e.x, e.z, spin + (k / n) * Math.PI * 2, 13, e.def.damage * 0.5, NEON.cyan, false, 0, 3.2);
       }
-      e.patternCd = e.phase >= 1 ? 2.6 : 3.6;
+      // phase 2 adds an aimed lead-fan that punishes standing still
+      if (e.phase >= 1) for (let s = -1; s <= 1; s++) this.spawnProjectile(e.x, e.z, base + s * 0.2, 21, e.def.damage * 0.6, NEON.mag, false, 0, 2.6);
+      e.patternCd = e.phase >= 1 ? 2.4 : 3.3;
       this.bus.emit('sfx', { name: 'shoot2', vol: 0.5 });
     }
     e.summonCd -= dt;
-    if (e.summonCd <= 0 && this.enemies.filter((q) => !q.dead).length < 14) {
+    if (e.summonCd <= 0 && this.aliveCount() < 12) {
       this.spawnEnemy('darter', e.x + (distToPlayer > 8 ? 0 : 3), e.z + 2, false);
       this.spawnEnemy('darter', e.x - 3, e.z + 2, false);
       e.summonCd = 7;
@@ -453,7 +460,7 @@ export class World {
       pk.life -= dt;
       const dx = pk.x - pl.x, dz = pk.z - pl.z;
       if (dx * dx + dz * dz < (pl.radius + 1.3) ** 2) {
-        this.heal(8); pk.life = 0;
+        this.heal(11); pk.life = 0;
         this.bus.emit('fx:pickup', { x: pk.x, z: pk.z, color: NEON.green });
         this.bus.emit('sfx', { name: 'pickup', vol: 0.6 });
       }
@@ -464,7 +471,15 @@ export class World {
   private checkRoom(): void {
     if (this.mode !== 'playing' || this.portalOpen) return;
     if (this.run.depth >= BOSS_DEPTH) return; // boss room: win is via run:win
-    if (this.enemies.some((e) => !e.dead)) return;
+    const alive = this.aliveCount();
+    // mid-room reinforcement keeps deeper rooms under sustained pressure (once per room)
+    if (this.run.depth >= 4 && !this.reinforced && alive > 0 && alive <= Math.ceil(this.waveBudget * 0.4)) {
+      this.reinforced = true;
+      this.spawnWave(this.run.depth, Math.ceil(this.waveBudget * 0.5));
+      this.bus.emit('sfx', { name: 'swap', vol: 0.4 });
+      return;
+    }
+    if (alive > 0) return;
     this.portalOpen = true;
     this.bus.emit('room:clear', {});
     this.bus.emit('portal:open', {});

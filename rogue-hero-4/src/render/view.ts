@@ -32,6 +32,7 @@ export class View {
 
   private shakeT = 0;
   private camTarget = new THREE.Vector3();
+  private scratch = new THREE.Vector3();
 
   constructor(world: World, bus: Bus, lowfx: boolean) {
     this.world = world; this.bus = bus; this.lowfx = lowfx;
@@ -76,6 +77,10 @@ export class View {
     this.scene.add(this.playerMesh);
   }
 
+  counts(): { enemyMeshes: number; projPool: number; parts: number } {
+    return { enemyMeshes: this.enemyMeshes.size, projPool: this.projPool.length, parts: this.parts.length };
+  }
+
   async init(): Promise<void> {
     this.models = await loadModels();
     this.playerMesh.add(this.models.player);
@@ -85,8 +90,10 @@ export class View {
       const s = new THREE.Sprite(m); s.visible = false; this.scene.add(s);
       this.parts.push({ spr: s, vx: 0, vy: 0, vz: 0, life: 0, max: 1, size: 1 });
     }
+    // one shared geometry for all pooled projectiles; per-slot material for per-projectile colour
+    const projGeo = new THREE.SphereGeometry(0.4, 8, 8);
     for (let i = 0; i < 150; i++) {
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), neonMat(0x36f9ff, 1.6).clone());
+      const mesh = new THREE.Mesh(projGeo, neonMat(0x36f9ff, 1.6).clone());
       mesh.visible = false; this.scene.add(mesh); this.projPool.push(mesh);
     }
     this.subscribe();
@@ -137,8 +144,8 @@ export class View {
     this.playerMesh.position.set(pl.x, UP + Math.sin(w.t * 4) * 0.08, pl.z);
     this.playerMesh.rotation.y = -pl.angle + Math.PI / 2;
     this.playerMesh.visible = pl.alive;
-    const pm = this.models?.player;
-    if (pm) { const flash = pl.iframe > 0 ? 0.5 + Math.sin(w.t * 40) * 0.4 : 1; this.playerMesh.scale.setScalar(flash > 0 ? 1 : 1); pm.visible = pl.iframe <= 0 || Math.sin(w.t * 40) > -0.3; }
+    // flicker the model during i-frames (spawn/dodge protection)
+    if (this.models) this.models.player.visible = pl.iframe <= 0 || Math.sin(w.t * 40) > -0.3;
 
     // boss mesh
     if (w.boss && !this.bossMesh && this.models) { this.bossMesh = this.models.boss; this.scene.add(this.bossMesh); }
@@ -210,7 +217,8 @@ export class View {
 
   private updateCamera(dt: number): void {
     const pl = this.world.player;
-    this.camTarget.lerp(new THREE.Vector3(pl.x, 0, pl.z), Math.min(1, dt * 4));
+    this.scratch.set(pl.x, 0, pl.z);
+    this.camTarget.lerp(this.scratch, Math.min(1, dt * 4));
     let sx = 0, sz = 0;
     if (this.shakeT > 0) {
       this.shakeT = Math.max(0, this.shakeT - dt * 2.5);
