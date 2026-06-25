@@ -1,20 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Rogue Hero 4 - PixiJS Tempo Roguelike</title>
-  <meta name="description" content="Rogue Hero 4, a PixiJS-backed tempo roguelike deck builder built from the Rogue Hero 4 combat and multiplayer foundation.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%230a0a12'/><text x='16' y='24' font-size='22' text-anchor='middle' fill='%2344ff88'>⚔</text></svg>">
-  <link rel="stylesheet" href="style.css">
-  <!-- PWA manifest -->
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#0a0a12">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-</head>
-<body>
-  <canvas id="game"></canvas>
-  <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
-  <script type="module" src="src/main.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+    <title>Rogue Hero 4 — Neon Arcane</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+      <div id="hud"></div>
+      <div id="overlay"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>

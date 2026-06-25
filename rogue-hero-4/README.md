@@ -1,86 +1,30 @@
 # Rogue Hero 4
 
-Rogue Hero 4 is a fast-paced PixiJS-backed roguelike deck action game. The project runs as a browser game during development and as a standalone Electron app for desktop play.
+An intense **neon-arcane 3D roguelike**. Twin-stick real-time combat built on Three.js,
+driven by the **TEMPO** mechanic — a meter you shove HOT for damage, push COLD for defense,
+and slam to 0/100 to trigger an arena-clearing crash. Clear rooms, draft relics, descend
+six depths, and silence **The Conductor**.
 
-## Requirements
+Built entirely from **CC0 assets** — Kenney GLB models + Ogg sound effects (public domain),
+retinted into an emissive neon look, with a synthesized ambient score. See
+[`public/assets/CREDITS.md`](public/assets/CREDITS.md).
 
-- Node.js 20 or newer
-- npm
-
-## Install
-
-```powershell
+## Play
+```bash
 npm install
+npm run assets   # fetch the CC0 assets (one time)
+npm run dev      # open the printed localhost URL
 ```
+**WASD** move · **mouse** aim · **1–4** / **left-click** cast · **Space** dash.
+Three vessels (Pyre / Frost / Shadow); Frost and Shadow unlock as you play.
 
-## Run In A Browser
-
-Start the local static server:
-
-```powershell
-npm run serve
+## Develop
+```bash
+npm run typecheck   # tsc --noEmit
+npm run build       # typecheck + vite build
+npm run smoke       # real-browser boot test (non-black frame, input, no errors)
+npm run test:e2e    # core-loop assertions
+npm run tour        # screenshot every scenario -> shots/
+npm run doctor      # contact sheet + HEALTH report -> shots/
 ```
-
-Then open:
-
-```text
-http://127.0.0.1:8000
-```
-
-To use another port:
-
-```powershell
-node serve-static.mjs 8001
-```
-
-## Run Standalone With Electron
-
-Install dependencies first if you have not already:
-
-```powershell
-npm install
-```
-
-Launch the desktop app directly:
-
-```powershell
-npm start
-```
-
-This uses `electron/main.js`, loads `index.html`, and starts fullscreen.
-
-## Build A Standalone Desktop Package
-
-Windows:
-
-```powershell
-npm run dist
-```
-
-macOS:
-
-```powershell
-npm run dist:mac
-```
-
-Linux:
-
-```powershell
-npm run dist:linux
-```
-
-Build output is written to `dist/`.
-
-## Useful Development Commands
-
-```powershell
-npm run syntax
-npm test
-npm run test:smoke
-npm run mp
-```
-
-- `npm run syntax` checks JavaScript module syntax.
-- `npm test` runs the multiplayer smoke/desync scripts.
-- `npm run test:smoke` runs the Playwright browser smoke tests.
-- `npm run mp` starts the local multiplayer helper.
+Architecture and conventions live in [`CLAUDE.md`](CLAUDE.md).

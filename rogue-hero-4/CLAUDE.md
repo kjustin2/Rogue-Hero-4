@@ -1,0 +1,62 @@
+# Rogue Hero 4 — neon-arcane 3D roguelike
+
+Twin-stick real-time roguelike. Vite + TypeScript + Three.js. Art = a few **CC0**
+Kenney GLB models retinted into emissive neon + procedural polyhedra; audio = **CC0**
+Kenney Ogg SFX + a synthesized music bed. All assets are CC0 (see
+`public/assets/CREDITS.md`); re-fetch with `npm run assets`.
+
+## The signature mechanic — TEMPO
+A 0–100 meter, neutral 50, always decaying toward 50. Cards shove it. Zones change your
+attacks: **HOT** (≥70) ramps damage to ×1.5; **CRITICAL** (≥90) makes attacks pierce;
+**COLD** (≤30) is defensive (−25% incoming). Hit **0 or 100** → a **crash**: an AoE burst
+(hot = fire nova, cold = freeze) that resets tempo to 50. Riding the swing and baiting the
+crash is the skill. (`src/sim/tempo.ts`)
+
+## Architecture (match it)
+- **`src/main.ts`** — the ONLY state machine (`title → select → playing → draft →
+  gameover/win`), the dt-capped loop, input, and the `window.__game` hook. Render reads,
+  never mutates.
+- **`src/sim/`** — pure, Three.js-free, headless-testable.
+  - `world.ts` — entities, the **one damage funnel** (`hitEnemy` / `damagePlayer` — never
+    poke HP elsewhere), card casting, enemy AI, run/room flow, tempo crashes.
+  - `tempo.ts` — zone math. `rng.ts` — seeded mulberry32.
+- **`src/render/`** — `stage.ts` (renderer + bloom post; `?lowfx`/`?nofx` drop to a plain
+  blit), `view.ts` (sim→scene sync, particle pool, camera follow), `models.ts` (CC0 GLB
+  load + neon material/geometry helpers, all **shared** per colour/kind — no per-entity
+  material churn).
+- **`src/audio.ts`** — Web Audio; loads CC0 Ogg, synth music bed. Degrades to silence.
+- **`src/hud.ts`** — DOM HUD + overlay screens + damage floaters.
+- **`src/content.ts` / `types.ts`** — all data tables (cards, characters, enemies, relics,
+  biomes) + the typed `Bus` event map in `bus.ts`. The sim only **emits**; render/audio/HUD
+  subscribe.
+
+## The test seam — `window.__game`
+Drives every headless test. Key bits: `world`, `mode`, `start(charId)`, `cast(i)`,
+`setMove(x,z)`, `aimAt(x,z)`, `frameStats()`, and **`scenario(spec)` / `scenarios()`** —
+cut straight to any state: `combat swarm boss crit cold hot draft gameover win title
+select`. Keep it in sync with public fields when you add systems.
+
+## Harness (real browser, never a mock canvas)
+- `npm run typecheck` — static gate, after any TS change.
+- `npm run build` — typecheck + vite build.
+- `npm run smoke` — Edge via puppeteer-core, `?lowfx`: asserts a **non-black** frame,
+  player moves, a cast shifts tempo, zero console errors.
+- `npm run test:e2e` — drives `__game` through the core loop with `check()` assertions.
+- `npm run tour` — full-FX screenshot of every scenario → `shots/tour-*.png`.
+- `npm run doctor` — shoot every scenario into ONE captioned `shots/contact.png` +
+  `shots/HEALTH.md` (luma / draw calls / black-frame + error flags). Read the sheet.
+- Headless quirks: `?lowfx` skips the bloom composer (it stalls under SwiftShader; that run
+  also flips on `preserveDrawingBuffer` so the canvas can be sampled). The dt-capped clock
+  runs slow headless — poll on intervals with generous real-time waits, never on rAF.
+
+## Conventions
+- **No new asset files beyond CC0** in `public/assets/` (add to `scripts/assets.mjs`).
+- One damage funnel · typed event bus · all transitions in `main.ts` · shared geo/materials
+  (dispose anything you create per-frame) · run-state in `world.run`, META unlocks in
+  `localStorage['rh4.meta']` (wrapped in try/catch).
+
+## Where to add content
+Cards/characters/enemies/relics/biomes are all data in `src/content.ts`. A new card needs a
+`CardDef` + a `case` in `World.execCard`; a new enemy needs an `EnemyDef`, a mesh in
+`models.enemyGeo` (or a model), and AI in `World.updateEnemies`. Add a `scenario()` for
+anything you want to screenshot.

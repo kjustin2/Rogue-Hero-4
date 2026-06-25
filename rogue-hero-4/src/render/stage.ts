@@ -1,0 +1,58 @@
+import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { View } from './view';
+
+// Renderer + graded post chain. The full bloom stack stalls under SwiftShader,
+// so ?lowfx (and ?nofx) drop to a plain blit — same scene, no composer.
+export class Stage {
+  renderer: THREE.WebGLRenderer;
+  view: View;
+  private composer?: EffectComposer;
+  private canvas: HTMLCanvasElement;
+
+  constructor(canvas: HTMLCanvasElement, view: View, lowfx: boolean) {
+    this.canvas = canvas; this.view = view;
+    // preserveDrawingBuffer under lowfx lets the headless harness sample the canvas.
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowfx, powerPreference: 'high-performance', preserveDrawingBuffer: lowfx });
+    this.renderer.setPixelRatio(lowfx ? 1 : Math.min(window.devicePixelRatio, 2));
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.2;
+    this.resize();
+
+    if (!lowfx) {
+      const c = new EffectComposer(this.renderer);
+      c.addPass(new RenderPass(view.scene, view.camera));
+      const { w, h } = this.size();
+      c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.95, 0.65, 0.74));
+      c.addPass(new OutputPass());
+      this.composer = c;
+    }
+    window.addEventListener('resize', () => this.resize());
+  }
+
+  private size(): { w: number; h: number } {
+    return { w: Math.max(1, this.canvas.clientWidth), h: Math.max(1, this.canvas.clientHeight) };
+  }
+
+  resize(): void {
+    const { w, h } = this.size();
+    this.renderer.setSize(w, h, false);
+    this.view.camera.aspect = w / h;
+    this.view.camera.updateProjectionMatrix();
+    this.composer?.setSize(w, h);
+  }
+
+  render(dt: number): void {
+    this.view.sync(dt);
+    if (this.composer) this.composer.render();
+    else this.renderer.render(this.view.scene, this.view.camera);
+  }
+
+  frameStats(): { drawCalls: number; triangles: number } {
+    const r = this.renderer.info.render;
+    return { drawCalls: r.calls, triangles: r.triangles };
+  }
+}
