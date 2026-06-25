@@ -67,4 +67,4 @@ export interface BiomeDef {
   accent: number;       // neon accent
 }
 
-export type GameMode = 'title' | 'select' | 'playing' | 'draft' | 'gameover' | 'win';
+export type GameMode = 'title' | 'select' | 'playing' | 'draft' | 'gameover' | 'win' | 'cutscene';

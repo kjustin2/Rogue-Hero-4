@@ -5,11 +5,13 @@ import { View } from './render/view';
 import { Stage } from './render/stage';
 import { Audio } from './audio';
 import { Hud } from './hud';
-import { CHARACTERS, BOSS_DEPTH } from './content';
+import { Cinematic, easeOut, type Shot } from './render/cinematic';
+import { CHARACTERS, BOSS_DEPTH, NEON } from './content';
 import type { GameMode } from './types';
 
 const params = new URLSearchParams(location.search);
 const LOWFX = params.has('lowfx') || params.has('nofx');
+let cutscenesOn = !params.has('nocut'); // tests pass ?nocut for fast, deterministic state jumps
 
 const canvas = document.getElementById('scene') as HTMLCanvasElement;
 const hudEl = document.getElementById('hud')!;
@@ -21,12 +23,14 @@ const view = new View(world, bus, LOWFX);
 const stage = new Stage(canvas, view, LOWFX);
 const audio = new Audio();
 const hud = new Hud(hudEl, overlayEl);
+const cine = new Cinematic(view.camera);
 
 let mode: GameMode = 'title';
 let lastChar = 'pyre';
 const ray = new THREE.Raycaster();
 const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const hitPoint = new THREE.Vector3();
+const focusVec = new THREE.Vector3();
 const keys = new Set<string>();
 
 // ---- meta (unlocks) -------------------------------------------------------
@@ -51,8 +55,9 @@ function recordRunEnd(): void {
 
 // ---- flow / state machine -------------------------------------------------
 function toTitle(): void { mode = 'title'; hud.showTitle(toSelect); }
-function toSelect(): void { mode = 'select'; hud.showSelect(unlockedSet(), startRun, toTitle); }
+function toSelect(): void { mode = 'select'; hud.showSelect(unlockedSet(), beginRun, toTitle); }
 
+// core run setup (no cutscene) — also the path scenarios use for instant state jumps
 function startRun(charId: string): void {
   lastChar = CHARACTERS.find((c) => c.id === charId) ? charId : 'pyre';
   world.startRun(lastChar);
@@ -64,10 +69,18 @@ function startRun(charId: string): void {
   audio.resume(); audio.startMusic();
 }
 
+// real entry from the menu / retry — startRun + the descent cutscene
+function beginRun(charId: string): void {
+  startRun(charId);
+  playCutscene('dive', () => { mode = 'playing'; });
+}
+
 function chooseRelic(id: string): void {
   world.applyRelic(id); world.nextRoom();
   view.setBiome(world.biome.fog, world.biome.accent);
-  hud.hideOverlay(); mode = 'playing';
+  hud.hideOverlay();
+  if (cutscenesOn && world.run.depth >= BOSS_DEPTH) playCutscene('boss', () => { mode = 'playing'; });
+  else mode = 'playing';
 }
 function toDraft(): void {
   world.rollDraft(); mode = 'draft';
@@ -78,7 +91,56 @@ function toEnd(win: boolean): void {
   mode = win ? 'win' : 'gameover';
   recordRunEnd();
   audio.setMusic(false);
-  hud.showEnd(win, world, () => startRun(lastChar), toTitle);
+  hud.showEnd(win, world, () => beginRun(lastChar), toTitle);
+}
+
+// ---- cutscenes ------------------------------------------------------------
+const hexColor = (n: number) => '#' + n.toString(16).padStart(6, '0');
+
+function playCutscene(name: 'dive' | 'boss' | 'win' | 'death', onDone: () => void): void {
+  if (!cutscenesOn) { onDone(); return; }
+  mode = 'cutscene';
+  view.cinematic = true;
+  hud.hideOverlay();
+  hud.letterbox(true);
+  cine.play(buildCutscene(name), focusVec, () => { hud.clearCinematic(); view.resyncCam(); onDone(); });
+}
+
+function buildCutscene(name: 'dive' | 'boss' | 'win' | 'death'): Shot[] {
+  const pl = world.player;
+  switch (name) {
+    case 'dive':
+      focusVec.set(pl.x, 0, pl.z);
+      return [{
+        dur: 1.5, fov: 38, fovTo: 52, ease: easeOut,
+        pos: [0, 62, 3], posTo: [0, 30, 22], look: [0, 0, -3], lookTo: [0, 1.5, -3],
+        onStart: () => { hud.cinematicText('DESCENDING', world.biome.name, hexColor(world.biome.accent), 1500); audio.play('dash', 0.5); },
+      }];
+    case 'boss': {
+      const b = world.boss;
+      focusVec.set(b ? b.x : 0, 0, b ? b.z : -(/* fallback */ 18));
+      return [
+        { dur: 1.7, fov: 60, fovTo: 54, pos: [0, 2.5, 15], posTo: [3, 8, 18], look: [0, 5, 0], lookTo: [0, 4, 0],
+          onStart: () => { hud.cinematicText('THE CONDUCTOR', 'Warden of the Voidline', hexColor(NEON.cyan), 2300); world.shake += 1; audio.play('crash', 0.7); } },
+        { dur: 1.0, fov: 54, fovTo: 52, pos: [3, 8, 18], posTo: [0, 22, 24], look: [0, 4, 0], lookTo: [0, 2, 0], ease: easeOut },
+      ];
+    }
+    case 'win':
+      focusVec.set(world.bossDeathX, 0, world.bossDeathZ);
+      return [
+        { dur: 1.9, fov: 50, pos: [7, 5, 10], posTo: [-8, 7, 12], look: [0, 3, 0], lookTo: [0, 3, 0],
+          onStart: () => { hud.cinematicText('VOIDLINE BROKEN', 'The Conductor is silenced', hexColor(NEON.cyan), 2700); world.shake += 1.4; bus.emit('fx:crash', { x: world.bossDeathX, z: world.bossDeathZ, hot: false }); audio.play('kill', 0.9); } },
+        { dur: 1.6, fov: 50, fovTo: 52, pos: [-8, 7, 12], posTo: [0, 30, 26], look: [0, 3, 0], lookTo: [0, 2, 0], ease: easeOut },
+      ];
+    case 'death':
+    default:
+      focusVec.set(pl.x, 0, pl.z);
+      return [
+        { dur: 1.5, fov: 52, fovTo: 40, pos: [0, 30, 22], posTo: [3.5, 4, 7.5], look: [0, 1.4, 0], lookTo: [0, 1.2, 0],
+          onStart: () => { hud.cinematicText('YOU FELL', '', hexColor(NEON.red), 2000); world.shake += 1; } },
+        { dur: 0.9, fov: 40, pos: [3.5, 4, 7.5], posTo: [3.5, 4, 7.5], look: [0, 1.2, 0], lookTo: [0, 1.2, 0] },
+      ];
+  }
 }
 
 // ---- input ----------------------------------------------------------------
@@ -93,9 +155,9 @@ function syncMove(): void {
   if (world.player) world.setMove(x, z);
 }
 window.addEventListener('keydown', (e) => {
-  if (keys.has(e.code) && !e.repeat) { /* already tracked */ }
   keys.add(e.code);
   syncMove();
+  if (mode === 'cutscene') { cine.skip(); return; }
   if (mode !== 'playing') return;
   if (e.code === 'Digit1') world.castCard(0);
   if (e.code === 'Digit2') world.castCard(1);
@@ -108,6 +170,7 @@ window.addEventListener('blur', () => { keys.clear(); if (world.player) world.se
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('mousedown', (e) => {
   audio.resume();
+  if (mode === 'cutscene') { cine.skip(); return; }
   if (mode !== 'playing') return;
   if (e.button === 0) world.castCard(0);
   if (e.button === 2) world.castCard(1);
@@ -141,6 +204,14 @@ bus.on('sfx', (p) => audio.play(p.name, p.vol ?? 1));
 // ---- loop -----------------------------------------------------------------
 let last = performance.now();
 let frameMsEMA = 16;
+let titleT = 0;
+function titleOrbit(dt: number): void {
+  titleT += dt;
+  const a = titleT * 0.16;
+  view.camera.position.set(Math.sin(a) * 30, 23 + Math.sin(titleT * 0.4) * 3, Math.cos(a) * 30);
+  view.camera.lookAt(0, 2.5, 0);
+}
+
 function frame(now: number): void {
   const rawMs = now - last;
   const dt = Math.min(0.05, rawMs / 1000); last = now;
@@ -151,11 +222,16 @@ function frame(now: number): void {
     const simDt = world.hitstop > 0 ? dt * 0.12 : dt;
     if (world.hitstop > 0) world.hitstop = Math.max(0, world.hitstop - dt);
     world.tick(simDt);
-    if (!world.player.alive) toEnd(false);
-    else if (world.bossDefeated) toEnd(true);
+    if (!world.player.alive) { if (cutscenesOn) playCutscene('death', () => toEnd(false)); else toEnd(false); }
+    else if (world.bossDefeated) { if (cutscenesOn) playCutscene('win', () => toEnd(true)); else toEnd(true); }
     else if (world.playerInPortal()) toDraft();
     hud.update(world);
+  } else if (mode === 'cutscene') {
+    cine.update(dt);
   }
+  // camera ownership: cutscene / title orbit drive it; otherwise View follows the player
+  if (mode === 'title') { titleOrbit(dt); view.cinematic = true; }
+  else view.cinematic = mode === 'cutscene';
   stage.render(dt);
   requestAnimationFrame(frame);
 }
@@ -188,6 +264,10 @@ function scenario(spec: string): string {
     case 'draft': startRun('pyre'); world.enemies = []; world.portalOpen = true; toDraft(); break;
     case 'gameover': startRun('pyre'); pl().iframe = 0; pl().hp = 1; world.damagePlayer(999); if (!pl().alive) toEnd(false); break;
     case 'win': startRun('pyre'); world.bossDefeated = true; toEnd(true); break;
+    case 'cutdive': startRun('pyre'); playCutscene('dive', () => { mode = 'playing'; }); break;
+    case 'cutboss': startRun('pyre'); world.enterRoom(BOSS_DEPTH); view.setBiome(world.biome.fog, world.biome.accent); playCutscene('boss', () => { mode = 'playing'; }); break;
+    case 'cutwin': startRun('pyre'); world.bossDeathX = 0; world.bossDeathZ = -18; playCutscene('win', () => toEnd(true)); break;
+    case 'cutdeath': startRun('pyre'); pl().iframe = 0; world.damagePlayer(9999); playCutscene('death', () => toEnd(false)); break;
     default: return `unknown scenario: ${spec}`;
   }
   return spec;
@@ -199,7 +279,8 @@ function expose(): void {
     version: '0.2.0', lowfx: LOWFX,
     get mode() { return mode; },
     start: startRun, toTitle, toSelect, chooseRelic,
-    scenario, scenarios: () => ['title', 'select', 'combat', 'swarm', 'boss', 'crit', 'cold', 'hot', 'draft', 'gameover', 'win'],
+    scenario, scenarios: () => ['title', 'select', 'combat', 'swarm', 'boss', 'crit', 'cold', 'hot', 'draft', 'gameover', 'win', 'cutdive', 'cutboss', 'cutwin', 'cutdeath'],
+    cine, get cutscenes() { return cutscenesOn; }, setCutscenes: (b: boolean) => { cutscenesOn = b; },
     setMove: (x: number, z: number) => world.setMove(x, z),
     aimAt: (x: number, z: number) => world.setAim(x, z),
     cast: (i: number) => world.castCard(i),

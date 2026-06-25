@@ -21,9 +21,10 @@ crash is the skill. (`src/sim/tempo.ts`)
     poke HP elsewhere), card casting, enemy AI, run/room flow, tempo crashes.
   - `tempo.ts` — zone math. `rng.ts` — seeded mulberry32.
 - **`src/render/`** — `stage.ts` (renderer + bloom post; `?lowfx`/`?nofx` drop to a plain
-  blit), `view.ts` (sim→scene sync, particle pool, camera follow), `models.ts` (CC0 GLB
-  load + neon material/geometry helpers, all **shared** per colour/kind — no per-entity
-  material churn).
+  blit), `view.ts` (sim→scene sync, particle pool, camera follow; yields the camera when
+  `view.cinematic`), `models.ts` (CC0 GLB load + neon material/geometry helpers, all
+  **shared** per colour/kind — no per-entity material churn), `cinematic.ts` (cutscene
+  timeline: keyframed camera shots around a captured focus, with skip).
 - **`src/audio.ts`** — Web Audio; loads CC0 Ogg, synth music bed. Degrades to silence.
 - **`src/hud.ts`** — DOM HUD + overlay screens + damage floaters.
 - **`src/content.ts` / `types.ts`** — all data tables (cards, characters, enemies, relics,
@@ -34,7 +35,17 @@ crash is the skill. (`src/sim/tempo.ts`)
 Drives every headless test. Key bits: `world`, `mode`, `start(charId)`, `cast(i)`,
 `setMove(x,z)`, `aimAt(x,z)`, `frameStats()`, and **`scenario(spec)` / `scenarios()`** —
 cut straight to any state: `combat swarm boss crit cold hot draft gameover win title
-select`. Keep it in sync with public fields when you add systems.
+select`, plus cutscene jumps `cutdive cutboss cutwin cutdeath`. Keep it in sync with
+public fields when you add systems.
+
+## Cutscenes
+Cinematic cutscenes (descent / boss reveal / victory / death) play on real flow
+transitions and freeze the sim (`mode='cutscene'`); they're skippable (click/key) and
+never soft-lock (an e2e probe guards that). Triggered only from real entry points
+(`beginRun`, `chooseRelic` at boss depth, win/death in the loop) — **not** from
+`scenario()` jumps. **`?nocut`** disables them for fast, deterministic tests; the
+logic/perf harness passes it, while `tour`/`doctor` leave them on to screenshot the
+`cut*` scenarios. Toggle at runtime via `__game.setCutscenes(bool)`.
 
 ## Harness (real browser, never a mock canvas)
 - `npm run typecheck` — static gate, after any TS change.

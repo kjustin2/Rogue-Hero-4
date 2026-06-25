@@ -30,6 +30,7 @@ export class View {
   private hemi: THREE.HemisphereLight;
   private walls: THREE.Mesh[] = [];
 
+  cinematic = false; // when true, the camera is driven externally (cutscene / title orbit)
   private shakeT = 0;
   private camTarget = new THREE.Vector3();
   private scratch = new THREE.Vector3();
@@ -120,6 +121,8 @@ export class View {
     this.bus.on('fx:crash', (p) => { const c = p.hot ? 0xff5a2a : 0xbfeaff; this.burst(p.x, p.z, c, 60, 18, 2.2, 0.9); this.shakeT = 1; });
     this.bus.on('fx:pickup', (p) => this.burst(p.x, p.z, p.color, 12, 6, 0.9, 0.5));
     this.bus.on('fx:shake', (p) => { this.shakeT = Math.max(this.shakeT, p.power); });
+    // player death shatter — always fires (juice + keeps the death cutscene from going flat-black)
+    this.bus.on('player:dead', () => { const p = this.world.player; this.burst(p.x, p.z, 0xff3b5c, 54, 17, 1.9, 0.95); this.shakeT = 1; });
   }
 
   private burst(x: number, z: number, color: number, count: number, spread: number, size: number, life: number): void {
@@ -198,8 +201,11 @@ export class View {
     this.reticle.rotation.z += dt * 2;
 
     this.updateParticles(dt);
-    this.updateCamera(dt);
+    if (!this.cinematic) this.updateCamera(dt);
   }
+
+  // keep the follow target synced to the player so the camera doesn't jump when a cutscene ends
+  resyncCam(): void { const pl = this.world.player; if (pl) this.camTarget.set(pl.x, 0, pl.z); }
 
   private updateParticles(dt: number): void {
     for (const pt of this.parts) {

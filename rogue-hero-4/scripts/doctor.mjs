@@ -56,4 +56,4 @@ await withGame(async ({ page, errors }) => {
   ].join('\n');
   await writeFile(join(ROOT, 'shots', 'HEALTH.md'), md);
   console.log(`\nDOCTOR done — shots/contact.png + shots/HEALTH.md (${bad.length} black, ${errors.length} errors)`);
-});
+}, { query: '?lowfx' }); // cutscenes ON so cut* scenarios render

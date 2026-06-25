@@ -32,7 +32,9 @@ async function waitForServer(timeoutMs = 30000) {
   throw new Error('Vite dev server did not start');
 }
 
-export async function withGame(run, { query = '?lowfx', shotsDir = 'shots' } = {}) {
+// Default to ?nocut so logic/perf tests get instant, deterministic state jumps
+// (no cutscene timing). doctor/tour override to capture cutscenes.
+export async function withGame(run, { query = '?lowfx&nocut', shotsDir = 'shots' } = {}) {
   await mkdir(join(ROOT, shotsDir), { recursive: true });
   const server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort', '--host', '127.0.0.1'], {
     cwd: ROOT, shell: true, stdio: 'ignore',

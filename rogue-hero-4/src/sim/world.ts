@@ -55,6 +55,8 @@ export class World {
   portalX = 0;
   portalZ = -(ARENA - 7);
   bossDefeated = false;
+  bossDeathX = 0;
+  bossDeathZ = -(ARENA - 12);
   draftOptions: RelicDef[] = [];
   shake = 0;
   hitstop = 0;
@@ -241,7 +243,8 @@ export class World {
     this.bus.emit('sfx', { name: 'kill', vol: e.def.kind === 'boss' ? 0.9 : 0.5 });
     if (this.player.relics.has('siphon')) this.heal(5);
     if (e.def.kind === 'boss') {
-      this.bossDefeated = true; this.boss = null; this.shake += 1.4; this.hitstop = 0.1;
+      this.bossDefeated = true; this.boss = null; this.bossDeathX = e.x; this.bossDeathZ = e.z;
+      this.shake += 1.4; this.hitstop = 0.1;
       this.bus.emit('fx:shake', { power: 1.4 });
       this.bus.emit('run:win', {});
       return;

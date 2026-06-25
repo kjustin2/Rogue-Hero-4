@@ -20,14 +20,52 @@ export class Hud {
   private comboEl!: HTMLElement;
   private floaters: HTMLElement[] = [];
   private fCursor = 0;
+  private barTop!: HTMLElement;
+  private barBot!: HTMLElement;
+  private cineText!: HTMLElement;
+  private cineTitleEl!: HTMLElement;
+  private cineSubEl!: HTMLElement;
+  private skipHint!: HTMLElement;
+  private cineTimer = 0;
 
   constructor(hud: HTMLElement, overlay: HTMLElement) {
     this.hud = hud; this.overlay = overlay;
     this.buildHud();
+    this.buildCinematic();
     for (let i = 0; i < 28; i++) {
       const d = document.createElement('div'); d.className = 'dmg-float'; d.style.opacity = '0';
       this.overlay.appendChild(d); this.floaters.push(d);
     }
+  }
+
+  private buildCinematic(): void {
+    const el = (cls: string) => { const d = document.createElement('div'); d.className = cls; return d; };
+    this.barTop = el('letterbar'); this.barBot = el('letterbar bottom');
+    this.cineText = el('cine-text');
+    this.cineTitleEl = el('cine-title'); this.cineSubEl = el('cine-sub');
+    this.cineText.append(this.cineTitleEl, this.cineSubEl);
+    this.skipHint = el('cine-skip'); this.skipHint.textContent = 'Click / Space to skip';
+    this.overlay.append(this.barTop, this.barBot, this.cineText, this.skipHint);
+  }
+
+  letterbox(on: boolean): void {
+    this.barTop.classList.toggle('on', on);
+    this.barBot.classList.toggle('on', on);
+    this.skipHint.classList.toggle('on', on);
+  }
+
+  cinematicText(title: string, sub: string, color: string, holdMs = 1600): void {
+    clearTimeout(this.cineTimer);
+    this.cineTitleEl.textContent = title; this.cineTitleEl.style.color = color;
+    this.cineSubEl.textContent = sub;
+    this.cineText.classList.add('show');
+    this.cineTimer = window.setTimeout(() => this.cineText.classList.remove('show'), holdMs);
+  }
+
+  clearCinematic(): void {
+    clearTimeout(this.cineTimer);
+    this.cineText.classList.remove('show');
+    this.letterbox(false);
   }
 
   private buildHud(): void {

@@ -52,6 +52,18 @@ await withGame(async ({ page, errors }) => {
   await ev(page, () => window.__game.scenario('gameover'));
   check('gameover state reachable', (await ev(page, () => window.__game.mode)) === 'gameover');
 
+  // cutscenes: must not soft-lock — a boss reveal must complete back to 'playing'
+  await ev(page, () => window.__game.setCutscenes(true));
+  await ev(page, () => window.__game.scenario('cutboss'));
+  check('boss cutscene enters cutscene mode', (await ev(page, () => window.__game.mode)) === 'cutscene');
+  await page.waitForFunction("window.__game.mode === 'playing'", { timeout: 9000, polling: 100 });
+  check('boss cutscene completes back to playing', true);
+  // skip jumps straight to the resolved state
+  await ev(page, () => window.__game.scenario('cutwin'));
+  await ev(page, () => window.__game.cine.skip());
+  check('cutscene skip resolves to win', (await ev(page, () => window.__game.mode)) === 'win');
+  await ev(page, () => window.__game.setCutscenes(false));
+
   check('no console errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 });
 
