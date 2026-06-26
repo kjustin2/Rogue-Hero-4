@@ -5,6 +5,7 @@
   "description": "Rogue Hero 4 — an intense neon-arcane 3D roguelike (Three.js + CC0 assets)",
   "scripts": {
     "dev": "vite",
+    "start": "npm run build && vite preview --port 8000 --host 127.0.0.1 --strictPort",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --port 8000",

@@ -9,16 +9,24 @@ Built entirely from **CC0 assets** — Kenney GLB models + Ogg sound effects (pu
 retinted into an emissive neon look, with a synthesized ambient score. See
 [`public/assets/CREDITS.md`](public/assets/CREDITS.md).
 
-## Play
+## Play (standalone)
+Build once and serve the optimized production bundle — no dev server, no watch:
 ```bash
 npm install
 npm run assets   # fetch the CC0 assets (one time)
+npm start        # builds, then serves the game at http://127.0.0.1:8000
+```
+Open **http://127.0.0.1:8000** and play.
+
+## Develop
+Hot-reloading dev server while working on the game:
+```bash
 npm run dev      # open the printed localhost URL
 ```
 **WASD** move · **mouse** aim · **1–4** / **left-click** cast · **Space** dash.
 Three vessels (Pyre / Frost / Shadow); Frost and Shadow unlock as you play.
 
-## Develop
+## Test & verify
 ```bash
 npm run typecheck   # tsc --noEmit
 npm run build       # typecheck + vite build
