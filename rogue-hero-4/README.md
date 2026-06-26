@@ -9,9 +9,13 @@ Built entirely from **CC0 assets** — Kenney GLB models + Ogg sound effects (pu
 retinted into an emissive neon look, with a synthesized ambient score. See
 [`public/assets/CREDITS.md`](public/assets/CREDITS.md).
 
+> The project lives in the **`rogue-hero-4/`** subfolder — run every command from there
+> (`cd rogue-hero-4` first), otherwise npm can't find `package.json`.
+
 ## Play (standalone)
 Build once and serve the optimized production bundle — no dev server, no watch:
 ```bash
+cd rogue-hero-4  # from the repo root
 npm install
 npm run assets   # fetch the CC0 assets (one time)
 npm start        # builds, then serves the game at http://127.0.0.1:8000
@@ -19,7 +23,7 @@ npm start        # builds, then serves the game at http://127.0.0.1:8000
 Open **http://127.0.0.1:8000** and play.
 
 ## Develop
-Hot-reloading dev server while working on the game:
+Hot-reloading dev server while working on the game (from `rogue-hero-4/`):
 ```bash
 npm run dev      # open the printed localhost URL
 ```
