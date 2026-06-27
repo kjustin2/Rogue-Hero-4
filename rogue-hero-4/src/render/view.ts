@@ -50,6 +50,7 @@ export class View {
   private teleGeo = new THREE.CircleGeometry(1, 36);
   private telePool: { mesh: THREE.Mesh; t: number; dur: number; r: number }[] = [];
   private coreGeo = new THREE.IcosahedronGeometry(0.42, 0);
+  private shardGeo = new THREE.OctahedronGeometry(0.2, 0);
 
   cinematic = false; // when true, the camera is driven externally (cutscene / title orbit)
   camYaw = 0;                // orbit angle of the chase cam (player-controlled + auto-framed)
@@ -97,21 +98,25 @@ export class View {
     (this.grid.material as THREE.Material).opacity = 0.18; // subtle — the floor texture carries the panel detail
     this.grid.position.y = 0.02; this.scene.add(this.grid);
 
-    // arena walls: DEEP violet body + a bright neon top rail (accent) — reads as a lit
-    // structure with a glowing edge, not a saturated monochrome slab that swamps the palette.
+    // arena walls: tall textured body + a bright top rail AND a base glow band (children at
+    // LOCAL y offsets) — a layered lit structure, not a flat slab.
     const wtex = wallTex();
+    const WH = 7.5;
     for (let i = 0; i < 4; i++) {
       const horiz = i < 2;
+      const len = ARENA * 2;
       const wx = horiz ? 0 : (i === 2 ? -ARENA : ARENA);
       const wz = horiz ? (i === 0 ? -ARENA : ARENA) : 0;
-      const w = new THREE.Mesh(new THREE.BoxGeometry(horiz ? ARENA * 2 : 0.7, 5.5, horiz ? 0.7 : ARENA * 2),
-        new THREE.MeshStandardMaterial({ color: 0x140a30, emissive: NEON.mag, emissiveIntensity: 0.6, roughness: 0.5, metalness: 0.4, map: wtex, emissiveMap: wtex }));
-      w.position.set(wx, 2.75, wz);
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(horiz ? ARENA * 2 : 0.5, 0.4, horiz ? 0.5 : ARENA * 2), neonMat(NEON.mag, 2.4));
-      rail.position.set(wx, 5.6, wz); rail.name = 'rail';
-      w.add(rail);
+      const w = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len : 0.8, WH, horiz ? 0.8 : len),
+        new THREE.MeshStandardMaterial({ color: 0x120a2c, emissive: NEON.mag, emissiveIntensity: 0.55, roughness: 0.5, metalness: 0.45, map: wtex, emissiveMap: wtex }));
+      w.position.set(wx, WH / 2, wz);
+      const stripGeo = new THREE.BoxGeometry(horiz ? len : 0.62, 0.5, horiz ? 0.62 : len);
+      const rail = new THREE.Mesh(stripGeo, neonMat(NEON.mag, 2.6).clone()); rail.position.y = WH / 2 - 0.05; rail.userData.glow = true;
+      const base = new THREE.Mesh(stripGeo, neonMat(NEON.mag, 2.0).clone()); base.position.y = -WH / 2 + 0.5; base.userData.glow = true;
+      w.add(rail, base);
       this.walls.push(w); this.scene.add(w);
     }
+    this.scene.add(buildBackdrop()); // distant neon skyline + celestial ring
 
     // corner pillars + a center floor emblem — give the arena a sense of place / depth
     for (const [px, pz] of [[-ARENA, -ARENA], [ARENA, -ARENA], [-ARENA, ARENA], [ARENA, ARENA]]) {
@@ -197,8 +202,10 @@ export class View {
     this.floorMat.emissive.setHex(accent); // tint the glowing floor seams per biome
     for (const w of this.walls) {
       (w.material as THREE.MeshStandardMaterial).emissive.setHex(accent); // dark body keeps its colour
-      const rail = w.getObjectByName('rail') as THREE.Mesh | null;
-      if (rail) { const rm = rail.material as THREE.MeshStandardMaterial; rm.color.setHex(accent); rm.emissive.setHex(accent); }
+      for (const c of w.children) {
+        const m = (c as THREE.Mesh).material as THREE.MeshStandardMaterial;
+        if (c.userData.glow && m) { m.color.setHex(accent); m.emissive.setHex(accent); }
+      }
     }
     for (const p of this.pillars) (p.material as THREE.MeshStandardMaterial).emissive.setHex(accent);
   }
@@ -342,10 +349,13 @@ export class View {
         body.name = 'body';
         const wire = new THREE.Mesh(enemyGeo(e.def.kind), this.wireMat); wire.scale.setScalar(1.07); body.add(wire);
         const core = new THREE.Mesh(this.coreGeo, neonMat(e.def.color, 3.4)); core.name = 'core'; body.add(core);
+        // orbiting shards (extra layers/pieces) — shared material, animated each frame
+        const shards = new THREE.Group(); shards.name = 'shards';
+        for (let k = 0; k < (e.def.kind === 'brute' || e.def.kind === 'splitter' ? 3 : 2); k++) shards.add(new THREE.Mesh(this.shardGeo, neonMat(e.def.color, 2.8)));
         // threat-orange ground ring so foes POP against any biome's accent colour (and read as hostile)
         const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: ENEMY_FIRE, transparent: true, opacity: 0.95, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = -UP + 0.04; ring.name = 'ring';
-        g.add(body, ring); g.userData.born = w.t; this.scene.add(g); this.enemyMeshes.set(e.id, g);
+        g.add(body, ring, shards); g.userData.born = w.t; this.scene.add(g); this.enemyMeshes.set(e.id, g);
       }
       const body = g.getObjectByName('body') as THREE.Mesh;
       const core = g.getObjectByName('core') as THREE.Mesh;
@@ -353,16 +363,26 @@ export class View {
       const f = Math.min(1, e.hitFlash / 0.12);                  // 1 right after a hit -> 0
       const age = w.t - (g.userData.born ?? w.t);
       const spawnUp = Math.min(1, age / 0.32); const spawn = spawnUp * (2 - spawnUp); // ease-out scale-in
-      const pop = 1 + f * 0.45 + Math.sin(w.t * 3 + e.id) * 0.04; // hit-pop + idle breathe
+      const charge = e.windup > 0 ? 1 : 0;                        // brute charging a slam
+      const chargePulse = 1 + charge * (0.22 + Math.sin(w.t * 30) * 0.1);
+      const pop = (1 + f * 0.45 + Math.sin(w.t * 3 + e.id) * 0.04) * chargePulse; // hit-pop + breathe + charge
       g.position.set(e.x, UP + Math.sin(w.t * 2.5 + e.id) * 0.12, e.z); // idle bob
       body.scale.setScalar((e.elite ? 1.6 : 1.15) * pop * spawn);
-      body.rotation.y += dt * (e.def.kind === 'darter' ? 6 : 1.5); body.rotation.x += dt * 0.8;
+      body.rotation.y += dt * (e.def.kind === 'darter' ? 6 : 1.5) * (1 + charge * 4); body.rotation.x += dt * 0.8;
       core.rotation.y -= dt * 2.5; core.rotation.z += dt * 1.5;   // core counter-spins
-      core.scale.setScalar((0.9 + Math.sin(w.t * 6 + e.id) * 0.12) * (1 + f)); // core pulse + flare on hit
+      core.scale.setScalar((0.9 + Math.sin(w.t * 6 + e.id) * 0.12) * (1 + f + charge * 0.6)); // pulse + flare on hit/charge
       ring.scale.setScalar(e.elite ? 1.7 : 1.2);
+      // orbiting shards (extra pieces + animation); fling outward when charging
+      const shards = g.getObjectByName('shards') as THREE.Group;
+      const rad = (e.elite ? 1.9 : 1.4) + charge * 0.7;
+      for (let k = 0; k < shards.children.length; k++) {
+        const sh = shards.children[k]; const a = w.t * 3 + (k / shards.children.length) * Math.PI * 2 + e.id;
+        sh.position.set(Math.cos(a) * rad, Math.sin(w.t * 4 + k) * 0.35, Math.sin(a) * rad);
+        sh.rotation.y += dt * 5; sh.rotation.x += dt * 3;
+      }
       const bm = body.material as THREE.MeshStandardMaterial;
-      bm.emissive.setHex(e.def.color).lerp(WHITE, f);            // flash white on hit
-      bm.emissiveIntensity = 0.9 + f * 3; bm.opacity = 0.6 + f * 0.4;
+      bm.emissive.setHex(e.def.color).lerp(WHITE, f + charge * 0.5);  // flash white on hit / charge
+      bm.emissiveIntensity = 0.9 + f * 3 + charge * 2; bm.opacity = 0.6 + f * 0.4;
     }
     for (const [id, g] of this.enemyMeshes) if (!seen.has(id)) {
       const body = g.getObjectByName('body') as THREE.Mesh; const ring = g.getObjectByName('ring') as THREE.Mesh;
@@ -475,7 +495,7 @@ export class View {
     }
     // WoW-style 3/4 over-the-shoulder: higher + further + ~33° down so you see the hero AND
     // the ground/foes around them. Height & distance scale with the zoom; look-ahead stays put.
-    const H = 11 * this.camZoom, BACK = 11.5 * this.camZoom, AHEAD = 5.5, LOOKY = 1.3, EDGE = ARENA - 1.5;
+    const H = 11 * this.camZoom, BACK = 11.5 * this.camZoom, AHEAD = 4.5, LOOKY = 1.3, EDGE = ARENA - 1.5;
     const fx = Math.sin(this.camYaw), fz = -Math.cos(this.camYaw); // forward (horizontal)
     // sit behind the hero along -forward; clamp inside the arena so the camera never slips
     // behind a wall (which fills the screen with a flat wall colour at the back edge).
@@ -511,6 +531,32 @@ function starfield(): THREE.Points {
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   const m = new THREE.PointsMaterial({ color: 0xbcd0ff, size: 1.1, sizeAttenuation: true, transparent: true, opacity: 0.85, fog: false });
   const p = new THREE.Points(g, m); p.name = 'stars'; return p;
+}
+// Distant world backdrop: an instanced neon SKYLINE of spires (2 draw calls) ringing the
+// arena beyond the walls + a celestial ring/moon high in the sky. Gives real depth so the
+// background isn't an empty gradient.
+function buildBackdrop(): THREE.Group {
+  const g = new THREE.Group();
+  const N = 30;
+  const spireMat = new THREE.MeshStandardMaterial({ color: 0x0e0826, emissive: 0x2e2068, emissiveIntensity: 0.5, roughness: 0.7, fog: true });
+  const capMat = new THREE.MeshBasicMaterial({ color: 0x7a5cff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  const bodies = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), spireMat, N);
+  const caps = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.7, 1), capMat, N);
+  const d = new THREE.Object3D();
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2; const r = 60 + (i % 4) * 8;
+    const h = 20 + ((i * 53) % 40); const wdt = 3.5 + (i % 3) * 1.8; // tall enough to loom OVER the arena walls
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    d.position.set(x, h / 2 - 3, z); d.rotation.set(0, a, 0); d.scale.set(wdt, h, wdt); d.updateMatrix(); bodies.setMatrixAt(i, d.matrix);
+    d.position.set(x, h - 3, z); d.scale.set(wdt + 0.5, 0.9, wdt + 0.5); d.updateMatrix(); caps.setMatrixAt(i, d.matrix);
+  }
+  g.add(bodies, caps);
+  // celestial ring/moon — low + large enough to read above the back wall
+  const moon = new THREE.Mesh(new THREE.SphereGeometry(18, 24, 18), new THREE.MeshBasicMaterial({ color: 0x2a2060, fog: false }));
+  moon.position.set(-22, 40, -95); g.add(moon);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(27, 1.4, 10, 56), new THREE.MeshBasicMaterial({ color: 0x9a7cff, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  ring.position.copy(moon.position); ring.rotation.set(1.15, 0.4, 0); g.add(ring);
+  return g;
 }
 // Procedural arena floor: dark indigo panels with bright (white) seams, corner ticks, the odd
 // glowing panel + circuit runs. White seams so the emissiveMap tints them per biome accent.

@@ -77,13 +77,13 @@ export class World {
     this.rng = new RNG(seed);
     this.run = { depth: 1, charId: char.id, seed, kills: 0, relics: [] };
     this.player = {
-      x: 0, z: ARENA - 9, angle: -Math.PI / 2, mvx: 0, mvz: 0,
+      x: 0, z: ARENA - 13, angle: -Math.PI / 2, mvx: 0, mvz: 0,
       hp: char.hp, maxHp: char.hp, speed: char.speed, radius: 0.9,
       tempo: TEMPO_NEUTRAL, tempoStall: 0, char,
       cards: char.loadout.map((id) => ({ id, cd: 0 })),
       relics: new Set(), iframe: 0, dashCritArmed: false,
       combo: 0, comboTimer: 0, alive: true,
-      moveX: 0, moveZ: 0, aimX: 0, aimZ: ARENA - 9 - 5,
+      moveX: 0, moveZ: 0, aimX: 0, aimZ: ARENA - 13 - 5,
     };
     this.mode = 'playing';
     this.bossDefeated = false;
@@ -101,7 +101,7 @@ export class World {
     this.boss = null;
     this.reinforced = false;
     const pl = this.player;
-    pl.x = 0; pl.z = ARENA - 9; pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0;
+    pl.x = 0; pl.z = ARENA - 13; pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0;
     pl.iframe = 0.6; pl.combo = 0;
     if (depth >= BOSS_DEPTH) {
       this.boss = this.spawnEnemy('boss', 0, -ARENA + 10, false);
