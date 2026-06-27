@@ -133,36 +133,37 @@ function playCutscene(name: 'dive' | 'boss' | 'win' | 'death', onDone: () => voi
 function buildCutscene(name: 'dive' | 'boss' | 'win' | 'death'): Shot[] {
   const pl = world.player;
   switch (name) {
-    case 'dive':
+    case 'dive': // dramatic descent into the arena: high overview -> swoop behind the hero
       focusVec.set(pl.x, 0, pl.z);
-      return [{
-        dur: 1.5, fov: 38, fovTo: 52, ease: easeOut,
-        pos: [0, 62, 3], posTo: [0, 30, 22], look: [0, 0, -3], lookTo: [0, 1.5, -3],
-        onStart: () => { hud.cinematicText('DESCENDING', world.biome.name, hexColor(world.biome.accent), 1500); audio.play('dash', 0.5); },
-      }];
-    case 'boss': {
-      const b = world.boss;
-      focusVec.set(b ? b.x : 0, 0, b ? b.z : -(/* fallback */ 18));
       return [
-        { dur: 1.7, fov: 60, fovTo: 54, pos: [0, 2.5, 15], posTo: [3, 8, 18], look: [0, 5, 0], lookTo: [0, 4, 0],
-          onStart: () => { hud.cinematicText('THE CONDUCTOR', 'Warden of the Voidline', hexColor(NEON.cyan), 2300); world.shake += 1; audio.play('crash', 0.7); } },
-        { dur: 1.0, fov: 54, fovTo: 52, pos: [3, 8, 18], posTo: [0, 22, 24], look: [0, 4, 0], lookTo: [0, 2, 0], ease: easeOut },
+        { dur: 1.7, fov: 44, fovTo: 58, ease: easeOut, pos: [0, 50, 2], posTo: [7, 24, 19], look: [0, 0, -4], lookTo: [0, 2, -2],
+          onStart: () => { hud.cinematicText('DESCENDING', world.biome.name, hexColor(world.biome.accent), 1600); bus.emit('fx:cast', { x: pl.x, z: pl.z, color: world.player.char.color, kind: 'arc' }); world.shake += 0.5; audio.play('dash', 0.55); } },
+        { dur: 0.9, fov: 58, fovTo: 52, ease: easeOut, pos: [7, 24, 19], posTo: [0, 12, 14], look: [0, 2, -2], lookTo: [0, 1.6, -1] },
+      ];
+    case 'boss': { // menacing reveal: low angle looking UP, push in, orbit, pull out
+      const b = world.boss;
+      focusVec.set(b ? b.x : 0, 0, b ? b.z : -18);
+      return [
+        { dur: 1.7, fov: 66, fovTo: 56, pos: [0, 2, 16], posTo: [5, 5, 11], look: [0, 7, 0], lookTo: [0, 6, 0],
+          onStart: () => { hud.cinematicText('THE CONDUCTOR', 'Warden of the Voidline', hexColor(NEON.cyan), 2400); world.shake += 1.2; bus.emit('fx:telegraph', { x: focusVec.x, z: focusVec.z, radius: 6, dur: 1.6, color: NEON.cyan }); bus.emit('fx:death', { x: focusVec.x, z: focusVec.z, color: NEON.cyan, big: true }); audio.play('crash', 0.7); } },
+        { dur: 1.3, fov: 56, pos: [5, 5, 11], posTo: [-7, 8, 13], look: [0, 6, 0], lookTo: [0, 5, 0] },
+        { dur: 0.9, fov: 56, fovTo: 52, ease: easeOut, pos: [-7, 8, 13], posTo: [0, 20, 22], look: [0, 5, 0], lookTo: [0, 2, 0] },
       ];
     }
-    case 'win':
+    case 'win': // triumph: detonation + slow orbit + rise
       focusVec.set(world.bossDeathX, 0, world.bossDeathZ);
       return [
-        { dur: 1.9, fov: 50, pos: [7, 5, 10], posTo: [-8, 7, 12], look: [0, 3, 0], lookTo: [0, 3, 0],
-          onStart: () => { hud.cinematicText('VOIDLINE BROKEN', 'The Conductor is silenced', hexColor(NEON.cyan), 2700); world.shake += 1.4; bus.emit('fx:crash', { x: world.bossDeathX, z: world.bossDeathZ, hot: false }); audio.play('kill', 0.9); } },
-        { dur: 1.6, fov: 50, fovTo: 52, pos: [-8, 7, 12], posTo: [0, 30, 26], look: [0, 3, 0], lookTo: [0, 2, 0], ease: easeOut },
+        { dur: 1.9, fov: 50, pos: [8, 4, 9], posTo: [-9, 6, 11], look: [0, 3, 0], lookTo: [0, 3, 0],
+          onStart: () => { hud.cinematicText('VICTORY', 'The Conductor is silenced', hexColor(NEON.green), 2700); world.shake += 1.6; bus.emit('fx:crash', { x: world.bossDeathX, z: world.bossDeathZ, hot: false }); bus.emit('fx:death', { x: world.bossDeathX, z: world.bossDeathZ, color: NEON.cyan, big: true }); bus.emit('fx:death', { x: world.bossDeathX + 2, z: world.bossDeathZ - 2, color: NEON.green, big: true }); audio.play('kill', 0.9); } },
+        { dur: 1.6, fov: 50, fovTo: 54, ease: easeOut, pos: [-9, 6, 11], posTo: [0, 28, 24], look: [0, 3, 0], lookTo: [0, 2, 0] },
       ];
     case 'death':
-    default:
+    default: // dramatic low push onto the fallen hero, then a slow drift up
       focusVec.set(pl.x, 0, pl.z);
       return [
-        { dur: 1.5, fov: 52, fovTo: 40, pos: [0, 30, 22], posTo: [3.5, 4, 7.5], look: [0, 1.4, 0], lookTo: [0, 1.2, 0],
-          onStart: () => { hud.cinematicText('YOU FELL', '', hexColor(NEON.red), 2000); world.shake += 1; } },
-        { dur: 0.9, fov: 40, pos: [3.5, 4, 7.5], posTo: [3.5, 4, 7.5], look: [0, 1.2, 0], lookTo: [0, 1.2, 0] },
+        { dur: 1.6, fov: 54, fovTo: 38, ease: easeOut, pos: [0, 26, 20], posTo: [3, 3, 6], look: [0, 1.4, 0], lookTo: [0, 1, 0],
+          onStart: () => { hud.cinematicText('YOU FELL', 'Depth ' + world.run.depth, hexColor(NEON.red), 2200); world.shake += 1; } },
+        { dur: 1.1, fov: 38, fovTo: 44, ease: easeOut, pos: [3, 3, 6], posTo: [6, 5, 9], look: [0, 1, 0], lookTo: [0, 1.3, 0] },
       ];
   }
 }
