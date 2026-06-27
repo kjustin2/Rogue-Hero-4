@@ -26,6 +26,9 @@ export interface Enemy {
   cd: number; slow: number; stun: number; elite: boolean;
   splitsLeft: number; dead: boolean; hitFlash: number;
   patternCd: number; summonCd: number; phase: number;
+  // dynamic behaviour: lunges (darter) + telegraphed slams (brute)
+  lungeCd: number; lunge: number; ldx: number; ldz: number;
+  windup: number; stx: number; stz: number;
 }
 
 export interface Projectile {
@@ -60,6 +63,7 @@ export class World {
   draftOptions: RelicDef[] = [];
   shake = 0;
   hitstop = 0;
+  suppressClear = false; // tutorial holds the room open until the combat step
   boss: Enemy | null = null;
   private reinforced = false;
   private waveBudget = 0;
@@ -131,6 +135,7 @@ export class World {
       cd: this.rng.range(0.2, def.touch || def.fireRate || 1), slow: 0, stun: 0, elite,
       splitsLeft: def.splits ?? 0, dead: false, hitFlash: 0,
       patternCd: 2.5, summonCd: 6, phase: 0,
+      lungeCd: this.rng.range(1.2, 2.6), lunge: 0, ldx: 0, ldz: 0, windup: 0, stx: 0, stz: 0,
     };
     this.enemies.push(e);
     return e;
@@ -365,6 +370,20 @@ export class World {
       const sl = e.slow > 0 ? 0.45 : 1;
       const dx = pl.x - e.x, dz = pl.z - e.z; const d = Math.hypot(dx, dz) || 1;
       const spd = e.def.speed * sl;
+
+      // committed lunge (a darter dart): fast dash along a STORED direction — readable + dodgeable
+      if (e.lunge > 0) {
+        e.lunge -= dt;
+        e.x = clampArena(e.x + e.ldx * e.def.speed * 2.8 * dt);
+        e.z = clampArena(e.z + e.ldz * e.def.speed * 2.8 * dt);
+        e.cd -= dt;
+        if (d < e.def.radius + pl.radius + 0.3 && e.cd <= 0) { this.damagePlayer(e.def.damage); e.cd = e.def.touch; e.lunge = 0; }
+        continue;
+      }
+      // telegraphed slam wind-up (a brute): rooted, then SLAMs the marked spot
+      if (e.windup > 0) { e.windup -= dt; if (e.windup <= 0) this.enemySlam(e); continue; }
+      e.lungeCd -= dt;
+
       if (e.def.ranged) {
         const pref = e.def.kind === 'boss' ? 12 : 14;
         let mx = 0, mz = 0;
@@ -375,20 +394,44 @@ export class World {
         e.cd -= dt;
         if (e.cd <= 0) {
           const ang = Math.atan2(dz, dx);
-          this.spawnProjectile(e.x, e.z, ang, 19, e.def.damage, e.def.color, false, 0, 2.4);
+          if (e.def.kind === 'boss') this.spawnProjectile(e.x, e.z, ang, 19, e.def.damage, e.def.color, false, 0, 2.4);
+          else for (let s = -1; s <= 1; s++) this.spawnProjectile(e.x, e.z, ang + s * 0.16, 20, e.def.damage, e.def.color, false, 0, 2.4); // 3-round fan
           e.cd = (e.def.fireRate ?? 1.5) * (e.phase >= 1 ? 0.6 : 1);
         }
         if (e.def.kind === 'boss') this.bossUpdate(e, dt, d);
       } else {
+        // brutes telegraph a slam up close; faster minions dart-lunge from mid range
+        if (e.def.kind === 'brute' && e.lungeCd <= 0 && d < 6.5) {
+          e.windup = 0.7; e.stx = pl.x; e.stz = pl.z; e.lungeCd = this.rng.range(3, 4.2);
+          this.bus.emit('fx:telegraph', { x: pl.x, z: pl.z, radius: 4.2, dur: 0.7, color: NEON.red });
+          this.bus.emit('sfx', { name: 'swap', vol: 0.4 });
+          continue;
+        }
+        if (e.def.kind !== 'brute' && e.lungeCd <= 0 && d > 3 && d < 16) {
+          e.lunge = 0.34; e.ldx = dx / d; e.ldz = dz / d; e.lungeCd = this.rng.range(1.8, 3.0);
+          this.bus.emit('fx:telegraph', { x: e.x, z: e.z, radius: 1.4, dur: 0.18, color: e.def.color });
+        }
         e.x = clampArena(e.x + (dx / d) * spd * dt);
         e.z = clampArena(e.z + (dz / d) * spd * dt);
         e.cd -= dt;
-        if (d < e.def.radius + pl.radius + 0.25 && e.cd <= 0) {
-          this.damagePlayer(e.def.damage); e.cd = e.def.touch;
-        }
+        if (d < e.def.radius + pl.radius + 0.25 && e.cd <= 0) { this.damagePlayer(e.def.damage); e.cd = e.def.touch; }
       }
     }
     this.separate();
+  }
+
+  // a telegraphed brute slam: lunge into the marked spot and detonate an AoE
+  private enemySlam(e: Enemy): void {
+    const pl = this.player; const r = 4.2;
+    const bdx = e.stx - e.x, bdz = e.stz - e.z, bd = Math.hypot(bdx, bdz) || 1;
+    e.x = clampArena(e.x + (bdx / bd) * 2.2); e.z = clampArena(e.z + (bdz / bd) * 2.2);
+    const dx = pl.x - e.stx, dz = pl.z - e.stz;
+    if (dx * dx + dz * dz < r * r) this.damagePlayer(Math.round(e.def.damage * 1.6));
+    this.shake += 0.8; this.hitstop = Math.max(this.hitstop, 0.04);
+    this.bus.emit('fx:death', { x: e.stx, z: e.stz, color: NEON.red, big: true });
+    this.bus.emit('fx:shake', { power: 0.8 });
+    this.bus.emit('sfx', { name: 'crash', vol: 0.5 });
+    e.lungeCd = this.rng.range(3, 4.2);
   }
 
   private bossUpdate(e: Enemy, dt: number, distToPlayer: number): void {
@@ -473,6 +516,7 @@ export class World {
 
   private checkRoom(): void {
     if (this.mode !== 'playing' || this.portalOpen) return;
+    if (this.suppressClear) return; // tutorial: don't open the portal until combat begins
     if (this.run.depth >= BOSS_DEPTH) return; // boss room: win is via run:win
     const alive = this.aliveCount();
     // mid-room reinforcement keeps deeper rooms under sustained pressure (once per room)

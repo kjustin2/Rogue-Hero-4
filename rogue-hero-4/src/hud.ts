@@ -27,15 +27,33 @@ export class Hud {
   private cineSubEl!: HTMLElement;
   private skipHint!: HTMLElement;
   private cineTimer = 0;
+  private tutEl!: HTMLElement;
+  private flashEl!: HTMLElement;
 
   constructor(hud: HTMLElement, overlay: HTMLElement) {
     this.hud = hud; this.overlay = overlay;
     this.buildHud();
     this.buildCinematic();
+    this.tutEl = document.createElement('div'); this.tutEl.className = 'tutorial';
+    this.flashEl = document.createElement('div'); this.flashEl.className = 'screenflash';
+    this.overlay.append(this.tutEl, this.flashEl);
     for (let i = 0; i < 28; i++) {
       const d = document.createElement('div'); d.className = 'dmg-float'; d.style.opacity = '0';
       this.overlay.appendChild(d); this.floaters.push(d);
     }
+  }
+
+  tutorial(title: string, sub: string): void {
+    this.tutEl.innerHTML = `<div class="tut-title">${title}</div><div class="tut-sub">${sub}</div>`;
+    this.tutEl.classList.add('on');
+  }
+  clearTutorial(): void { this.tutEl.classList.remove('on'); }
+
+  // brief full-screen impact flash (crashes, death) — strong, photogenic juice
+  flash(color: string, alpha = 0.5): void {
+    const el = this.flashEl;
+    el.style.transition = 'none'; el.style.background = color; el.style.opacity = String(alpha);
+    requestAnimationFrame(() => { el.style.transition = 'opacity .38s ease-out'; el.style.opacity = '0'; });
   }
 
   private buildCinematic(): void {
@@ -69,20 +87,27 @@ export class Hud {
   }
 
   private buildHud(): void {
+    // Bottom HUD is ONE responsive flex row (hp | tempo | cards) so the groups can never
+    // overlap at any window size/aspect — fixed pixel positions caused overlapping HUD.
     this.hud.innerHTML = `
-      <div class="hud-bar hp-wrap">
-        <div class="label">Vitality <span class="hp-text"></span></div>
-        <div class="bar"><i class="hp-fill"></i></div>
-      </div>
-      <div class="hud-bar tempo-wrap">
-        <div class="tempo-zone">NEUTRAL</div>
-        <div class="bar"><i class="tempo-fill"></i></div>
-        <div class="combo" style="margin-top:6px;font-weight:800;letter-spacing:.1em;opacity:0;"></div>
-      </div>
-      <div class="cards"></div>
-      <div class="depth"></div>
       <div class="relics"></div>
-      <div class="hud-bar boss-wrap"><div class="label">The Conductor</div><div class="bar"><i class="hp-fill" style="background:linear-gradient(90deg,#36f9ff,#ff3df0)"></i></div></div>`;
+      <div class="depth panel"></div>
+      <div class="hud-bar boss-wrap panel"><div class="label">The Conductor</div><div class="bar"><i class="hp-fill" style="background:linear-gradient(90deg,#4dfbff,#ff5cf2)"></i></div></div>
+      <div class="hud-bottom">
+        <div class="hud-bar hp-wrap panel">
+          <div class="label">Vitality <span class="hp-text"></span></div>
+          <div class="bar"><i class="hp-fill"></i></div>
+        </div>
+        <div class="hud-bar tempo-wrap panel">
+          <div class="tempo-zone">NEUTRAL</div>
+          <div class="bar">
+            <i class="tempo-fill"></i>
+            <i class="tick" style="left:30%"></i><i class="tick" style="left:70%"></i><i class="tick" style="left:90%"></i>
+          </div>
+          <div class="combo"></div>
+        </div>
+        <div class="cards"></div>
+      </div>`;
     this.hpFill = this.hud.querySelector('.hp-fill')!;
     this.hpText = this.hud.querySelector('.hp-text')!;
     this.tempoFill = this.hud.querySelector('.tempo-fill')!;
@@ -96,7 +121,7 @@ export class Hud {
     this.cards = [];
     for (let i = 0; i < 4; i++) {
       const c = document.createElement('div'); c.className = 'card';
-      c.innerHTML = `<span class="key">${i + 1}</span><div class="nm"></div><div class="meta"></div><div class="cd" style="display:none"></div>`;
+      c.innerHTML = `<span class="key">${i + 1}</span><div class="nm"></div><div class="meta"></div><div class="cd"></div><i class="cdbar"></i>`;
       cardsEl.appendChild(c); this.cards.push(c);
     }
   }
@@ -106,9 +131,10 @@ export class Hud {
       const def = CARDS[ids[i]];
       if (!def) { c.style.display = 'none'; return; }
       c.style.display = 'flex';
-      c.style.borderColor = hex(def.color) + '88';
+      c.style.borderColor = hex(def.color) + 'cc';
       (c.querySelector('.nm') as HTMLElement).textContent = def.name;
       (c.querySelector('.meta') as HTMLElement).textContent = `${def.tempo > 0 ? '+' : ''}${def.tempo} tempo`;
+      (c.querySelector('.cdbar') as HTMLElement).style.background = hex(def.color);
     });
   }
 
@@ -122,14 +148,16 @@ export class Hud {
     this.tempoZone.style.color = hex(zoneColor(z));
     this.comboEl.style.opacity = pl.combo >= 3 ? '1' : '0';
     this.comboEl.textContent = pl.combo >= 3 ? `${pl.combo} COMBO` : '';
-    this.comboEl.style.color = pl.combo >= 8 ? '#ff3df0' : '#ffb340';
+    this.comboEl.style.color = pl.combo >= 8 ? '#ff5cf2' : '#ffc24d';
     this.cards.forEach((c, i) => {
       const cs = pl.cards[i]; if (!cs) return;
       const def = CARDS[cs.id];
       const cd = c.querySelector('.cd') as HTMLElement;
-      if (cs.cd > 0) { c.classList.add('cool'); cd.style.display = 'flex'; cd.textContent = cs.cd.toFixed(1); }
-      else { c.classList.remove('cool'); cd.style.display = 'none'; }
-      void def;
+      const bar = c.querySelector('.cdbar') as HTMLElement;
+      if (cs.cd > 0) {
+        c.classList.add('cool'); cd.textContent = cs.cd.toFixed(1);
+        bar.style.width = `${Math.max(0, 100 - (cs.cd / def.cooldown) * 100)}%`;
+      } else { c.classList.remove('cool'); bar.style.width = '100%'; }
     });
     this.depthEl.innerHTML = `<b style="color:${hex(w.biome.accent)}">${w.biome.name}</b> · DEPTH ${w.run.depth}<br>Kills ${w.run.kills}`;
     this.relicsEl.innerHTML = w.run.relics.map((id) => {
@@ -143,10 +171,10 @@ export class Hud {
     const d = this.floaters[this.fCursor]; this.fCursor = (this.fCursor + 1) % this.floaters.length;
     d.textContent = text; d.style.color = color; d.style.left = `${sx}px`; d.style.top = `${sy}px`;
     d.style.transition = 'none'; d.style.transform = 'translate(-50%,0)'; d.style.opacity = '1';
-    d.style.fontSize = text.startsWith('-') ? '20px' : '16px';
+    d.style.fontSize = text.startsWith('-') ? '22px' : '17px';
     requestAnimationFrame(() => {
       d.style.transition = 'transform .7s ease-out, opacity .7s ease-out';
-      d.style.transform = 'translate(-50%,-44px)'; d.style.opacity = '0';
+      d.style.transform = 'translate(-50%,-48px)'; d.style.opacity = '0';
     });
   }
 
@@ -158,25 +186,49 @@ export class Hud {
   }
   hideOverlay(): void { this.overlay.querySelector('.screen')?.remove(); }
 
-  showTitle(onPlay: () => void): void {
+  showTitle(onPlay: () => void, onHow: () => void): void {
     const s = this.screen(`
       <div class="title-big">ROGUE HERO 4</div>
       <div class="subtitle">Neon · Arcane · Relentless</div>
-      <button class="btn" data-play>Enter the Voidline</button>
-      <div class="hint">WASD move · Mouse aim · 1-4 / Click cast · Space dash · Ride the TEMPO, bait the crash</div>`);
+      <p class="hint" style="max-width:520px">Dance on the TEMPO meter — shove it HOT to hit hard, ride it COLD to tank,
+        slam it to 0 or 100 to detonate the room. Clear six depths and silence The Conductor.</p>
+      <div class="row"><button class="btn primary" data-play>▶ Play</button><button class="btn" data-how>How to Play</button></div>`);
     s.querySelector('[data-play]')!.addEventListener('click', onPlay);
+    s.querySelector('[data-how]')!.addEventListener('click', onHow);
+  }
+
+  showHowTo(onBack: () => void): void {
+    const row = (keys: string[], desc: string) =>
+      `<div class="howto-row"><div class="howto-keys">${keys.map((k) => `<span class="kbd">${k}</span>`).join('')}</div><div class="howto-desc">${desc}</div></div>`;
+    const s = this.screen(`
+      <div class="title-big" style="font-size:46px">HOW TO PLAY</div>
+      <div class="howto-grid">
+        ${row(['W', 'A', 'S', 'D'], 'Move (relative to the camera)')}
+        ${row(['Q', 'E'], 'Rotate camera to keep enemies in view')}
+        ${row(['Mouse'], 'Aim — your hero faces the cursor')}
+        ${row(['1', '2', '3', '4'], 'Cast your four abilities')}
+        ${row(['L-Click'], 'Cast ability 1 · <b>R-Click</b> casts ability 2')}
+        ${row(['Space'], 'Dash — blink through danger (i-frames)')}
+        ${row(['TEMPO'], '<b>HOT</b> = more damage · <b>COLD</b> = tougher · <b>0/100</b> = crash!')}
+      </div>
+      <p class="hint" style="max-width:620px">Goal: clear each room, grab a relic, and descend six depths to beat
+        <b style="color:#4dfbff">The Conductor</b>. Ride the TEMPO swing and bait the crash — that's the skill.</p>
+      <button class="btn primary" data-back>Got it</button>`);
+    s.querySelector('[data-back]')!.addEventListener('click', onBack);
   }
 
   showSelect(unlocked: Set<string>, onPick: (id: string) => void, onBack: () => void): void {
     const cards = CHARACTERS.map((c: CharacterDef) => {
       const open = c.unlock === '' || unlocked.has(c.id);
-      return `<button class="pick" data-id="${c.id}" ${open ? '' : 'disabled'} style="border-color:${hex(c.color)}66">
+      return `<button class="pick" data-id="${c.id}" ${open ? '' : 'disabled'} style="border-color:${hex(c.color)}88">
         <span class="tag" style="color:${hex(c.color)}">${c.title}</span>
-        <h3>${c.name}</h3><p>${open ? c.blurb : '🔒 ' + c.unlock}</p>
+        <h3>${c.name}</h3><p>${open ? c.blurb : '🔒 Unlock: ' + c.unlock}</p>
         <div class="meta">HP ${c.hp} · ${c.loadout.map((l) => CARDS[l].name).join(' · ')}</div>
       </button>`;
     }).join('');
-    const s = this.screen(`<div class="subtitle">Choose your vessel</div><div class="row">${cards}</div><button class="btn" data-back>Back</button>`);
+    const s = this.screen(`<div class="title-big" style="font-size:46px">CHOOSE YOUR VESSEL</div>
+      <div class="subtitle">Pick a hero to descend with</div>
+      <div class="row">${cards}</div><button class="btn" data-back>◂ Back</button>`);
     s.querySelectorAll<HTMLButtonElement>('.pick').forEach((b) => {
       if (!b.disabled) b.addEventListener('click', () => onPick(b.dataset.id!));
     });
@@ -184,18 +236,20 @@ export class Hud {
   }
 
   showDraft(options: RelicDef[], onPick: (id: string) => void): void {
-    const picks = options.map((r) => `<button class="pick" data-id="${r.id}">
-      <span class="tag">Relic</span><h3>${r.icon} ${r.name}</h3><p>${r.desc}</p></button>`).join('');
-    const s = this.screen(`<div class="title-big" style="font-size:38px">ROOM CLEARED</div><div class="subtitle">Take a relic</div><div class="row">${picks}</div>`);
+    const picks = options.map((r) => `<button class="pick" data-id="${r.id}" style="min-height:170px">
+      <span class="tag" style="color:#5dff9b">Relic</span><h3>${r.icon} ${r.name}</h3><p>${r.desc}</p></button>`).join('');
+    const s = this.screen(`<div class="title-big" style="font-size:48px;color:#5dff9b;text-shadow:0 0 28px #5dff9b99,0 4px 12px #000">ROOM CLEARED</div>
+      <div class="subtitle">Choose a relic — pick 1 of 3</div><div class="row">${picks}</div>`);
     s.querySelectorAll<HTMLButtonElement>('.pick').forEach((b) => b.addEventListener('click', () => onPick(b.dataset.id!)));
   }
 
   showEnd(win: boolean, w: World, onRetry: () => void, onMenu: () => void): void {
+    const color = win ? '#5dff9b' : '#ff4d68';
     const s = this.screen(`
-      <div class="title-big" style="${win ? '' : 'background:linear-gradient(90deg,#ff3b5c,#ffb340);-webkit-background-clip:text;background-clip:text;'}">${win ? 'VOIDLINE BROKEN' : 'YOU FELL'}</div>
-      <div class="subtitle">${win ? 'The Conductor is silenced' : 'Depth ' + w.run.depth}</div>
-      <p style="opacity:.85">Kills ${w.run.kills} · Relics ${w.run.relics.length} · ${CHARACTERS.find((c) => c.id === w.run.charId)?.name}</p>
-      <div class="row"><button class="btn" data-retry>Run Again</button><button class="btn" data-menu>Main Menu</button></div>`);
+      <div class="title-big" style="color:${color};text-shadow:0 0 30px ${color}aa,0 4px 12px #000">${win ? 'VICTORY' : 'YOU FELL'}</div>
+      <div class="subtitle">${win ? 'The Conductor is silenced' : 'Defeated at depth ' + w.run.depth}</div>
+      <p style="color:#d7e6ff;font-size:16px">Kills <b>${w.run.kills}</b> · Relics <b>${w.run.relics.length}</b> · ${CHARACTERS.find((c) => c.id === w.run.charId)?.name}</p>
+      <div class="row"><button class="btn primary" data-retry>↻ Run Again</button><button class="btn" data-menu>Main Menu</button></div>`);
     s.querySelector('[data-retry]')!.addEventListener('click', onRetry);
     s.querySelector('[data-menu]')!.addEventListener('click', onMenu);
   }

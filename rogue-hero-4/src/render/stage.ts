@@ -19,14 +19,16 @@ export class Stage {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: !lowfx, powerPreference: 'high-performance', preserveDrawingBuffer: lowfx });
     this.renderer.setPixelRatio(lowfx ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.2;
+    this.renderer.toneMappingExposure = 1.05;
     this.resize();
 
     if (!lowfx) {
       const c = new EffectComposer(this.renderer);
       c.addPass(new RenderPass(view.scene, view.camera));
       const { w, h } = this.size();
-      c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.95, 0.65, 0.74));
+      // strength, radius, threshold — threshold high so only true emissive glows bloom
+      // (lit floor/walls stay crisp), keeping the neon punch without washing the scene.
+      c.addPass(new UnrealBloomPass(new THREE.Vector2(w, h), 0.72, 0.5, 0.82));
       c.addPass(new OutputPass());
       this.composer = c;
     }

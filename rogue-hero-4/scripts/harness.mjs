@@ -10,17 +10,19 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 5273;
 const URL = `http://127.0.0.1:${PORT}/`;
 
-const EDGE_PATHS = [
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+// Chrome first: some Edge builds in this env fail puppeteer-core's launch with no
+// detail, so we try every present browser in order and use the first that launches.
+const BROWSER_PATHS = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
 ];
-async function findBrowser() {
+async function presentBrowsers() {
   const { existsSync } = await import('node:fs');
-  const p = EDGE_PATHS.find((x) => existsSync(x));
-  if (!p) throw new Error('No Edge/Chrome found — set a path in scripts/harness.mjs');
-  return p;
+  const found = BROWSER_PATHS.filter((x) => existsSync(x));
+  if (!found.length) throw new Error('No Chrome/Edge found — set a path in scripts/harness.mjs');
+  return found;
 }
 
 async function waitForServer(timeoutMs = 30000) {
@@ -43,12 +45,13 @@ export async function withGame(run, { query = '?lowfx&nocut', shotsDir = 'shots'
   const errors = [];
   try {
     await waitForServer();
-    browser = await puppeteer.launch({
-      executablePath: await findBrowser(),
-      headless: 'new',
-      args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,720',
-        '--autoplay-policy=no-user-gesture-required', '--no-sandbox'],
-    });
+    const launchArgs = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--window-size=1280,720',
+      '--autoplay-policy=no-user-gesture-required', '--no-sandbox'];
+    for (const exe of await presentBrowsers()) {
+      try { browser = await puppeteer.launch({ executablePath: exe, headless: 'new', args: launchArgs }); break; }
+      catch (e) { errors.push(`browser launch failed (${exe}): ${String(e.message || e).split('\n')[0]}`); }
+    }
+    if (!browser) throw new Error('No browser could be launched — see errors above');
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 720 });
     // "Failed to load resource" console lines have no URL; track real 4xx via responses instead.

@@ -13,7 +13,7 @@ await withGame(async ({ page, errors }) => {
   const rows = [];
   for (const name of list) {
     await page.evaluate((n) => window.__game.scenario(n), name);
-    if (['combat', 'swarm', 'boss', 'hot', 'crit'].includes(name)) {
+    if (['combat', 'swarm', 'boss'].includes(name)) {
       await page.evaluate(() => { window.__game.aimAt(0, -12); for (let k = 0; k < 4; k++) window.__game.cast(k); });
     }
     await wait(650);

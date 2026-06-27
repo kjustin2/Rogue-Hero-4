@@ -31,7 +31,7 @@ export const CHARACTERS: CharacterDef[] = [
 
 const E = (kind: EnemyKind, def: Omit<EnemyDef, 'kind'>): EnemyDef => ({ kind, ...def });
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
-  darter:   E('darter',   { name: 'Darter',   hp: 20,  speed: 9.7, radius: 0.7, damage: 9,  touch: 0.7, color: NEON.mag }),
+  darter:   E('darter',   { name: 'Darter',   hp: 20,  speed: 9.7, radius: 0.7, damage: 9,  touch: 0.7, color: NEON.red }),
   brute:    E('brute',    { name: 'Brute',    hp: 78,  speed: 4.7, radius: 1.2, damage: 22, touch: 1.0, color: NEON.red }),
   caster:   E('caster',   { name: 'Caster',   hp: 30,  speed: 5.6, radius: 0.8, damage: 11, touch: 0,   color: NEON.violet, ranged: true, fireRate: 1.25 }),
   splitter: E('splitter', { name: 'Splitter', hp: 46,  speed: 6.2, radius: 1.0, damage: 12, touch: 0.9, color: NEON.green, splits: 2 }),

@@ -7,6 +7,7 @@ export interface EventMap {
   'fx:cast': { x: number; z: number; color: number; kind: string };
   'fx:death': { x: number; z: number; color: number; big?: boolean };
   'fx:crash': { x: number; z: number; hot: boolean };
+  'fx:telegraph': { x: number; z: number; radius: number; dur: number; color: number }; // attack warning marker
   'fx:pickup': { x: number; z: number; color: number };
   'fx:shake': { power: number };
   'sfx': { name: string; vol?: number };

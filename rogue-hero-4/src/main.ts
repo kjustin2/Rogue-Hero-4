@@ -6,7 +6,8 @@ import { Stage } from './render/stage';
 import { Audio } from './audio';
 import { Hud } from './hud';
 import { Cinematic, easeOut, type Shot } from './render/cinematic';
-import { CHARACTERS, BOSS_DEPTH, NEON } from './content';
+import { Tutorial } from './tutorial';
+import { CHARACTERS, BOSS_DEPTH, NEON, ARENA } from './content';
 import type { GameMode } from './types';
 
 const params = new URLSearchParams(location.search);
@@ -34,8 +35,8 @@ const focusVec = new THREE.Vector3();
 const keys = new Set<string>();
 
 // ---- meta (unlocks) -------------------------------------------------------
-interface Meta { unlocked: string[]; runs: number; bestDepth: number; kills: number; }
-const DEFAULT_META: Meta = { unlocked: [], runs: 0, bestDepth: 0, kills: 0 };
+interface Meta { unlocked: string[]; runs: number; bestDepth: number; kills: number; seenTutorial: boolean; }
+const DEFAULT_META: Meta = { unlocked: [], runs: 0, bestDepth: 0, kills: 0, seenTutorial: false };
 function loadMeta(): Meta {
   try { return { ...DEFAULT_META, ...JSON.parse(localStorage.getItem('rh4.meta') || '{}') }; }
   catch { return { ...DEFAULT_META }; }
@@ -54,8 +55,10 @@ function recordRunEnd(): void {
 }
 
 // ---- flow / state machine -------------------------------------------------
-function toTitle(): void { mode = 'title'; hud.showTitle(toSelect); }
+function toTitle(): void { mode = 'title'; hud.showTitle(toSelect, () => toHowTo(toTitle)); }
 function toSelect(): void { mode = 'select'; hud.showSelect(unlockedSet(), beginRun, toTitle); }
+// how-to overlay over the title tableau (mode stays 'title' → orbit cam, no HUD)
+function toHowTo(onDone: () => void): void { mode = 'title'; hud.showHowTo(onDone); }
 
 // core run setup (no cutscene) — also the path scenarios use for instant state jumps
 function startRun(charId: string): void {
@@ -69,10 +72,31 @@ function startRun(charId: string): void {
   audio.resume(); audio.startMusic();
 }
 
-// real entry from the menu / retry — startRun + the descent cutscene
+// real entry from the menu / retry — startRun + the descent cutscene.
+// First-ever run: launch the interactive tutorial instead of diving straight in.
 function beginRun(charId: string): void {
+  if (!meta.seenTutorial) { meta.seenTutorial = true; saveMeta(meta); startTutorialRun(charId); return; }
+  realBeginRun(charId);
+}
+function realBeginRun(charId: string): void {
   startRun(charId);
   playCutscene('dive', () => { mode = 'playing'; });
+}
+
+// ---- interactive tutorial -------------------------------------------------
+let tut = { moved: false, rotated: false, attacked: false, dashed: false };
+const tutorial = new Tutorial({
+  prompt: (t, s) => hud.tutorial(t, s),
+  clear: () => hud.clearTutorial(),
+  spawnDummies: () => { for (let i = 0; i < 3; i++) world.spawnEnemy('darter', (i - 1) * 5, 6, false); },
+  startCombat: () => { world.suppressClear = false; world.enemies = []; for (let i = 0; i < 5; i++) world.spawnEnemy('darter', (i - 2) * 5, -2 - (i % 2) * 5, false); },
+});
+function startTutorialRun(charId: string): void {
+  startRun(charId);
+  world.enemies = []; world.portalOpen = false; world.suppressClear = true;
+  view.camYaw = 0;
+  tut = { moved: false, rotated: false, attacked: false, dashed: false };
+  tutorial.start();
 }
 
 function chooseRelic(id: string): void {
@@ -144,19 +168,25 @@ function buildCutscene(name: 'dive' | 'boss' | 'win' | 'death'): Shot[] {
 }
 
 // ---- input ----------------------------------------------------------------
-// Movement lives in one channel (world.setMove): keyboard writes it on key events,
-// and tests/AI can write it directly without a per-frame poll clobbering them.
-function syncMove(): void {
+// Movement is CAMERA-RELATIVE (W = into the screen) so it stays intuitive as the player
+// rotates the chase cam. It writes one channel (world.setMove); when no move key is held we
+// stop writing so tests/AI can drive setMove directly without a per-frame poll clobbering them.
+let kbMoveActive = false;
+const MOVE_KEYS = ['KeyW', 'KeyA', 'KeyS', 'KeyD'];
+function applyMove(): void {
+  if (!world.player) return;
   let x = 0, z = 0;
-  if (keys.has('KeyW') || keys.has('ArrowUp')) z -= 1;
-  if (keys.has('KeyS') || keys.has('ArrowDown')) z += 1;
-  if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
-  if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
-  if (world.player) world.setMove(x, z);
+  if (keys.has('KeyW')) z -= 1;
+  if (keys.has('KeyS')) z += 1;
+  if (keys.has('KeyA')) x -= 1;
+  if (keys.has('KeyD')) x += 1;
+  if (x === 0 && z === 0) { world.setMove(0, 0); kbMoveActive = false; return; }
+  const yaw = view.camYaw; // rotate the input by the camera yaw
+  world.setMove(x * Math.cos(yaw) - z * Math.sin(yaw), x * Math.sin(yaw) + z * Math.cos(yaw));
 }
 window.addEventListener('keydown', (e) => {
   keys.add(e.code);
-  syncMove();
+  if (MOVE_KEYS.includes(e.code)) { kbMoveActive = true; applyMove(); }
   if (mode === 'cutscene') { cine.skip(); return; }
   if (mode !== 'playing') return;
   if (e.code === 'Digit1') world.castCard(0);
@@ -165,9 +195,10 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Digit4') world.castCard(3);
   if (e.code === 'Space') { e.preventDefault(); castByKind('dash'); }
 });
-window.addEventListener('keyup', (e) => { keys.delete(e.code); syncMove(); });
-window.addEventListener('blur', () => { keys.clear(); if (world.player) world.setMove(0, 0); });
+window.addEventListener('keyup', (e) => { keys.delete(e.code); if (MOVE_KEYS.includes(e.code)) applyMove(); });
+window.addEventListener('blur', () => { keys.clear(); kbMoveActive = false; if (world.player) world.setMove(0, 0); });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); view.zoomBy(e.deltaY > 0 ? 0.12 : -0.12); }, { passive: false });
 canvas.addEventListener('mousedown', (e) => {
   audio.resume();
   if (mode === 'cutscene') { cine.skip(); return; }
@@ -200,6 +231,9 @@ bus.on('damage', (p) => {
   hud.floater(sx, sy, text, color);
 });
 bus.on('sfx', (p) => audio.play(p.name, p.vol ?? 1));
+bus.on('fx:cast', (p) => { if (tutorial.active) { if (p.kind === 'dash') tut.dashed = true; else tut.attacked = true; } });
+bus.on('tempo:crash', (p) => hud.flash(p.hot ? '#ff7a3a' : '#bfeaff', 0.5)); // impact flash on a crash
+bus.on('player:dead', () => hud.flash('#ff3b5c', 0.55));
 
 // ---- loop -----------------------------------------------------------------
 let last = performance.now();
@@ -207,9 +241,10 @@ let frameMsEMA = 16;
 let titleT = 0;
 function titleOrbit(dt: number): void {
   titleT += dt;
-  const a = titleT * 0.16;
-  view.camera.position.set(Math.sin(a) * 30, 23 + Math.sin(titleT * 0.4) * 3, Math.cos(a) * 30);
-  view.camera.lookAt(0, 2.5, 0);
+  const a = titleT * 0.12;
+  // low, slow cinematic orbit — matches the in-game low chase look, not a top-down view
+  view.camera.position.set(Math.sin(a) * 22, 9 + Math.sin(titleT * 0.4) * 1.5, Math.cos(a) * 22);
+  view.camera.lookAt(0, 2.2, 0);
 }
 
 function frame(now: number): void {
@@ -217,7 +252,13 @@ function frame(now: number): void {
   const dt = Math.min(0.05, rawMs / 1000); last = now;
   frameMsEMA = frameMsEMA * 0.9 + rawMs * 0.1;
   hudEl.style.display = mode === 'playing' ? 'block' : 'none';
+  if (tutorial.active && mode !== 'playing') tutorial.stop(); // never let the prompt linger over a menu
   if (mode === 'playing') {
+    // player-steered camera rotation (Q/E or ← →); keep movement aligned as it turns
+    const rot = 1.9 * dt;
+    if (keys.has('KeyQ') || keys.has('ArrowLeft')) view.rotateCam(rot);
+    if (keys.has('KeyE') || keys.has('ArrowRight')) view.rotateCam(-rot);
+    if (kbMoveActive) applyMove();
     // hitstop: freeze-frame the sim briefly on crashes / boss death for punch (render stays smooth)
     const simDt = world.hitstop > 0 ? dt * 0.12 : dt;
     if (world.hitstop > 0) world.hitstop = Math.max(0, world.hitstop - dt);
@@ -226,11 +267,19 @@ function frame(now: number): void {
     else if (world.bossDefeated) { if (cutscenesOn) playCutscene('win', () => toEnd(true)); else toEnd(true); }
     else if (world.playerInPortal()) toDraft();
     hud.update(world);
+    if (tutorial.active) {
+      const pl = world.player;
+      if (Math.hypot(pl.x, pl.z - (ARENA - 9)) > 2.5) tut.moved = true;
+      if (Math.abs(view.camYaw) > 0.2) tut.rotated = true;
+      tutorial.update({ ...tut, cleared: world.portalOpen });
+    }
   } else if (mode === 'cutscene') {
     cine.update(dt);
   }
-  // camera ownership: cutscene / title orbit drive it; otherwise View follows the player
-  if (mode === 'title') { titleOrbit(dt); view.cinematic = true; }
+  // camera ownership: menu/overlay screens use the slow arena orbit (a clean framed
+  // backdrop, no cropped hero); cutscene drives its own; otherwise View follows the player.
+  const menuMode = mode === 'title' || mode === 'select' || mode === 'draft' || mode === 'gameover' || mode === 'win';
+  if (menuMode) { titleOrbit(dt); view.cinematic = true; }
   else view.cinematic = mode === 'cutscene';
   stage.render(dt);
   requestAnimationFrame(frame);
@@ -255,15 +304,23 @@ function scenario(spec: string): string {
   switch (spec) {
     case 'title': toTitle(); break;
     case 'select': toSelect(); break;
-    case 'combat': startRun('pyre'); break;
-    case 'swarm': startRun('pyre'); for (let i = 0; i < 10; i++) world.spawnEnemy('darter', (i - 5) * 3, -10, false); hud.update(world); break;
-    case 'boss': startRun('pyre'); world.enterRoom(BOSS_DEPTH); mode = 'playing'; view.setBiome(world.biome.fog, world.biome.accent); hud.update(world); break;
-    case 'crit': startRun('pyre'); pl().tempo = 95; hud.update(world); break;
-    case 'cold': startRun('pyre'); pl().tempo = 6; hud.update(world); break;
-    case 'hot': startRun('pyre'); pl().tempo = 84; hud.update(world); break;
+    case 'howto': toHowTo(toTitle); break;
+    case 'tutorial': startTutorialRun('pyre'); break;
+    case 'combat': startRun('pyre');
+      world.spawnEnemy('darter', -5, 12, false); world.spawnEnemy('brute', 3, 8, false);
+      world.spawnEnemy('caster', 9, 14, false); world.spawnEnemy('darter', -10, 15, false); hud.update(world); break;
+    case 'swarm': startRun('pyre'); world.enemies = [];
+      // a wall of foes AHEAD of the hero (not on top of them) so the swarm reads and the hero stays visible
+      for (let i = 0; i < 14; i++) world.spawnEnemy('darter', ((i % 7) - 3) * 6, -2 - Math.floor(i / 7) * 8, i % 6 === 0); hud.update(world); break;
+    case 'boss': startRun('pyre'); world.enterRoom(BOSS_DEPTH); world.player.z = 0; mode = 'playing'; view.setBiome(world.biome.fog, world.biome.accent); hud.update(world); break;
+    case 'crit': startRun('pyre'); pl().tempo = 97; pl().tempoStall = 3; hud.update(world); break;
+    case 'cold': startRun('pyre'); pl().tempo = 6; pl().tempoStall = 3; hud.update(world); break;
+    case 'hot': startRun('pyre'); pl().tempo = 82; pl().tempoStall = 3; hud.update(world); break;
     case 'draft': startRun('pyre'); world.enemies = []; world.portalOpen = true; toDraft(); break;
-    case 'gameover': startRun('pyre'); pl().iframe = 0; pl().hp = 1; world.damagePlayer(999); if (!pl().alive) toEnd(false); break;
-    case 'win': startRun('pyre'); world.bossDefeated = true; toEnd(true); break;
+    case 'gameover': startRun('pyre'); world.run.kills = 23; world.run.depth = 3; world.run.relics.push('razor', 'metronome');
+      pl().iframe = 0; pl().hp = 1; world.damagePlayer(999); if (!pl().alive) toEnd(false); break;
+    case 'win': startRun('pyre'); world.run.kills = 71; world.run.relics.push('razor', 'iron', 'overcharge');
+      world.bossDefeated = true; toEnd(true); break;
     case 'cutdive': startRun('pyre'); playCutscene('dive', () => { mode = 'playing'; }); break;
     case 'cutboss': startRun('pyre'); world.enterRoom(BOSS_DEPTH); view.setBiome(world.biome.fog, world.biome.accent); playCutscene('boss', () => { mode = 'playing'; }); break;
     case 'cutwin': startRun('pyre'); world.bossDeathX = 0; world.bossDeathZ = -18; playCutscene('win', () => toEnd(true)); break;
@@ -279,11 +336,14 @@ function expose(): void {
     version: '0.2.0', lowfx: LOWFX,
     get mode() { return mode; },
     start: startRun, toTitle, toSelect, chooseRelic,
-    scenario, scenarios: () => ['title', 'select', 'combat', 'swarm', 'boss', 'crit', 'cold', 'hot', 'draft', 'gameover', 'win', 'cutdive', 'cutboss', 'cutwin', 'cutdeath'],
+    showHowTo: () => toHowTo(toTitle),
+    scenario, scenarios: () => ['title', 'select', 'howto', 'tutorial', 'combat', 'swarm', 'boss', 'crit', 'cold', 'hot', 'draft', 'gameover', 'win', 'cutdive', 'cutboss', 'cutwin', 'cutdeath'],
     cine, get cutscenes() { return cutscenesOn; }, setCutscenes: (b: boolean) => { cutscenesOn = b; },
     setMove: (x: number, z: number) => world.setMove(x, z),
     aimAt: (x: number, z: number) => world.setAim(x, z),
     cast: (i: number) => world.castCard(i),
+    rotateCam: (d: number) => view.rotateCam(d),
+    get camYaw() { return view.camYaw; },
     frameStats: () => ({
       ...stage.frameStats(),
       ...view.counts(),
@@ -291,6 +351,7 @@ function expose(): void {
       frameMs: Math.round(frameMsEMA * 10) / 10,
       projectiles: world.projectiles.length,
       activeProj: world.projectiles.reduce((n, p) => n + (p.active ? 1 : 0), 0),
+      shake: Math.round(world.shake * 100) / 100,
       pickups: world.pickups.length,
       hp: world.player?.hp ?? 0, maxHp: world.player?.maxHp ?? 0, tempo: world.player?.tempo ?? 0,
       kills: world.run.kills,

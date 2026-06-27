@@ -43,11 +43,11 @@ export async function loadModels(): Promise<Models> {
     loader.loadAsync(url('models/orb.glb')),
   ]);
 
-  const player = retint(playerGltf.scene, 0x9ff0ff, 0.5);
-  player.scale.setScalar(1.7);
+  const player = retint(playerGltf.scene, 0x9ff0ff, 0.8);
+  player.scale.setScalar(3.0);
 
-  const boss = retint(flyerGltf.scene, 0x36f9ff, 1.1);
-  boss.scale.setScalar(3.4);
+  const boss = retint(flyerGltf.scene, 0x36f9ff, 1.8);
+  boss.scale.setScalar(9.0);
 
   const orbProto = retint(orbGltf.scene, 0x53ff8a, 1.4);
   orbProto.scale.setScalar(1.1);
@@ -57,7 +57,7 @@ export async function loadModels(): Promise<Models> {
 
 // Retint the (single) player instance to the chosen character colour.
 export function tintPlayer(player: THREE.Object3D, color: number): void {
-  retint(player, color, 0.55);
+  retint(player, color, 0.8);
 }
 
 // Procedural neon polyhedron for minion enemies — shared geo/material per kind.
@@ -66,10 +66,10 @@ export function enemyGeo(kind: string): THREE.BufferGeometry {
   let g = geoCache.get(kind);
   if (!g) {
     switch (kind) {
-      case 'darter': g = new THREE.TetrahedronGeometry(0.9); break;
-      case 'brute': g = new THREE.IcosahedronGeometry(1.3, 0); break;
-      case 'caster': g = new THREE.OctahedronGeometry(1.0, 0); break;
-      case 'splitter': g = new THREE.DodecahedronGeometry(1.05, 0); break;
+      case 'darter': g = new THREE.ConeGeometry(0.7, 1.7, 4); break;        // sharp dart/spike
+      case 'brute': g = new THREE.IcosahedronGeometry(1.4, 0); break;        // big bruiser
+      case 'caster': g = new THREE.OctahedronGeometry(1.05, 0); break;       // floating crystal
+      case 'splitter': g = new THREE.DodecahedronGeometry(1.1, 0); break;    // splits apart
       default: g = new THREE.IcosahedronGeometry(1, 0);
     }
     geoCache.set(kind, g);

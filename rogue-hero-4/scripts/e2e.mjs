@@ -21,7 +21,7 @@ await withGame(async ({ page, errors }) => {
 
   // room clears -> portal opens
   await ev(page, () => { window.__game.world.enemies.length = 0; });
-  await wait(200);
+  await page.waitForFunction('window.__game.world.portalOpen', { timeout: 5000, polling: 50 }).catch(() => {});
   check('room clears to portal', await ev(page, () => window.__game.world.portalOpen));
 
   // step into portal -> draft

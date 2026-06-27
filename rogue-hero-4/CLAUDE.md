@@ -63,6 +63,29 @@ logic/perf harness passes it, while `tour`/`doctor` leave them on to screenshot 
 - `npm run tour` — full-FX screenshot of every scenario → `shots/tour-*.png`.
 - `npm run doctor` — shoot every scenario into ONE captioned `shots/contact.png` +
   `shots/HEALTH.md` (luma / draw calls / black-frame + error flags). Read the sheet.
+- `npm run vision` — **the harness with EYES**: captures every scenario at full FX and has
+  the authed `claude` CLI score each screenshot against `docs/GAME_BIBLE.md` (anchored
+  rubric: readability/camera/clarity/environment/appeal/feel) → `shots/VISION.md`. Luma/error
+  checks can't tell "unreadable top-down void" from "good" — this can. See the `/vision-loop`
+  skill for the capture→judge→fix loop. (Prompt goes via stdin, not argv; criteria are
+  anchored to cut judge noise; combat shots fire a mid-action burst so "feel" reads.)
+- `npm run flow` — **layout/flow invariants** (HARD GATE): drives the REAL UI via clicks
+  through the whole flow at **5 resolutions** and asserts via `getBoundingClientRect()` that
+  **no two interactive/text elements overlap** and nothing is offscreen → `shots/FLOW.md`,
+  `flow-*.png`. This is what catches "overlapping menus" the VLM judge misses (it only sees
+  single static states at one size). Exits non-zero on any overlap so it can never ship.
+- `npm run motion` — **the harness that judges MOTION/FEEL**: captures an 8-frame burst of
+  combat/crash/swarm into filmstrips (`shots/motion-*.png`) and scores feel / readability-in-
+  motion / juice / animation, backed by deterministic byte-diff "motion energy" + peak
+  particles/shake (a near-zero energy burst = frozen/no-juice). A still can't see juice; this can.
+- `npm run qa` — **ONE confident gate**: typecheck + flow + perf (hard) then vision + motion +
+  doctor (advisory) → `shots/QA.md` with a single **✅ SHIPPABLE / ❌ BLOCKED** verdict.
+  `--fast` skips the VLM steps. The vision/motion judges are intentionally HARSH on `detail`
+  + `animation` (primitive shapes / flat surfaces / no animation score low). Surface
+  `shots/contact.png` (look) + `shots/motion-*.png` (feel) + `QA.md` to the user via SendUserFile.
+- `npm start` opens the game in a **standalone Electron window** (`electron/main.cjs` serves
+  `dist/` on fixed loopback `127.0.0.1:8123` so localStorage saves persist). `npm run serve`
+  = the web build at :8000.
 - Headless quirks: `?lowfx` skips the bloom composer (it stalls under SwiftShader; that run
   also flips on `preserveDrawingBuffer` so the canvas can be sampled). The dt-capped clock
   runs slow headless — poll on intervals with generous real-time waits, never on rAF.
