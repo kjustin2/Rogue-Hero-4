@@ -274,6 +274,7 @@ export class World {
     pl.hp -= amt; pl.iframe = 0.45;
     if (pl.char.hurtTempo) this.applyTempo(pl.char.hurtTempo);
     this.shake += 0.6;
+    this.bus.emit('player:hurt', {});
     this.bus.emit('damage', { x: pl.x, z: pl.z, amount: amt, crit: false });
     this.bus.emit('fx:shake', { power: 0.6 });
     this.bus.emit('sfx', { name: 'enemy-attack', vol: 0.45 });

@@ -16,6 +16,7 @@ export interface EventMap {
   'room:clear': {};
   'portal:open': {};
   'player:dead': {};
+  'player:hurt': {};
   'run:win': {};
   'tempo:crash': { hot: boolean };
 }

@@ -9,6 +9,7 @@ interface Particle { spr: THREE.Sprite; vx: number; vy: number; vz: number; life
 const UP = 0.9; // entity hover height
 const ENEMY_FIRE = 0xff5a2a; // ALL enemy fire is hot-orange so friend/foe reads instantly
 const WHITE = new THREE.Color(0xffffff);
+const HURT = new THREE.Color(0xff3b5c);
 
 export class View {
   scene = new THREE.Scene();
@@ -24,8 +25,11 @@ export class View {
   private aimDart: THREE.Mesh;        // forward chevron showing facing/aim
   private playerLight: THREE.PointLight;
   private heroAura!: THREE.Mesh;      // soft energy shell around the hero
+  private heroCore!: THREE.Mesh;      // bright energy core in the hero's chest
   private heroShards: THREE.Mesh[] = []; // orbiting energy shards (life/animation)
   private castPunch = 0;              // cast recoil/anticipation timer
+  private dashT = 0;                  // dash stretch/afterimage timer
+  private hurtT = 0;                  // hurt flinch timer (set on player:hurt)
   private bossMesh: THREE.Object3D | null = null;
   private bossRing: THREE.Mesh;
   private enemyMeshes = new Map<number, THREE.Group>();
@@ -157,6 +161,8 @@ export class View {
     this.heroAura = new THREE.Mesh(new THREE.SphereGeometry(1.6, 18, 14),
       new THREE.MeshBasicMaterial({ color: this.charColor, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.scene.add(this.heroAura);
+    this.heroCore = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 0), neonMat(this.charColor, 3.6).clone());
+    this.scene.add(this.heroCore);
     for (let i = 0; i < 4; i++) {
       const s = new THREE.Mesh(new THREE.OctahedronGeometry(0.32, 0), neonMat(this.charColor, 3.0).clone());
       this.scene.add(s); this.heroShards.push(s);
@@ -204,6 +210,7 @@ export class View {
     (this.aimDart.material as THREE.MeshBasicMaterial).color.setHex(color);
     this.playerLight.color.setHex(color);
     if (this.heroAura) (this.heroAura.material as THREE.MeshBasicMaterial).color.setHex(color);
+    if (this.heroCore) { const m = this.heroCore.material as THREE.MeshStandardMaterial; m.color.setHex(color); m.emissive.setHex(color); }
     for (const s of this.heroShards) { const m = s.material as THREE.MeshStandardMaterial; m.color.setHex(color); m.emissive.setHex(color); }
   }
 
@@ -213,7 +220,7 @@ export class View {
       this.burst(p.x, p.z, 0xffffff, p.power > 1.5 ? 6 : 2, 4, 0.85, 0.2); // white spark = crunchy hit
       if (p.power > 1.5) this.shakeT = Math.max(this.shakeT, 0.35);        // crit kick
     });
-    this.bus.on('fx:cast', (p) => { this.burst(p.x, p.z, p.color, 10, 8, 0.9, 0.45); this.castPunch = 1; });
+    this.bus.on('fx:cast', (p) => { this.burst(p.x, p.z, p.color, 10, 8, 0.9, 0.45); this.castPunch = 1; if (p.kind === 'dash') this.dashT = 1; });
     this.bus.on('fx:death', (p) => { this.burst(p.x, p.z, p.color, p.big ? 44 : 18, p.big ? 15 : 9, 1.5, 0.7); if (p.big) this.shakeT = Math.max(this.shakeT, 1); });
     this.bus.on('fx:crash', (p) => { const c = p.hot ? 0xff5a2a : NEON.ice; this.burst(p.x, p.z, c, 64, 19, 2.3, 0.9); this.shakeT = 1; });
     this.bus.on('fx:telegraph', (p) => {
@@ -225,6 +232,7 @@ export class View {
     this.bus.on('fx:pickup', (p) => this.burst(p.x, p.z, p.color, 12, 6, 0.9, 0.5));
     this.bus.on('fx:shake', (p) => { this.shakeT = Math.max(this.shakeT, p.power); });
     this.bus.on('player:dead', () => { const p = this.world.player; this.burst(p.x, p.z, NEON.red, 56, 17, 1.9, 0.95); this.shakeT = 1; });
+    this.bus.on('player:hurt', () => { this.hurtT = 1; this.shakeT = Math.max(this.shakeT, 0.5); });
   }
 
   private burst(x: number, z: number, color: number, count: number, spread: number, size: number, life: number): void {
@@ -245,31 +253,60 @@ export class View {
     if (!this.ready) return;
     const w = this.world; const pl = w.player;
 
-    // player + ring + aim chevron + light
-    const py = UP + Math.sin(w.t * 4) * 0.08;
+    // ---- hero: idle / walk / cast / dash / hurt animation -------------------
+    this.castPunch = Math.max(0, this.castPunch - dt * 4);
+    this.dashT = Math.max(0, this.dashT - dt * 3);
+    this.hurtT = Math.max(0, this.hurtT - dt * 4);
+    const moveLen = Math.min(1, Math.hypot(pl.mvx, pl.mvz));
+    const breathe = 1 + Math.sin(w.t * 3) * 0.03;
+    // step-bob while walking, gentle breathe at rest
+    const py = UP + 0.04 + (moveLen > 0.05 ? Math.abs(Math.sin(w.t * 12)) * 0.16 * moveLen : Math.sin(w.t * 3) * 0.04);
     this.playerMesh.position.set(pl.x, py, pl.z);
     this.playerMesh.rotation.y = -pl.angle + Math.PI / 2;
+    this.playerMesh.rotation.x = moveLen * 0.16 - this.castPunch * 0.12; // lean into movement / recoil on cast
     this.playerMesh.visible = pl.alive;
+    // squash/stretch: cast pop, dash STRETCH along facing, hurt flinch
+    this.playerMesh.scale.set(
+      breathe * (1 - this.dashT * 0.25) * (1 - this.hurtT * 0.12),
+      breathe * (1 + this.castPunch * 0.18) * (1 - this.hurtT * 0.16),
+      breathe * (1 + this.dashT * 0.6) * (1 + this.castPunch * 0.12));
+    if (this.models) this.models.player.visible = pl.iframe <= 0 || Math.sin(w.t * 40) > -0.3;
+
     this.playerRing.visible = this.aimDart.visible = pl.alive;
     this.playerRing.position.set(pl.x, 0.04, pl.z);
-    const pulse = 1 + Math.sin(w.t * 5) * 0.06;
-    this.playerRing.scale.setScalar(pulse);
-    this.aimDart.position.set(pl.x + Math.cos(pl.angle) * 1.7, 0.3, pl.z + Math.sin(pl.angle) * 1.7);
+    this.playerRing.scale.setScalar((1 + Math.sin(w.t * 5) * 0.06) * (1 + this.castPunch * 0.3));
+    // aim chevron doubles as a muzzle — punches out + brightens on cast
+    const reach = 1.7 + this.castPunch * 0.6;
+    this.aimDart.position.set(pl.x + Math.cos(pl.angle) * reach, 0.3, pl.z + Math.sin(pl.angle) * reach);
     this.aimDart.rotation.set(Math.PI / 2, 0, -pl.angle - Math.PI / 2);
+    (this.aimDart.material as THREE.MeshBasicMaterial).opacity = 0.7 + this.castPunch * 0.3;
     this.playerLight.position.set(pl.x, 3.2, pl.z);
-    if (this.models) this.models.player.visible = pl.iframe <= 0 || Math.sin(w.t * 40) > -0.3;
-    // breathing + cast recoil-pop + energy aura + orbiting shards
-    this.castPunch = Math.max(0, this.castPunch - dt * 4);
-    this.playerMesh.scale.setScalar((1 + Math.sin(w.t * 3) * 0.03) * (1 + this.castPunch * 0.16));
+    this.playerLight.intensity = 1.0 + this.castPunch * 1.6 + this.dashT;
+
+    // energy core (chest): pulse, flare on cast, redden on hurt
+    if (this.heroCore) {
+      this.heroCore.visible = pl.alive;
+      this.heroCore.position.set(pl.x, py + 0.9, pl.z);
+      this.heroCore.rotation.y += dt * 3; this.heroCore.rotation.x += dt * 2;
+      this.heroCore.scale.setScalar((0.9 + Math.sin(w.t * 7) * 0.12) * (1 + this.castPunch * 0.6));
+      const cm = this.heroCore.material as THREE.MeshStandardMaterial;
+      cm.emissive.setHex(this.charColor).lerp(HURT, this.hurtT);
+      cm.emissiveIntensity = 3.6 + this.castPunch * 3;
+    }
     if (this.heroAura) {
       this.heroAura.visible = pl.alive;
       this.heroAura.position.set(pl.x, py + 0.3, pl.z);
-      this.heroAura.scale.setScalar(1 + Math.sin(w.t * 4) * 0.06 + this.castPunch * 0.35);
+      this.heroAura.scale.setScalar(1 + Math.sin(w.t * 4) * 0.06 + this.castPunch * 0.35 + this.dashT * 0.3);
+      const am = this.heroAura.material as THREE.MeshBasicMaterial;
+      am.color.setHex(this.charColor).lerp(HURT, this.hurtT * 0.8);
+      am.opacity = 0.2 + this.castPunch * 0.2 + this.hurtT * 0.3;
     }
+    if (this.dashT > 0.35) this.burst(pl.x, py, this.charColor, 2, 1.2, 1.1, 0.28); // dash afterimage trail
     for (let i = 0; i < this.heroShards.length; i++) {
       const s = this.heroShards[i]; s.visible = pl.alive;
       const a = w.t * 1.6 + i * (Math.PI * 2 / this.heroShards.length);
-      s.position.set(pl.x + Math.cos(a) * 1.5, py + 0.7 + Math.sin(w.t * 3 + i) * 0.2, pl.z + Math.sin(a) * 1.5);
+      const rad = 1.5 + this.dashT * 0.9; // shards fling out on dash
+      s.position.set(pl.x + Math.cos(a) * rad, py + 0.7 + Math.sin(w.t * 3 + i) * 0.2, pl.z + Math.sin(a) * rad);
       s.rotation.y += dt * 3; s.rotation.x += dt * 2;
     }
 
