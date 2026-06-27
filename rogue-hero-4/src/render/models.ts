@@ -37,14 +37,12 @@ export async function loadModels(): Promise<Models> {
   const texLoader = new THREE.TextureLoader();
   const tex = (p: string) => texLoader.load(url(p));
 
-  const [playerGltf, flyerGltf, orbGltf] = await Promise.all([
-    loader.loadAsync(url('models/player.glb')),
+  const [flyerGltf, orbGltf] = await Promise.all([
     loader.loadAsync(url('models/enemy-flyer.glb')),
     loader.loadAsync(url('models/orb.glb')),
   ]);
 
-  const player = retint(playerGltf.scene, 0x9ff0ff, 0.8);
-  player.scale.setScalar(3.0);
+  const player = buildHero(0x9ff0ff); // procedural articulated hero (replaces the plain GLB blob)
 
   const boss = retint(flyerGltf.scene, 0x36f9ff, 1.8);
   boss.scale.setScalar(9.0);
@@ -55,9 +53,34 @@ export async function loadModels(): Promise<Models> {
   return { player, boss, orbProto, tex: { dot: tex('sprites/particle.png'), burst: tex('sprites/burst.png'), hit: tex('sprites/hit.png'), shadow: tex('sprites/shadow.png') } };
 }
 
-// Retint the (single) player instance to the chosen character colour.
+// A designed "arcane sentinel": floating robe base + torso + shoulders, a glowing head core,
+// halo, chest gem and a front focus orb. Named glowing parts animate (head bob, halo spin,
+// orb recoil on cast). Far better silhouette + animation than a single retinted GLB blob.
+function buildHero(color: number): THREE.Group {
+  const g = new THREE.Group();
+  const darkMat = () => new THREE.MeshStandardMaterial({ color: 0x171030, emissive: color, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.65 });
+  const glowMat = () => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.4, roughness: 0.3, metalness: 0.2 });
+  const add = (mesh: THREE.Mesh, glow: boolean, name?: string) => { mesh.userData.glow = glow; if (name) mesh.name = name; g.add(mesh); return mesh; };
+  add(new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.0, 8), darkMat()), false).position.y = 0.5;           // robe base
+  add(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.5, 0.75, 8), darkMat()), false).position.y = 1.05; // torso
+  add(new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), glowMat()), true, 'gem').position.set(0, 1.1, 0.32); // chest gem
+  for (const sx of [-0.46, 0.46]) add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 0), darkMat()), false).position.set(sx, 1.3, 0); // shoulders
+  add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 0), glowMat()), true, 'head').position.y = 1.62;     // head core
+  const halo = add(new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.045, 8, 22), glowMat()), true, 'halo'); halo.position.y = 1.96; halo.rotation.x = Math.PI / 2;
+  add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), glowMat()), true, 'orb').position.set(0, 1.0, 0.72); // front focus orb
+  g.scale.setScalar(1.7);
+  return g;
+}
+
+// Recolour the procedural hero to the chosen character colour (glow parts get the full colour,
+// dark parts keep their dark body with a colour-tinted emissive).
 export function tintPlayer(player: THREE.Object3D, color: number): void {
-  retint(player, color, 0.8);
+  player.traverse((o) => {
+    const m = o as THREE.Mesh; if (!m.isMesh) return;
+    const mat = m.material as THREE.MeshStandardMaterial;
+    mat.emissive.setHex(color);
+    if (m.userData.glow) mat.color.setHex(color);
+  });
 }
 
 // Procedural neon polyhedron for minion enemies — shared geo/material per kind.

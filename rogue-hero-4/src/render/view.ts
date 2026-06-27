@@ -271,6 +271,13 @@ export class View {
       breathe * (1 + this.castPunch * 0.18) * (1 - this.hurtT * 0.16),
       breathe * (1 + this.dashT * 0.6) * (1 + this.castPunch * 0.12));
     if (this.models) this.models.player.visible = pl.iframe <= 0 || Math.sin(w.t * 40) > -0.3;
+    // articulated hero parts: halo spin, head bob, focus-orb fires forward on cast
+    const hero = this.models?.player;
+    if (hero) {
+      const halo = hero.getObjectByName('halo'); if (halo) halo.rotation.z += dt * 1.2;
+      const head = hero.getObjectByName('head'); if (head) head.position.y = 1.62 + Math.sin(w.t * 4) * 0.06;
+      const orb = hero.getObjectByName('orb'); if (orb) { orb.rotation.y += dt * 4; orb.position.set(0, 1.0 + Math.sin(w.t * 5) * 0.08, 0.72 + this.castPunch * 0.5); }
+    }
 
     this.playerRing.visible = this.aimDart.visible = pl.alive;
     this.playerRing.position.set(pl.x, 0.04, pl.z);
