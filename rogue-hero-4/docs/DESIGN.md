@@ -1,7 +1,9 @@
 # Rogue Hero 4 — Living Design Doc
 
-> Short by design. The *visual* bible is `GAME_BIBLE.md`; the *design knowledge + rubric* is the
-> global `/game-design` skill. This doc is the current **direction** — update it as it evolves.
+> Short by design. The *visual* bible is `GAME_BIBLE.md`; the **design knowledge** lives in the
+> global skills: `/game-design` (theory + rubric), `/game-canon` (lessons from the best games
+> ever), `/game-architecture` (engineering patterns), `/game-ux` (menus/onboarding/accessibility),
+> `/vision-loop` (AI vision+logic QA). This doc is the current **direction** — update as it evolves.
 
 ## Core idea (one breath)
 A fast neon-arcane **roguelite** whose one big idea is the **TEMPO meter**: every ability shoves
