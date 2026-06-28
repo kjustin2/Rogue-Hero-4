@@ -306,6 +306,12 @@ async function boot(): Promise<void> {
 }
 
 // ---- test / debug hook ----------------------------------------------------
+// a few foes near the hero so the chase cam frames the hero in the lower third (used by the
+// tempo-zone scenarios; mirrors how the combat scenario curates its spawn for a representative shot)
+function tempoTableau(): void {
+  world.enemies = [];
+  world.spawnEnemy('darter', -4, 11, false); world.spawnEnemy('brute', 4, 7, false); world.spawnEnemy('caster', 8, 13, false);
+}
 function scenario(spec: string): string {
   const pl = () => world.player;
   switch (spec) {
@@ -320,9 +326,11 @@ function scenario(spec: string): string {
       // a wall of foes AHEAD of the hero (not on top of them) so the swarm reads and the hero stays visible
       for (let i = 0; i < 14; i++) world.spawnEnemy('darter', ((i % 7) - 3) * 6, -2 - Math.floor(i / 7) * 8, i % 6 === 0); hud.update(world); break;
     case 'boss': startRun('pyre'); world.enterRoom(BOSS_DEPTH); world.player.z = world.boss ? world.boss.z + 8 : -6; mode = 'playing'; view.setBiome(world.biome.fog, world.biome.accent); hud.update(world); break;
-    case 'crit': startRun('pyre'); pl().tempo = 97; pl().tempoStall = 3; hud.update(world); break;
-    case 'cold': startRun('pyre'); pl().tempo = 6; pl().tempoStall = 3; hud.update(world); break;
-    case 'hot': startRun('pyre'); pl().tempo = 82; pl().tempoStall = 3; hud.update(world); break;
+    // tempo-zone scenarios: spawn a few foes NEAR the hero (like combat) so the chase cam frames
+    // the hero in the lower third instead of stretching to far foes and cropping the hero at the edge.
+    case 'crit': startRun('pyre'); tempoTableau(); pl().tempo = 97; pl().tempoStall = 99; hud.update(world); break;
+    case 'cold': startRun('pyre'); tempoTableau(); pl().tempo = 6; pl().tempoStall = 99; hud.update(world); break;
+    case 'hot': startRun('pyre'); tempoTableau(); pl().tempo = 82; pl().tempoStall = 99; hud.update(world); break;
     case 'draft': startRun('pyre'); world.enemies = []; world.portalOpen = true; toDraft(); break;
     case 'gameover': startRun('pyre'); world.run.kills = 23; world.run.depth = 3; world.run.relics.push('razor', 'metronome');
       pl().iframe = 0; pl().hp = 1; world.damagePlayer(999); if (!pl().alive) toEnd(false); break;

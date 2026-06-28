@@ -19,6 +19,31 @@ export function neonMat(color: number, intensity = 0.75): THREE.MeshStandardMate
   return m;
 }
 
+// Shared "tech-armour" decal: white circuit/panel traces on black. As an emissiveMap the BLACK
+// reads as zero emissive (so the chrome/IBL reflection shows) and only the traces glow the part's
+// emissive colour — premium "lit metal with glowing circuitry". As a bumpMap the same lines give
+// etched-panel relief that catches the lighting = real surface detail (the VLM's "detail" frontier).
+// Created once (perf: one shared texture, never per-entity).
+let _armorTex: THREE.CanvasTexture | null = null;
+function armorTex(): THREE.CanvasTexture {
+  if (_armorTex) return _armorTex;
+  const s = 256, c = document.createElement('canvas'); c.width = c.height = s;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#000'; g.fillRect(0, 0, s, s);
+  const line = (a: number, wdt: number) => { g.strokeStyle = `rgba(255,255,255,${a})`; g.lineWidth = wdt; };
+  line(0.85, 5); g.strokeRect(12, 12, s - 24, s - 24);                 // outer panel frame
+  line(0.55, 3); g.strokeRect(34, 34, s - 68, s - 68);                 // inner frame
+  line(0.7, 2);                                                        // horizontal circuit runs
+  for (let i = 1; i < 6; i++) { const y = 34 + i * ((s - 68) / 6); g.beginPath(); g.moveTo(40, y); g.lineTo(s - 40, y); g.stroke(); }
+  line(0.5, 2);                                                        // a couple of vertical taps
+  for (const x of [s * 0.32, s * 0.68]) { g.beginPath(); g.moveTo(x, 40); g.lineTo(x, s - 40); g.stroke(); }
+  g.fillStyle = 'rgba(255,255,255,0.95)';                              // glowing nodes on the grid
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 5; j++) { if ((i + j) % 2) g.fillRect(50 + i * 48, 44 + j * 34, 6, 6); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
+  _armorTex = t; return t;
+}
+
 function retint(root: THREE.Object3D, color: number, intensity: number): THREE.Object3D {
   const mat = neonMat(color, intensity);
   root.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = mat; });
@@ -60,9 +85,9 @@ function buildHero(color: number): THREE.Group {
   // envMapIntensity picks up the magenta/cyan environment). It is NOT emissive, so bloom doesn't
   // dissolve it into a glow blob — only the named accent parts bloom. This is the fix for the
   // "featureless glowing capsule" read: contrast between a lit chassis and a few bright accents.
-  const bodyMat = () => new THREE.MeshStandardMaterial({ color: 0xc2ccec, emissive: color, emissiveIntensity: 0.14, roughness: 0.28, metalness: 1.0, envMapIntensity: 2.0 });
-  const trimMat = () => new THREE.MeshStandardMaterial({ color: 0x2a2350, emissive: color, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.9, envMapIntensity: 1.4 });
-  const glowMat = () => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.5, roughness: 0.25, metalness: 0.2 });
+  const bodyMat = () => new THREE.MeshStandardMaterial({ color: 0xc2ccec, emissive: color, emissiveIntensity: 0.9, emissiveMap: armorTex(), bumpMap: armorTex(), bumpScale: 0.014, roughness: 0.28, metalness: 1.0, envMapIntensity: 2.0 });
+  const trimMat = () => new THREE.MeshStandardMaterial({ color: 0x2a2350, emissive: color, emissiveIntensity: 1.1, emissiveMap: armorTex(), bumpMap: armorTex(), bumpScale: 0.014, roughness: 0.3, metalness: 0.9, envMapIntensity: 1.4 });
+  const glowMat = () => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.1, roughness: 0.25, metalness: 0.2 });
   const add = (mesh: THREE.Mesh, glow: boolean, name?: string) => { mesh.userData.glow = glow; if (name) mesh.name = name; g.add(mesh); return mesh; };
   add(new THREE.Mesh(new THREE.ConeGeometry(0.64, 1.15, 8), bodyMat()), false).position.y = 0.55;            // armoured robe base
   add(new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.08, 6, 16), trimMat()), false).position.y = 0.95;        // waist ring (layer)
@@ -90,7 +115,7 @@ function buildBoss(color: number): THREE.Group {
   // armour is BRIGHT steel-teal (reads under the IBL) and carries the silhouette; the glow accents
   // are kept MODEST so the whole stack of batons+eye+crown doesn't cumulatively bloom to a white
   // smear (the first pass blew the boss out to pure white — readability lost).
-  const armor = () => new THREE.MeshStandardMaterial({ color: 0x3d6378, emissive: color, emissiveIntensity: 0.4, roughness: 0.3, metalness: 1.0, envMapIntensity: 1.9 });
+  const armor = () => new THREE.MeshStandardMaterial({ color: 0x3d6378, emissive: color, emissiveIntensity: 0.7, emissiveMap: armorTex(), bumpMap: armorTex(), bumpScale: 0.02, roughness: 0.3, metalness: 1.0, envMapIntensity: 1.9 });
   const glow = (i = 1.6) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: i, roughness: 0.25, metalness: 0.3 });
   const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.5, 0), armor()); core.scale.y = 1.2; g.add(core);
   const eye = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 0), glow(1.9)); eye.position.set(0, 0.2, 1.25); eye.name = 'bossEye'; g.add(eye);
@@ -130,7 +155,9 @@ export function buildEnemy(kind: string, color: number): THREE.Group {
   // so each creature reads as a solid coloured silhouette catching the neon IBL — with a brighter
   // glowing core for the menace. Opaque (transparency washed them out / merged with the floor).
   const shellHex = new THREE.Color(color).multiplyScalar(0.55).getHex();
-  const dark = () => new THREE.MeshStandardMaterial({ color: shellHex, emissive: color, emissiveIntensity: 0.5, roughness: 0.38, metalness: 0.9, envMapIntensity: 1.5 });
+  // bumpMap (relief) only — NOT emissiveMap — so the hit-flash (emissive→white) still whitens the
+  // whole shell, while the etched panel lines add crafted surface detail.
+  const dark = () => new THREE.MeshStandardMaterial({ color: shellHex, emissive: color, emissiveIntensity: 0.5, bumpMap: armorTex(), bumpScale: 0.018, roughness: 0.38, metalness: 0.9, envMapIntensity: 1.5 });
   const glow = (i = 2.8) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: i, roughness: 0.3 });
   const shell = (geo: THREE.BufferGeometry) => { const m = new THREE.Mesh(geo, dark()); m.name = 'body'; g.add(m); return m; };
   const core = (geo: THREE.BufferGeometry, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, glow(3.2)); m.name = 'core'; m.position.set(x, y, z); g.add(m); return m; };

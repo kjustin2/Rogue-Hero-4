@@ -342,7 +342,9 @@ export class View {
       this.heroCore.scale.setScalar((0.9 + Math.sin(w.t * 7) * 0.12) * (1 + this.castPunch * 0.6 + combo * 0.25));
       const cm = this.heroCore.material as THREE.MeshStandardMaterial;
       cm.emissive.setHex(this.charColor).lerp(ZONECOL, energy * 0.8).lerp(HURT, Math.max(this.hurtT, lowHp * 0.6));
-      cm.emissiveIntensity = 3.2 + energy * 2 + combo * 1.5 + this.castPunch * 3;
+      // capped tempo-driven glow: at CRITICAL (energy~1) the old curve blew the chest core out and
+      // washed the hero silhouette — keep it punchy but never let it swallow the chrome body read.
+      cm.emissiveIntensity = 2.5 + energy * 1.0 + combo * 1.0 + this.castPunch * 2.4;
     }
     if (this.heroAura) {
       this.heroAura.visible = pl.alive;
