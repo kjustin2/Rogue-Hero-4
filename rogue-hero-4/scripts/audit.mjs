@@ -24,8 +24,8 @@ const report = await withGame(async ({ page, errors }) => {
       const g = window.__game, w = g.world; A.frames++;
       if (g.mode !== 'playing' || !w.player || !w.player.alive) return;
       const pl = w.player;
-      if (!Number.isFinite(pl.x) || !Number.isFinite(pl.z) || !Number.isFinite(pl.tempo)) log(`NaN player d${w.run.depth}`);
-      if (pl.tempo < -1.5 || pl.tempo > 101.5) log(`tempo OOB ${pl.tempo.toFixed(1)}`);
+      if (!Number.isFinite(pl.x) || !Number.isFinite(pl.z)) log(`NaN player d${w.run.depth}`);
+      if (pl.weave.length > 3 || pl.empower < 0 || pl.ward < -0.1) log(`weave OOB len=${pl.weave.length} emp=${pl.empower} ward=${pl.ward.toFixed(1)}`);
       if (Math.abs(pl.x) > 31 || Math.abs(pl.z) > 31) log(`player escaped ${pl.x.toFixed(0)},${pl.z.toFixed(0)}`);
       A.maxDepth = Math.max(A.maxDepth, w.run.depth);
       A.hpLow = Math.min(A.hpLow, pl.hp);

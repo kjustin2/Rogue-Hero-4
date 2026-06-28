@@ -27,15 +27,15 @@ const SPEC = {
   combat:   { crit: COMBAT, want: 'Combat: behind-the-shoulder third person, hero large in lower third, readable HUD + 4 ability cards, lit arena.' },
   swarm:    { crit: COMBAT, want: 'Combat vs many foes: still readable and framed; you can tell hero from the swarm.' },
   boss:     { crit: COMBAT, want: 'Boss fight: boss reads as a big threat, boss HP bar visible, telegraphed bullets, good framing.' },
-  crit:     { crit: COMBAT, want: 'CRITICAL tempo zone: the TEMPO meter clearly shows the CRITICAL zone; combat readable.' },
-  hot:      { crit: COMBAT, want: 'HOT tempo zone: the TEMPO meter clearly shows the HOT zone; combat readable.' },
+  resonance: { crit: COMBAT, want: 'Empowered weave state: the SPELL WEAVE slots + an EMPOWERED indicator read clearly in the HUD; combat readable.' },
+  prismatic: { crit: COMBAT, want: 'Prismatic Rite finisher: a big multi-element burst fires from the hero; the weave HUD + state read; combat readable.' },
   draft:    { crit: MENU,   want: 'Relic draft: pick 1 of 3, each with a readable name + effect.' },
   gameover: { crit: MENU,   want: 'Defeat screen: clear outcome, run stats, Run-again + Menu buttons.' },
   win:      { crit: MENU,   want: 'Victory screen: clear win, stats, Run-again + Menu buttons.' },
 };
 
 const argv = process.argv.slice(2).filter((a) => SPEC[a]);
-const NAMES = argv.length ? argv : ['title', 'select', 'howto', 'tutorial', 'combat', 'swarm', 'boss', 'crit', 'draft', 'gameover', 'win'];
+const NAMES = argv.length ? argv : ['title', 'select', 'howto', 'tutorial', 'combat', 'swarm', 'boss', 'resonance', 'prismatic', 'draft', 'gameover', 'win'];
 
 // Anchored criterion definitions — concrete checks are FAR more stable run-to-run than
 // open "rate 0-10" vibes (per VideoGameQA-Bench). Each anchor says what 8-10 / 4-6 / 0-3 mean.

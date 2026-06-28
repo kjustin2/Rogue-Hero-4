@@ -7,12 +7,15 @@
   --ink: #05030d;
   --panel: rgba(10, 7, 26, 0.72);
   --panel-strong: rgba(8, 5, 20, 0.92);
-  --display: "Orbitron", "Segoe UI", system-ui, sans-serif; /* sci-fi display (titles) */
-  --ui: "Rajdhani", "Segoe UI", system-ui, sans-serif;      /* techy UI (body) */
+  --display: "Cinzel Decorative", "Cinzel", "Trajan Pro", Georgia, serif; /* arcane engraved display */
+  --display2: "Cinzel", "Trajan Pro", Georgia, serif;       /* engraved subheads / buttons */
+  --ui: "Rajdhani", "Segoe UI", system-ui, sans-serif;      /* legible UI / HUD numerals */
+  --arcane-gold: #e7c46a;                                   /* occult engraved gold */
+  --arcane-violet: #b48bff;
   font-family: var(--ui);
 }
 body { font-family: var(--ui); }
-.title-big, .cine-title, .tut-title, .tempo-zone, .pick h3, .btn { font-family: var(--display); }
+.title-big, .cine-title, .tut-title, .weave-label, .pick h3, .btn { font-family: var(--display); }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: var(--ink); }
 #app { position: fixed; inset: 0; }
@@ -37,20 +40,27 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--ink)
   border-radius: 12px; backdrop-filter: blur(3px); padding: 9px 13px;
 }
 .hp-wrap { width: clamp(150px, 22vw, 300px); flex: 0 1 auto; }
-.tempo-wrap { flex: 1 1 auto; max-width: 540px; min-width: 130px; text-align: center; }
+.weave-wrap { flex: 1 1 auto; max-width: 540px; min-width: 150px; text-align: center; }
 .bar {
   height: 20px; border: 1px solid rgba(255, 255, 255, 0.45); border-radius: 10px;
   background: rgba(0, 0, 0, 0.55); overflow: hidden; position: relative;
 }
 .bar > i { display: block; height: 100%; width: 0%; transition: width 0.1s linear; }
 .hp-fill { background: linear-gradient(90deg, #ff4d68, #ff9b5c); box-shadow: 0 0 14px #ff4d68; }
-.tempo-fill { background: linear-gradient(90deg, #4dfbff 0%, #5dff9b 35%, #ffc24d 70%, #ff4d68 100%); }
 .label { font-size: 13px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
   opacity: 0.95; margin-bottom: 5px; text-shadow: 0 1px 4px #000; }
-.tempo-zone { font-weight: 900; font-size: 22px; letter-spacing: 0.18em; margin-bottom: 4px;
-  text-shadow: 0 0 18px currentColor, 0 2px 5px #000; }
-/* zone ticks inside the tempo bar: COLD 30, HOT 70, CRIT 90 */
-.bar .tick { position: absolute; top: 2px; bottom: 2px; width: 2px; background: rgba(255, 255, 255, 0.55); z-index: 2; }
+/* SPELL WEAVE display: 3 rune slots + the forecast/empowered state */
+.weave-label { font-weight: 800; font-size: 13px; letter-spacing: 0.22em; opacity: 0.9;
+  text-shadow: 0 1px 4px #000; margin-bottom: 4px; }
+.weave-slots { display: flex; gap: 8px; justify-content: center; margin-bottom: 4px; }
+.weave-slot {
+  width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 900; border: 2px solid #2a3550; border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45); transition: all 0.12s ease;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+}
+.weave-slot.lit { background: rgba(20, 16, 40, 0.7); box-shadow: 0 0 14px currentColor, inset 0 0 10px currentColor; text-shadow: 0 0 10px currentColor; }
+.weave-state { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-shadow: 0 1px 4px #000; min-height: 15px; }
 
 .cards { display: flex; gap: clamp(5px, 0.8vw, 11px); flex: 0 0 auto; }
 .card {
@@ -204,3 +214,45 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: var(--ink)
 .cine-skip { position: fixed; bottom: 15%; right: 26px; font-size: 12px; letter-spacing: 0.2em;
   text-transform: uppercase; opacity: 0; z-index: 41; transition: opacity 0.3s; }
 .cine-skip.on { opacity: 0.6; }
+
+/* ===================== Arcane / occult premium menus ===================== */
+/* Engraved Cinzel display + occult gold/violet, ornate ritual-circle panels. */
+.title-big {
+  font-family: var(--display); letter-spacing: 0.08em;
+  background: linear-gradient(177deg, #fff7e2 0%, var(--arcane-gold) 46%, var(--arcane-violet) 100%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  color: var(--arcane-gold); /* fallback for non-clip */
+  text-shadow: none;
+  filter: drop-shadow(0 0 24px rgba(180, 139, 255, 0.45)) drop-shadow(0 3px 6px rgba(0, 0, 0, 0.75));
+}
+.subtitle { font-family: var(--display2); color: var(--arcane-gold); opacity: 0.82;
+  letter-spacing: 0.38em; font-weight: 600; }
+.pick h3, .cine-title { font-family: var(--display2); }
+.cine-title { color: var(--arcane-gold); }
+.btn {
+  font-family: var(--display2); letter-spacing: 0.16em; font-weight: 700; color: #f4ecd6;
+  border-color: rgba(231, 196, 106, 0.5);
+  background: linear-gradient(160deg, rgba(42, 31, 20, 0.93), rgba(14, 10, 24, 0.95));
+}
+.btn:hover { border-color: var(--arcane-gold); box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.18), 0 0 28px rgba(231, 196, 106, 0.5); }
+.btn.primary { color: #1c1305; border-color: var(--arcane-gold);
+  background: linear-gradient(160deg, #f6df96, var(--arcane-gold)); }
+.btn.primary:hover { box-shadow: 0 0 42px rgba(231, 196, 106, 0.8); }
+.pick { border-color: rgba(231, 196, 106, 0.32); }
+.pick:hover:not(:disabled) { box-shadow: 0 0 30px rgba(180, 139, 255, 0.4); }
+.pick .tag { color: var(--arcane-gold) !important; }
+/* the menu panel as an engraved occult frame with a faint ritual circle woven into it */
+.screen-inner {
+  position: relative;
+  border-color: rgba(231, 196, 106, 0.34);
+  background:
+    radial-gradient(circle at 50% 45%, transparent 55%, rgba(180, 139, 255, 0.07) 57%, transparent 62%),
+    radial-gradient(circle at 50% 45%, transparent 39%, rgba(231, 196, 106, 0.06) 40.5%, transparent 44%),
+    linear-gradient(165deg, rgba(30, 22, 60, 0.88), rgba(9, 6, 22, 0.94));
+  box-shadow: inset 0 0 60px rgba(70, 40, 110, 0.4), inset 0 0 0 1px rgba(231, 196, 106, 0.12), 0 16px 60px rgba(0, 0, 0, 0.7);
+}
+.screen-inner::after { /* engraved inner keyline (occult frame within the frame) */
+  content: ''; position: absolute; inset: 9px; pointer-events: none;
+  border: 1px solid rgba(231, 196, 106, 0.16);
+  clip-path: polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px);
+}

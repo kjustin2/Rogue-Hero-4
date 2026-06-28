@@ -5,12 +5,14 @@ Kenney GLB models retinted into emissive neon + procedural polyhedra; audio = **
 Kenney Ogg SFX + a synthesized music bed. All assets are CC0 (see
 `public/assets/CREDITS.md`); re-fetch with `npm run assets`.
 
-## The signature mechanic — TEMPO
-A 0–100 meter, neutral 50, always decaying toward 50. Cards shove it. Zones change your
-attacks: **HOT** (≥70) ramps damage to ×1.5; **CRITICAL** (≥90) makes attacks pierce;
-**COLD** (≤30) is defensive (−25% incoming). Hit **0 or 100** → a **crash**: an AoE burst
-(hot = fire nova, cold = freeze) that resets tempo to 50. Riding the swing and baiting the
-crash is the skill. (`src/sim/tempo.ts`)
+## The signature mechanic — SPELL WEAVING
+Every ability carries an arcane **glyph** (Ember ▲ / Frost ▼ / Storm ◆ / Void ✶). Casting pushes
+its glyph onto a 3-slot **weave**; the moment 3 are woven the pattern RESOLVES into a burst and
+resets: **3 same = Resonance** (themed nova + EMPOWER your next casts; Frost also Wards you),
+**all 3 different = Prismatic Rite** (the biggest finisher — huge nova + strong empower), **2+1 =
+Surge** (a medium burst of the majority glyph). Empowered casts hit ×1.6 and pierce; a Ward gives
+−30% incoming. The skill is *sequencing your 4 abilities* to bait the weave you want. Legible (you
+see the 3 slots + the rule), informed, and every 3rd cast pays off. (`src/sim/weave.ts`)
 
 ## Architecture (match it)
 - **`src/main.ts`** — the ONLY state machine (`title → select → playing → draft →
@@ -18,8 +20,8 @@ crash is the skill. (`src/sim/tempo.ts`)
   never mutates.
 - **`src/sim/`** — pure, Three.js-free, headless-testable.
   - `world.ts` — entities, the **one damage funnel** (`hitEnemy` / `damagePlayer` — never
-    poke HP elsewhere), card casting, enemy AI, run/room flow, tempo crashes.
-  - `tempo.ts` — zone math. `rng.ts` — seeded mulberry32.
+    poke HP elsewhere), card casting, enemy AI, run/room flow, weave resolves.
+  - `weave.ts` — glyph meta + weave classification/colors. `rng.ts` — seeded mulberry32.
 - **`src/render/`** — `stage.ts` (renderer + bloom post; `?lowfx`/`?nofx` drop to a plain
   blit), `view.ts` (sim→scene sync, particle pool, camera follow; yields the camera when
   `view.cinematic`), `models.ts` (CC0 GLB load + neon material/geometry helpers, all
@@ -34,7 +36,7 @@ crash is the skill. (`src/sim/tempo.ts`)
 ## The test seam — `window.__game`
 Drives every headless test. Key bits: `world`, `mode`, `start(charId)`, `cast(i)`,
 `setMove(x,z)`, `aimAt(x,z)`, `frameStats()`, and **`scenario(spec)` / `scenarios()`** —
-cut straight to any state: `combat swarm boss crit cold hot draft gameover win title
+cut straight to any state: `combat swarm boss resonance prismatic ward draft gameover win title
 select`, plus cutscene jumps `cutdive cutboss cutwin cutdeath`. Keep it in sync with
 public fields when you add systems.
 
@@ -51,13 +53,13 @@ logic/perf harness passes it, while `tour`/`doctor` leave them on to screenshot 
 - `npm run typecheck` — static gate, after any TS change.
 - `npm run build` — typecheck + vite build.
 - `npm run smoke` — Edge via puppeteer-core, `?lowfx`: asserts a **non-black** frame,
-  player moves, a cast shifts tempo, zero console errors.
+  player moves, a cast weaves a glyph, zero console errors.
 - `npm run test:e2e` — drives `__game` through the core loop with `check()` assertions.
 - `npm run perf` — deterministic perf gate: peak draw calls/triangles, GPU resource
   stability (geometries must not climb = no leak), pool bounds, vs `perf-baseline.json`
   (`npm run perf -- --update` rewrites it). Headless fps is software-bound; gate on these.
 - `npm run audit` — a bot actually PLAYS runs (kite/aim/cast/dodge/draft/retry) for a
-  wall-time budget (`AUDIT_MS`), asserting invariants every frame (NaN, tempo OOB, arena
+  wall-time budget (`AUDIT_MS`), asserting invariants every frame (NaN, weave OOB, arena
   escape, soft-locked rooms, leaks) and reporting a balance signal (depth/deaths/wins/HP
   floor). The fastest way to catch a soft-lock or a "can't-win" regression.
 - `npm run tour` — full-FX screenshot of every scenario → `shots/tour-*.png`.
@@ -97,7 +99,7 @@ logic/perf harness passes it, while `tour`/`doctor` leave them on to screenshot 
   `localStorage['rh4.meta']` (wrapped in try/catch).
 
 ## Design direction & rubric (judge fun, not vibes)
-`docs/DESIGN.md` is the living design doc (core idea = the TEMPO meter; pillars: game-feel-first,
+`docs/DESIGN.md` is the living design doc (core idea = Spell Weaving; pillars: game-feel-first,
 interesting decisions, readability, flow, meta=variety). Every gameplay/feel/screen change is
 judged against the **`/game-design` skill's 10-line rubric** (Schell/Koster/Swink/Meier/flow/
 roguelite craft) — dual-gated: a vision probe (`npm run vision`/`motion` vs `docs/GAME_BIBLE.md`,

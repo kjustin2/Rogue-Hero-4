@@ -1,8 +1,8 @@
 import { Bus } from '../bus';
 import { RNG } from '../rng';
 import { CARDS, CHARACTERS, ENEMIES, RELICS, BIOMES, ARENA, BOSS_DEPTH, NEON } from '../content';
-import type { CardDef, CharacterDef, EnemyDef, EnemyKind, RelicDef, BiomeDef } from '../types';
-import { dmgMult, incomingMult, critPierce, TEMPO_NEUTRAL } from './tempo';
+import type { CardDef, CharacterDef, EnemyDef, EnemyKind, RelicDef, BiomeDef, Glyph } from '../types';
+import { classifyWeave, weaveColor } from './weave';
 
 export interface CardState { id: string; cd: number; }
 
@@ -10,7 +10,10 @@ export interface Player {
   x: number; z: number; angle: number;
   mvx: number; mvz: number;          // last move dir (for render lean)
   hp: number; maxHp: number; speed: number; radius: number;
-  tempo: number; tempoStall: number;
+  weave: Glyph[];          // the 3-slot spell weave (resolves at 3)
+  empower: number;         // casts remaining that are empowered (bonus dmg + pierce)
+  ward: number;            // seconds of defensive Ward (−30% incoming) remaining
+  castMult: number;        // transient: this cast's damage multiplier (set per cast)
   char: CharacterDef;
   cards: CardState[];
   relics: Set<string>;
@@ -79,7 +82,7 @@ export class World {
     this.player = {
       x: 0, z: ARENA - 13, angle: -Math.PI / 2, mvx: 0, mvz: 0,
       hp: char.hp, maxHp: char.hp, speed: char.speed, radius: 0.9,
-      tempo: TEMPO_NEUTRAL, tempoStall: 0, char,
+      weave: [], empower: 0, ward: 0, castMult: 1, char,
       cards: char.loadout.map((id) => ({ id, cd: 0 })),
       relics: new Set(), iframe: 0, dashCritArmed: false,
       combo: 0, comboTimer: 0, alive: true,
@@ -101,7 +104,7 @@ export class World {
     this.boss = null;
     this.reinforced = false;
     const pl = this.player;
-    pl.x = 0; pl.z = ARENA - 13; pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0;
+    pl.x = 0; pl.z = ARENA - 13; pl.weave = []; pl.empower = 0; pl.ward = 0;
     pl.iframe = 0.6; pl.combo = 0;
     if (depth >= BOSS_DEPTH) {
       this.boss = this.spawnEnemy('boss', 0, -ARENA + 10, false);
@@ -151,8 +154,13 @@ export class World {
     if (!c || c.cd > 0) return false;
     const def = CARDS[c.id];
     c.cd = def.cooldown;
-    this.applyTempo(def.tempo);
+    const pl = this.player;
+    // empowered casts (granted by a Resonance/Prismatic weave) hit harder + pierce
+    pl.castMult = pl.empower > 0 ? 1.6 : 1;
+    if (pl.empower > 0) pl.empower--;
     this.execCard(def);
+    pl.castMult = 1;
+    this.weaveGlyph(def);   // push this card's glyph; resolves the weave at 3
     this.bus.emit('fx:cast', { x: this.player.x, z: this.player.z, color: def.color, kind: def.kind });
     this.bus.emit('sfx', { name: castSfx(def.kind), vol: 0.5 });
     return true;
@@ -200,8 +208,10 @@ export class World {
   }
 
   private fireBolt(ang: number, def: CardDef): void {
-    const pierce = critPierce(this.player.tempo) + (this.player.relics.has('resonator') ? 2 : 0);
-    this.spawnProjectile(this.player.x, this.player.z, ang, def.speed ?? 26, def.damage, def.color, true, pierce, 1.5);
+    const pl = this.player;
+    const empowered = pl.castMult > 1;                       // this cast is empowered
+    const pierce = (empowered ? 2 : 0) + (empowered && pl.relics.has('resonator') ? 2 : 0);
+    this.spawnProjectile(pl.x, pl.z, ang, def.speed ?? 26, def.damage, def.color, true, pierce, 1.5);
   }
 
   // ---- combat funnel ------------------------------------------------------
@@ -232,7 +242,8 @@ export class World {
 
   hitEnemy(e: Enemy, base: number, kx = 0, kz = 0): void {
     const pl = this.player;
-    let mult = dmgMult(pl.tempo) * (1 + Math.min(pl.combo, 12) * 0.015);
+    // damage = base × this cast's empower multiplier × kill-combo ramp × relic
+    let mult = pl.castMult * (1 + Math.min(pl.combo, 12) * 0.015);
     if (pl.relics.has('razor')) mult *= 1.18;
     let crit = false;
     if (pl.dashCritArmed) { crit = true; mult *= 2; pl.dashCritArmed = false; }
@@ -276,11 +287,11 @@ export class World {
     if (!pl.alive || pl.iframe > 0) return;
     // difficulty RAMP (flow channel): incoming damage scales with depth so deeper rooms apply
     // real pressure — audit showed full HP at depth 4 (too flat / outside the flow channel).
-    let amt = amount * incomingMult(pl.tempo) * (1 + (this.run.depth - 1) * 0.16);
+    let amt = amount * (pl.ward > 0 ? 0.7 : 1) * (1 + (this.run.depth - 1) * 0.16);
     if (pl.char.dmgResist) amt *= 1 - pl.char.dmgResist;
     amt = Math.max(1, Math.round(amt));
     pl.hp -= amt; pl.iframe = 0.45;
-    if (pl.char.hurtTempo) this.applyTempo(pl.char.hurtTempo);
+    if (pl.char.hurtWard) pl.ward = Math.max(pl.ward, pl.char.hurtWard); // Frost: a hit grants a Ward
     this.shake += 0.6;
     this.bus.emit('player:hurt', {});
     this.bus.emit('damage', { x: pl.x, z: pl.z, amount: amt, crit: false });
@@ -298,44 +309,54 @@ export class World {
     this.bus.emit('damage', { x: pl.x, z: pl.z, amount: n, crit: false, heal: true });
   }
 
-  // ---- tempo --------------------------------------------------------------
-  private applyTempo(shift: number): void {
-    if (shift > 0) shift *= this.player.char.tempoGain ?? 1;
-    this.player.tempo += shift;
-    if (this.player.tempo >= 100) this.crash(true);
-    else if (this.player.tempo <= 0) this.crash(false);
+  // ---- spell weaving ------------------------------------------------------
+  // push a cast's glyph onto the 3-slot weave; resolve the pattern at 3.
+  private weaveGlyph(def: CardDef): void {
+    const pl = this.player;
+    pl.weave.push(def.glyph);
+    if (pl.weave.length >= 3) this.resolveWeave();
   }
 
-  private crash(hot: boolean): void {
+  // resolve a completed weave into a burst (Resonance / Surge / Prismatic Rite) and reset.
+  private resolveWeave(): void {
     const pl = this.player;
+    const glyphs = pl.weave.slice(0, 3); pl.weave = [];
+    const { kind, element } = classifyWeave(glyphs);
     const oc = pl.relics.has('overcharge') ? 1.7 : 1;
-    const radius = (hot ? 8 : 9) * oc;
-    const dmg = (hot ? 34 : 18) * oc * (1 + (this.run.depth - 1) * 0.08);
+    const rr = pl.relics.has('runaway') ? 1.35 : 1;
+    const wp = pl.char.weavePower ?? 1;
+    let radius: number, dmg: number;
+    let frost = false, pull = false;
+    if (kind === 'prismatic') {
+      radius = 9; dmg = 40; pl.empower = 3; pl.ward = Math.max(pl.ward, 2);  // the big finisher
+    } else if (kind === 'resonance') {
+      radius = 7; dmg = 30; pl.empower = pl.relics.has('metronome') ? 3 : 2;
+      if (element === 'ember') dmg *= 1.3;
+      if (element === 'frost') { frost = true; pl.ward = Math.max(pl.ward, 2.5); }
+      if (element === 'void') pull = true;
+    } else {
+      radius = 5.5; dmg = 18; if (element === 'frost') frost = true;          // surge
+    }
+    radius *= oc * rr;
+    dmg *= oc * wp * (1 + (this.run.depth - 1) * 0.08);
+    const prevMult = pl.castMult; pl.castMult = 1;       // burst uses its own damage, not the cast's
     for (const e of this.enemies) {
       if (e.dead) continue;
       const dx = e.x - pl.x, dz = e.z - pl.z; const d2 = dx * dx + dz * dz;
       if (d2 > radius * radius) continue;
       const d = Math.sqrt(d2) || 1;
-      this.hitEnemy(e, hot ? dmg : dmg * 0.5, dx / d, dz / d);
-      if (!hot) { e.stun = 1.6; e.slow = 2.5; }
+      const kx = (pull ? -dx : dx) / d, kz = (pull ? -dz : dz) / d;
+      this.hitEnemy(e, dmg, kx, kz);
+      if (frost) { e.stun = 1.5; e.slow = 2.5; }
     }
-    pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0.6; this.shake += 1.4; this.hitstop = 0.09;
-    this.bus.emit('tempo:crash', { hot });
+    pl.castMult = prevMult;
+    const hot = !frost;
+    this.shake += kind === 'prismatic' ? 1.6 : 1.1; this.hitstop = 0.08;
+    this.bus.emit('weave:resolve', { kind, hot });
     this.bus.emit('fx:crash', { x: pl.x, z: pl.z, hot });
-    this.bus.emit('fx:shock', { x: pl.x, z: pl.z, r: radius, color: hot ? 0xff5a2a : NEON.ice });
-    this.bus.emit('fx:shake', { power: 1 });
-    this.bus.emit('sfx', { name: 'crash', vol: 0.9 });
-  }
-
-  private updateTempo(dt: number): void {
-    const pl = this.player;
-    if (pl.tempoStall > 0) { pl.tempoStall -= dt; return; }
-    if (Math.abs(pl.tempo - 50) < 0.01) return;
-    let rate = 9;
-    if (pl.relics.has('metronome')) rate *= 0.5;
-    if (pl.relics.has('runaway') && pl.tempo > 70) rate = 0;
-    if (pl.tempo > 50) pl.tempo = Math.max(50, pl.tempo - rate * dt);
-    else pl.tempo = Math.min(50, pl.tempo + rate * dt);
+    this.bus.emit('fx:shock', { x: pl.x, z: pl.z, r: radius, color: weaveColor(kind, element) });
+    this.bus.emit('fx:shake', { power: kind === 'prismatic' ? 1.2 : 0.9 });
+    this.bus.emit('sfx', { name: 'crash', vol: kind === 'prismatic' ? 0.95 : 0.8 });
   }
 
   // ---- projectiles --------------------------------------------------------
@@ -492,7 +513,7 @@ export class World {
     this.t += dt;
     if (this.shake > 0) this.shake = Math.max(0, this.shake - dt * 3);
     this.updatePlayer(dt);
-    this.updateTempo(dt);
+    if (this.player.ward > 0) this.player.ward = Math.max(0, this.player.ward - dt); // Ward ticks down
     this.updateEnemies(dt);
     this.updateProjectiles(dt);
     if (this.enemies.length > 60) this.enemies = this.enemies.filter((e) => !e.dead);

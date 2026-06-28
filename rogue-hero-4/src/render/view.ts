@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { World } from '../sim/world';
 import { Bus } from '../bus';
 import { ARENA, NEON } from '../content';
-import { zoneOf, zoneColor } from '../sim/tempo';
+import { GLYPHS } from '../sim/weave';
 import { loadModels, neonMat, tintPlayer, buildEnemy, type Models } from './models';
 
 interface Particle { spr: THREE.Sprite; vx: number; vy: number; vz: number; life: number; max: number; size: number; }
@@ -324,10 +324,10 @@ export class View {
     this.aimDart.position.set(pl.x + Math.cos(pl.angle) * reach, 0.3, pl.z + Math.sin(pl.angle) * reach);
     this.aimDart.rotation.set(Math.PI / 2, 0, -pl.angle - Math.PI / 2);
     (this.aimDart.material as THREE.MeshBasicMaterial).opacity = 0.7 + this.castPunch * 0.3;
-    // DYNAMIC state: the hero charges with the TEMPO zone (HOT->red, COLD->ice, CRIT->magenta),
-    // brightens with combo, and pulses red when low on HP.
-    const energy = Math.min(1, Math.abs(pl.tempo - 50) / 50);   // 0 neutral -> 1 at the extremes
-    ZONECOL.setHex(zoneColor(zoneOf(pl.tempo)));
+    // DYNAMIC state: the hero charges with the SPELL WEAVE — it tints to the last glyph woven and
+    // flares while EMPOWERED (post-Resonance/Prismatic), brightens with combo, pulses red on low HP.
+    const energy = pl.empower > 0 ? 1 : pl.weave.length / 3;     // 0 → 1 as the weave fills / empowers
+    ZONECOL.setHex(pl.weave.length ? GLYPHS[pl.weave[pl.weave.length - 1]].color : this.charColor);
     const lowHp = pl.hp / pl.maxHp < 0.3 ? (0.5 + Math.sin(w.t * 11) * 0.5) : 0;
     const combo = Math.min(1, pl.combo / 16);
     this.playerLight.position.set(pl.x, 3.2, pl.z);

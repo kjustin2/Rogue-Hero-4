@@ -237,7 +237,7 @@ bus.on('damage', (p) => {
 });
 bus.on('sfx', (p) => audio.play(p.name, p.vol ?? 1));
 bus.on('fx:cast', (p) => { if (tutorial.active) { if (p.kind === 'dash') tut.dashed = true; else tut.attacked = true; } });
-bus.on('tempo:crash', (p) => hud.flash(p.hot ? '#ff7a3a' : '#bfeaff', 0.5)); // impact flash on a crash
+bus.on('weave:resolve', (p) => hud.flash(p.hot ? '#ff7a3a' : '#bfeaff', p.kind === 'prismatic' ? 0.6 : 0.5)); // flash on a weave burst
 bus.on('player:dead', () => hud.flash('#ff3b5c', 0.55));
 
 // ---- loop -----------------------------------------------------------------
@@ -307,8 +307,8 @@ async function boot(): Promise<void> {
 
 // ---- test / debug hook ----------------------------------------------------
 // a few foes near the hero so the chase cam frames the hero in the lower third (used by the
-// tempo-zone scenarios; mirrors how the combat scenario curates its spawn for a representative shot)
-function tempoTableau(): void {
+// weave-state scenarios; mirrors how the combat scenario curates its spawn for a representative shot)
+function weaveTableau(): void {
   world.enemies = [];
   world.spawnEnemy('darter', -4, 11, false); world.spawnEnemy('brute', 4, 7, false); world.spawnEnemy('caster', 8, 13, false);
 }
@@ -326,11 +326,11 @@ function scenario(spec: string): string {
       // a wall of foes AHEAD of the hero (not on top of them) so the swarm reads and the hero stays visible
       for (let i = 0; i < 14; i++) world.spawnEnemy('darter', ((i % 7) - 3) * 6, -2 - Math.floor(i / 7) * 8, i % 6 === 0); hud.update(world); break;
     case 'boss': startRun('pyre'); world.enterRoom(BOSS_DEPTH); world.player.z = world.boss ? world.boss.z + 8 : -6; mode = 'playing'; view.setBiome(world.biome.fog, world.biome.accent); hud.update(world); break;
-    // tempo-zone scenarios: spawn a few foes NEAR the hero (like combat) so the chase cam frames
-    // the hero in the lower third instead of stretching to far foes and cropping the hero at the edge.
-    case 'crit': startRun('pyre'); tempoTableau(); pl().tempo = 97; pl().tempoStall = 99; hud.update(world); break;
-    case 'cold': startRun('pyre'); tempoTableau(); pl().tempo = 6; pl().tempoStall = 99; hud.update(world); break;
-    case 'hot': startRun('pyre'); tempoTableau(); pl().tempo = 82; pl().tempoStall = 99; hud.update(world); break;
+    // weave-state scenarios: foes NEAR the hero (like combat) so the chase cam frames the hero in
+    // the lower third; each shows a distinct weave state (empowered / prismatic finisher / warded).
+    case 'resonance': startRun('pyre'); weaveTableau(); pl().weave = ['storm', 'storm']; pl().empower = 2; hud.update(world); break;
+    case 'prismatic': startRun('pyre'); weaveTableau(); pl().empower = 3; pl().ward = 2; bus.emit('fx:shock', { x: pl().x, z: pl().z, r: 9, color: NEON.mag }); hud.update(world); break;
+    case 'ward': startRun('pyre'); weaveTableau(); pl().weave = ['frost', 'frost']; pl().ward = 3; hud.update(world); break;
     case 'draft': startRun('pyre'); world.enemies = []; world.portalOpen = true; toDraft(); break;
     case 'gameover': startRun('pyre'); world.run.kills = 23; world.run.depth = 3; world.run.relics.push('razor', 'metronome');
       pl().iframe = 0; pl().hp = 1; world.damagePlayer(999); if (!pl().alive) toEnd(false); break;
@@ -352,7 +352,7 @@ function expose(): void {
     get mode() { return mode; },
     start: startRun, toTitle, toSelect, chooseRelic,
     showHowTo: () => toHowTo(toTitle),
-    scenario, scenarios: () => ['title', 'select', 'howto', 'tutorial', 'combat', 'swarm', 'boss', 'crit', 'cold', 'hot', 'draft', 'gameover', 'win', 'cutdive', 'cutboss', 'cutwin', 'cutdeath'],
+    scenario, scenarios: () => ['title', 'select', 'howto', 'tutorial', 'combat', 'swarm', 'boss', 'resonance', 'prismatic', 'ward', 'draft', 'gameover', 'win', 'cutdive', 'cutboss', 'cutwin', 'cutdeath'],
     cine, get cutscenes() { return cutscenesOn; }, setCutscenes: (b: boolean) => { cutscenesOn = b; },
     setMove: (x: number, z: number) => world.setMove(x, z),
     aimAt: (x: number, z: number) => world.setAim(x, z),
@@ -368,7 +368,8 @@ function expose(): void {
       activeProj: world.projectiles.reduce((n, p) => n + (p.active ? 1 : 0), 0),
       shake: Math.round(world.shake * 100) / 100,
       pickups: world.pickups.length,
-      hp: world.player?.hp ?? 0, maxHp: world.player?.maxHp ?? 0, tempo: world.player?.tempo ?? 0,
+      hp: world.player?.hp ?? 0, maxHp: world.player?.maxHp ?? 0,
+      weave: world.player?.weave.length ?? 0, empower: world.player?.empower ?? 0, ward: world.player?.ward ?? 0,
       kills: world.run.kills,
     }),
   };

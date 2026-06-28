@@ -1,6 +1,6 @@
 import { World } from './sim/world';
 import { CARDS, CHARACTERS, RELIC_BY_ID } from './content';
-import { zoneOf, zoneColor, zoneLabel } from './sim/tempo';
+import { GLYPHS, weaveForecast } from './sim/weave';
 import type { CharacterDef, RelicDef } from './types';
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
@@ -10,8 +10,8 @@ export class Hud {
   private overlay: HTMLElement;
   private hpFill!: HTMLElement;
   private hpText!: HTMLElement;
-  private tempoFill!: HTMLElement;
-  private tempoZone!: HTMLElement;
+  private weaveSlots!: HTMLElement[];
+  private weaveState!: HTMLElement;
   private cards!: HTMLElement[];
   private depthEl!: HTMLElement;
   private relicsEl!: HTMLElement;
@@ -98,20 +98,20 @@ export class Hud {
           <div class="label">Vitality <span class="hp-text"></span></div>
           <div class="bar"><i class="hp-fill"></i></div>
         </div>
-        <div class="hud-bar tempo-wrap panel">
-          <div class="tempo-zone">NEUTRAL</div>
-          <div class="bar">
-            <i class="tempo-fill"></i>
-            <i class="tick" style="left:30%"></i><i class="tick" style="left:70%"></i><i class="tick" style="left:90%"></i>
+        <div class="hud-bar weave-wrap panel">
+          <div class="weave-label">SPELL WEAVE</div>
+          <div class="weave-slots">
+            <span class="weave-slot"></span><span class="weave-slot"></span><span class="weave-slot"></span>
           </div>
+          <div class="weave-state"></div>
           <div class="combo"></div>
         </div>
         <div class="cards"></div>
       </div>`;
     this.hpFill = this.hud.querySelector('.hp-fill')!;
     this.hpText = this.hud.querySelector('.hp-text')!;
-    this.tempoFill = this.hud.querySelector('.tempo-fill')!;
-    this.tempoZone = this.hud.querySelector('.tempo-zone')!;
+    this.weaveSlots = Array.from(this.hud.querySelectorAll<HTMLElement>('.weave-slot'));
+    this.weaveState = this.hud.querySelector('.weave-state')!;
     this.depthEl = this.hud.querySelector('.depth')!;
     this.relicsEl = this.hud.querySelector('.relics')!;
     this.comboEl = this.hud.querySelector('.combo')!;
@@ -133,7 +133,9 @@ export class Hud {
       c.style.display = 'flex';
       c.style.borderColor = hex(def.color) + 'cc';
       (c.querySelector('.nm') as HTMLElement).textContent = def.name;
-      (c.querySelector('.meta') as HTMLElement).textContent = `${def.tempo > 0 ? '+' : ''}${def.tempo} tempo`;
+      const gm = GLYPHS[def.glyph];
+      const meta = c.querySelector('.meta') as HTMLElement;
+      meta.textContent = `${gm.sym} ${gm.name}`; meta.style.color = hex(gm.color);
       (c.querySelector('.cdbar') as HTMLElement).style.background = hex(def.color);
     });
   }
@@ -142,10 +144,15 @@ export class Hud {
     const pl = w.player; if (!pl) return;
     this.hpFill.style.width = `${Math.max(0, (pl.hp / pl.maxHp) * 100)}%`;
     this.hpText.textContent = `${Math.ceil(pl.hp)} / ${pl.maxHp}`;
-    this.tempoFill.style.width = `${pl.tempo}%`;
-    const z = zoneOf(pl.tempo);
-    this.tempoZone.textContent = zoneLabel(z);
-    this.tempoZone.style.color = hex(zoneColor(z));
+    // spell weave: light up the slots already woven, show what they're on track to become
+    this.weaveSlots.forEach((s, i) => {
+      const g = pl.weave[i];
+      if (g) { const gm = GLYPHS[g]; s.textContent = gm.sym; s.style.color = hex(gm.color); s.style.borderColor = hex(gm.color) + 'cc'; s.classList.add('lit'); }
+      else { s.textContent = '·'; s.style.color = '#5a6a86'; s.style.borderColor = '#2a3550'; s.classList.remove('lit'); }
+    });
+    const empowered = pl.empower > 0, warded = pl.ward > 0;
+    this.weaveState.textContent = empowered ? `⚡ EMPOWERED ×${pl.empower}` : warded ? '❄ WARDED' : weaveForecast(pl.weave);
+    this.weaveState.style.color = empowered ? '#ffe27a' : warded ? hex(GLYPHS.frost.color) : '#9fb8e0';
     this.comboEl.style.opacity = pl.combo >= 3 ? '1' : '0';
     this.comboEl.textContent = pl.combo >= 3 ? `${pl.combo} COMBO` : '';
     this.comboEl.style.color = pl.combo >= 8 ? '#ff5cf2' : '#ffc24d';
@@ -193,8 +200,8 @@ export class Hud {
     const s = this.screen(`
       <div class="title-big">ROGUE HERO 4</div>
       <div class="subtitle">Neon · Arcane · Relentless</div>
-      <p class="hint" style="max-width:520px;font-size:15px;opacity:0.95">Dance on the TEMPO meter — shove it HOT to hit hard, ride it COLD to tank,
-        slam it to 0 or 100 to detonate the room. Clear six depths and silence The Conductor.</p>
+      <p class="hint" style="max-width:520px;font-size:15px;opacity:0.95">Weave arcane glyphs — every 3 casts complete a weave: match for Resonance,
+        mix for a room-clearing Prismatic Rite. Clear six depths and silence The Conductor.</p>
       <div class="row"><button class="btn primary" data-play>▶ Play</button></div>
       <div class="row">
         <button class="btn" data-tut>⌁ Tutorial</button>
@@ -219,10 +226,10 @@ export class Hud {
         ${row(['1', '2', '3', '4'], 'Cast your four abilities')}
         ${row(['L-Click'], 'Cast ability 1 · <b>R-Click</b> casts ability 2')}
         ${row(['Space'], 'Dash — blink through danger (i-frames)')}
-        ${row(['TEMPO'], '<b>HOT</b> = more damage · <b>COLD</b> = tougher · <b>0/100</b> = crash!')}
+        ${row(['WEAVE'], 'Each cast weaves a glyph. <b>3 same</b> = Resonance · <b>all 3 different</b> = Prismatic Rite · <b>2+1</b> = Surge')}
       </div>
       <p class="hint" style="max-width:620px">Goal: clear each room, grab a relic, and descend six depths to beat
-        <b style="color:#4dfbff">The Conductor</b>. Ride the TEMPO swing and bait the crash — that's the skill.</p>
+        <b style="color:#4dfbff">The Conductor</b>. Sequence your spells to bait the weave you want — that's the skill.</p>
       <button class="btn primary" data-back>Got it</button>`);
     s.querySelector('[data-back]')!.addEventListener('click', onBack);
   }

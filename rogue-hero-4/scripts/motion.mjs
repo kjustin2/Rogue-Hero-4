@@ -24,7 +24,7 @@ function byteDiff(a, b) {
 // A "moment" = a scripted burst of actions; we grab FRAMES frames across it.
 const MOMENTS = {
   combat: { setup: 'combat', act: (k) => { window.__game.aimAt([-6, 0, 6][k % 3], -8); window.__game.cast(k % 4); window.__game.setMove(((k % 2) * 2 - 1), -1); } },
-  crash:  { setup: 'hot', act: (k) => { window.__game.world.player.tempo = Math.min(99, 80 + k * 6); window.__game.aimAt(0, -8); window.__game.cast(2); } },
+  weave:  { setup: 'resonance', act: (k) => { window.__game.world.player.cards.forEach((c) => (c.cd = 0)); window.__game.aimAt(0, -8); window.__game.cast([0, 2, 3][k % 3]); } },
   swarm:  { setup: 'swarm', act: (k) => { window.__game.aimAt([0, -8, 8][k % 3], -6); window.__game.cast(k % 4); } },
 };
 const FRAMES = 8;

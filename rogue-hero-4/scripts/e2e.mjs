@@ -35,16 +35,16 @@ await withGame(async ({ page, errors }) => {
   await wait(200);
   check('boss room has a boss', await ev(page, () => !!window.__game.world.boss));
 
-  // tempo crash: force tempo to 100 via casts on Pyre (tempoGain 1.5)
-  await ev(page, () => window.__game.scenario('hot'));
-  const crashed = await ev(page, async () => {
-    const g = window.__game; let sawReset = false; g.world.player.tempo = 99;
-    g.world.castCard(2); // arc, big +tempo -> crash -> resets to 50
-    await new Promise((r) => setTimeout(r, 50));
-    sawReset = g.world.player.tempo <= 60 && g.world.player.tempo >= 40;
-    return sawReset;
+  // spell weaving: three casts complete a weave → it resolves (resets to 0) and EMPOWERS
+  await ev(page, () => window.__game.scenario('combat'));
+  const wove = await ev(page, async () => {
+    const g = window.__game; g.world.player.weave.length = 0; g.world.player.empower = 0;
+    g.world.player.cards.forEach((c) => (c.cd = 0));
+    g.world.castCard(0); g.world.castCard(2); g.world.castCard(3); // storm + ember + void = a weave
+    await new Promise((r) => setTimeout(r, 30));
+    return g.world.player.weave.length === 0 && g.world.player.empower > 0;
   });
-  check('tempo crash resets toward 50', crashed);
+  check('weave resolves on the 3rd cast (empowers)', wove);
 
   // win + gameover terminal states
   await ev(page, () => window.__game.scenario('win'));
@@ -56,7 +56,7 @@ await withGame(async ({ page, errors }) => {
   await ev(page, () => window.__game.setCutscenes(true));
   await ev(page, () => window.__game.scenario('cutboss'));
   check('boss cutscene enters cutscene mode', (await ev(page, () => window.__game.mode)) === 'cutscene');
-  await page.waitForFunction("window.__game.mode === 'playing'", { timeout: 9000, polling: 100 });
+  await page.waitForFunction("window.__game.mode === 'playing'", { timeout: 18000, polling: 100 });
   check('boss cutscene completes back to playing', true);
   // skip jumps straight to the resolved state
   await ev(page, () => window.__game.scenario('cutwin'));

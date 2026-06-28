@@ -13,10 +13,11 @@ with this doc, the screenshot is the bug.
 ---
 
 ## 1. The fantasy (feel in one paragraph)
-You are a lone vessel dropped into a neon arcane arena. You **dance on the TEMPO meter** —
-shove it HOT to hit like a truck, ride it COLD to tank, and slam 0/100 to detonate the room.
-It should feel **fast, punchy, legible, and a little overwhelming in a good way**: bright tracer
-fire, chunky hits, screen kick on a crash, enemies that read instantly as threats. Think
+You are a lone vessel dropped into a neon arcane arena. You **weave arcane glyphs** — every cast
+stamps a glyph into a 3-slot weave, and every 3 casts resolve into a burst (match for Resonance,
+mix for a room-clearing Prismatic Rite). It should feel **fast, punchy, legible, and a little
+overwhelming in a good way**: bright tracer fire, chunky hits, screen kick on a weave burst,
+enemies that read instantly as threats. Think
 *Hades meets a synthwave bullet-arena*, viewed from just **over the hero's shoulder**.
 
 ## 2. Camera — NON-NEGOTIABLE
@@ -53,8 +54,9 @@ fire, chunky hits, screen kick on a crash, enemies that read instantly as threat
    gated on the player actually doing it (move → rotate camera → attack → dash → clear the
    room), with snappy prompts. A reference How-to-Play screen is also on the title. A new
    player must never think "I don't know how to play."
-4. **Playing** — HUD always shows: vitality, the TEMPO meter with its current ZONE named,
-   the 4 ability cards with hotkeys + cooldowns, depth + kills. Boss room adds a boss bar.
+4. **Playing** — HUD always shows: vitality, the SPELL WEAVE (3 glyph slots + state: forecast /
+   EMPOWERED / WARDED), the 4 ability cards with hotkeys + glyphs + cooldowns, depth + kills.
+   Boss room adds a boss bar.
 5. **Room clear → Draft** — pick 1 of 3 relics, each with a readable name + effect.
 6. **Boss** — telegraphed, readable bullet patterns.
 7. **Win / Lose** — clear outcome, stats, "Run again" + "Menu".
@@ -64,7 +66,7 @@ fire, chunky hits, screen kick on a crash, enemies that read instantly as threat
   (glowing things also cast light). Graded post: bloom on true glows, ACES tone map, vignette,
   subtle grain. Bloom threshold high enough that **panels/text stay crisp** (the VLM, like a
   human, fails on washed/blurred UI).
-- Juice: hit flashes, particle bursts on kills, a fat screen-shake + flash on a TEMPO crash,
+- Juice: hit flashes, particle bursts on kills, a fat screen-shake + flash on a weave burst,
   damage floaters. Juice must **never** wreck readability (rule 3 wins ties).
 - **Crafted detail, not programmer art.** Surfaces have texture/material (a paneled/circuit
   floor, not a flat plane); entities are **multi-part designed models** (a faceted shell + a
@@ -74,11 +76,14 @@ fire, chunky hits, screen kick on a crash, enemies that read instantly as threat
   hit reactions (squash/flinch), spawn (scale-in) and death (scale-out/shatter). Nothing should
   just rigidly translate or spin like a static prop.
 
-## 6. The signature mechanic — TEMPO (keep this; it's the good idea)
-0–100 meter, neutral 50, decays toward 50. Cards shove it. **HOT** (≥70) = ×1.5 damage;
-**CRITICAL** (≥90) = pierce; **COLD** (≤30) = −25% incoming. Hit **0 or 100** → a **crash**
-(AoE nova, resets to 50). The meter's zone must be **named on screen at all times** so the
-player understands why their damage/defense changed.
+## 6. The signature mechanic — SPELL WEAVING
+Every ability carries an arcane **glyph** (Ember ▲ / Frost ▼ / Storm ◆ / Void ✶). Casting pushes
+its glyph onto a 3-slot **weave**; when 3 are woven it RESOLVES into a burst and resets:
+**3 same = Resonance** (themed nova + EMPOWER your next casts ×1.6 & pierce; Frost also Wards −30%
+incoming), **all 3 different = Prismatic Rite** (the biggest finisher), **2+1 = Surge** (medium
+burst of the majority glyph). The 3 slots + the current state (forecast / EMPOWERED / WARDED) must
+be **on screen at all times** so the player understands what they're building toward and why their
+damage/defense changed. The skill is sequencing your 4 abilities to bait the weave you want.
 
 ---
 

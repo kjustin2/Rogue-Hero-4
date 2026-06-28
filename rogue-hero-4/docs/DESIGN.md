@@ -6,10 +6,12 @@
 > `/vision-loop` (AI vision+logic QA). This doc is the current **direction** — update as it evolves.
 
 ## Core idea (one breath)
-A fast neon-arcane **roguelite** whose one big idea is the **TEMPO meter**: every ability shoves
-a 0–100 dial that changes what your attacks do (HOT = more damage, COLD = tougher, 0/100 = a
-room-clearing crash). The whole game is the *interesting decision* of riding and baiting that dial
-while you descend six depths and silence The Conductor.
+A fast neon-arcane **roguelite** whose one big idea is **SPELL WEAVING**: every ability carries an
+arcane glyph, and every 3 casts complete a *weave* — 3 same = Resonance (empower your next casts),
+all 3 different = a room-clearing Prismatic Rite, 2+1 = a Surge. The whole game is the *interesting
+decision* of sequencing your 4 abilities to bait the weave you want while you descend six depths
+and silence The Conductor. (The state lives in the weave on the battlefield, not a self-meter — a
+build→resolve rhythm reads as more legible + informed than the old TEMPO dial.)
 
 ## Design pillars (what every change must serve)
 1. **Game feel first** (Swink): dash/attack/cancel must read instant (<~100 ms) and snappy before

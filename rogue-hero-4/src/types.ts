@@ -3,12 +3,17 @@
 
 export type CardKind = 'strike' | 'bolt' | 'arc' | 'dash' | 'volley' | 'nova' | 'siphon' | 'overload';
 
+// SPELL WEAVING: every ability carries an arcane glyph. Casting pushes its glyph onto a 3-slot
+// weave; when 3 are woven the pattern RESOLVES (3 same = Resonance, all different = Prismatic Rite,
+// 2+1 = Surge). See sim/weave.ts.
+export type Glyph = 'ember' | 'frost' | 'storm' | 'void';
+
 export interface CardDef {
   id: string;
   name: string;
   kind: CardKind;
   cooldown: number;     // seconds
-  tempo: number;        // tempo shift applied on cast (can be negative)
+  glyph: Glyph;         // arcane glyph woven on cast
   damage: number;       // base damage per hit
   range: number;        // reach (melee cone / projectile life) or radius (arc/nova)
   speed?: number;       // projectile speed (bolt/volley)
@@ -27,9 +32,9 @@ export interface CharacterDef {
   color: number;
   blurb: string;
   // passives, read by the sim:
-  tempoGain?: number;       // multiplier on positive tempo shifts (default 1)
+  weavePower?: number;      // multiplier on weave-burst damage/empower (Pyre, default 1)
   dmgResist?: number;       // 0..1 incoming damage reduction
-  hurtTempo?: number;       // tempo gained toward cold when hit (Frost)
+  hurtWard?: number;        // seconds of defensive Ward granted when hit (Frost)
   dashIframe?: number;      // bonus i-frame seconds on dash (Shadow)
   postDashCrit?: boolean;   // next hit after dash crits (Shadow)
   unlock: string;           // human-readable unlock condition ('' = default)

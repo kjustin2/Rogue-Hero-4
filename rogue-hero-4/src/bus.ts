@@ -1,6 +1,5 @@
 // Typed event bus. Every event name + payload is declared here, so a typo'd
 // emit is a compile error. Render / audio / HUD subscribe; the sim only emits.
-export type Zone = 'cold' | 'cool' | 'neutral' | 'warm' | 'hot' | 'critical';
 
 export interface EventMap {
   'fx:hit': { x: number; z: number; color: number; power: number };
@@ -20,7 +19,7 @@ export interface EventMap {
   'player:dead': {};
   'player:hurt': {};
   'run:win': {};
-  'tempo:crash': { hot: boolean };
+  'weave:resolve': { kind: string; hot: boolean }; // a 3-glyph weave resolved into a burst
 }
 
 type Handler<K extends keyof EventMap> = (p: EventMap[K]) => void;

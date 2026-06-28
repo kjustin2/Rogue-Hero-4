@@ -18,7 +18,7 @@ const STEPS: Step[] = [
   { title: 'Rotate the camera — Q / E', sub: 'Spin the view to keep threats in front of you', done: (s) => s.rotated },
   { title: 'Aim with the mouse — press 1 or Left-Click', sub: 'Destroy the training drones', enter: (h) => h.spawnDummies(), done: (s) => s.attacked },
   { title: 'Dash — SPACE', sub: 'Blink through danger (brief invulnerability)', done: (s) => s.dashed },
-  { title: 'Clear the room!', sub: 'Ride your TEMPO — push it HOT for big damage, slam 0/100 to crash', enter: (h) => h.startCombat(), done: (s) => s.cleared },
+  { title: 'Clear the room!', sub: 'Weave glyphs as you cast — 3 same = Resonance, all 3 different = a Prismatic Rite', enter: (h) => h.startCombat(), done: (s) => s.cleared },
 ];
 
 export class Tutorial {

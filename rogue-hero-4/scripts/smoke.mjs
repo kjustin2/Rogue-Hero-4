@@ -21,12 +21,12 @@ await withGame(async ({ page, errors, shot }) => {
   const x1 = await page.evaluate(() => window.__game.world.player.x);
   check('player moves', Math.abs(x1 - x0) > 0.3, `dx=${(x1 - x0).toFixed(2)}`);
 
-  // a cast shifts tempo
-  const t0 = await page.evaluate(() => window.__game.world.player.tempo);
+  // a cast weaves a glyph (spell-weaving mechanic)
+  const w0 = await page.evaluate(() => window.__game.world.player.weave.length);
   await page.evaluate(() => { window.__game.aimAt(0, -10); window.__game.cast(0); });
   await wait(200);
-  const t1 = await page.evaluate(() => window.__game.world.player.tempo);
-  check('cast shifts tempo', t1 !== t0, `${t0.toFixed(0)} -> ${t1.toFixed(0)}`);
+  const w1 = await page.evaluate(() => window.__game.world.player.weave.length);
+  check('cast weaves a glyph', w1 !== w0, `weave ${w0} -> ${w1}`);
 
   const fs = await page.evaluate(() => window.__game.frameStats());
   check('draw calls > 0', fs.drawCalls > 0, `calls=${fs.drawCalls} tris=${fs.triangles}`);
