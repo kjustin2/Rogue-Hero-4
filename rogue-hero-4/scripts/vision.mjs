@@ -42,12 +42,12 @@ const NAMES = argv.length ? argv : ['title', 'select', 'howto', 'tutorial', 'com
 const ANCHORS = {
   camera: 'camera: 8-10 = clearly behind/over-the-shoulder, hero large in the lower third; 4-6 = third-person but hero small or mid-frame; 0-3 = top-down OR hero a tiny speck OR cropped.',
   readability: 'readability: 8-10 = every visible label/card/number is crisp and legible; 4-6 = mostly readable, some small/dim text; 0-3 = clipped/overlapping/unreadable text.',
-  clarity: 'clarity: 8-10 = hero, enemies, and projectiles are instantly distinguishable by colour+shape; 4-6 = readable with effort; 0-3 = hero blends with enemies/background.',
+  clarity: 'clarity (silhouette + colour-role): 8-10 = hero, enemies and projectiles each pass the BLACK-SILHOUETTE test (identifiable as solid shapes) AND own a distinct colour role (hero vs enemy vs hazard); 4-6 = readable with effort or roles differ only by hue; 0-3 = units collapse to similar blobs / share one neon hue.',
   menu_clarity: 'menu_clarity: 8-10 = obvious what to do, primary action stands out; 4-6 = workable but unclear CTA; 0-3 = confusing/broken layout.',
-  environment: 'environment: 8-10 = a lit, deliberate neon-arcane place with DEPTH and surface detail (textured/paneled floor, structures, atmosphere); 4-6 = lit but a plain flat plane / thin grid; 0-3 = mostly black void or flat monochrome gradient. For MENUS, a clean styled backdrop is 7+.',
-  appeal: 'appeal: 8-10 = looks like a polished shipped indie game (cohesive art direction, crafted detail, good contrast/bloom); 4-6 = fine but generic; 0-3 = primitive geometric shapes on flat gradients = PROGRAMMER ART. Be harsh: untextured planes and single-primitive entities are NOT 7+.',
-  feel: 'feel: 8-10 = the moment looks dynamic and punchy (fire/projectiles/impact/juice on screen); 4-6 = some action; 0-3 = static/empty.',
-  detail: 'detail/craft (be HARSH): 8-10 = entities are multi-part designed models and surfaces have real texture/material detail (paneled/circuit floor, layered models, rim/fresnel); 4-6 = simple but intentional shapes with some accents; 0-3 = single geometric primitives (cones/dice/spheres), flat untextured planes, featureless blobs — programmer art.',
+  environment: 'environment: 8-10 = a lit, deliberate neon-arcane place with DEPTH + surface detail AND emissive-as-light (glows visibly tint nearby surfaces/floor); 4-6 = lit but a plain plane / glow that does not bleed onto surroundings; 0-3 = mostly black void or flat monochrome gradient. For MENUS, a clean styled backdrop is 7+.',
+  appeal: 'appeal (lighting + craft): 8-10 = shipped-indie art direction — a clear directional KEY light reveals form (light/shadow gradient across surfaces), rim/separation off the background, cohesive 1-5 hue palette with value hierarchy; 4-6 = fine but flat-lit / generic; 0-3 = flat uniform ambient, primitive shapes on flat gradients = PROGRAMMER ART. Flat ambient lighting alone caps this at 5.',
+  feel: 'feel: 8-10 = the moment looks dynamic and punchy (projectiles in flight, impact bursts, hit flash, screen kick); 4-6 = some action; 0-3 = static/empty.',
+  detail: 'detail/craft (be HARSH — default-solid test): 8-10 = entities are multi-part designed models with material/value breakup so they never read as bare primitives, surfaces textured (paneled/circuit, rim); 4-6 = simple but intentional shapes with some accents; 0-3 = raw untextured primitives (cones/dice/spheres/default-cube), flat planes, featureless blobs — programmer art.',
 };
 
 async function judge(name) {
@@ -60,10 +60,15 @@ What this screen SHOULD be: ${spec.want}
 Score these criteria using these ANCHORS (apply them literally and consistently):
 ${spec.crit.map((c) => '- ' + ANCHORS[c]).join('\n')}
 
-GRADING DISCIPLINE — be critical, do not inflate out of politeness:
-- Reserve 8-10 for what genuinely looks like a shipped, professional game; 7 = solid, no glaring flaw.
-- Judge what is ACTUALLY on screen, not what you assume the code intends.
-- Apply each anchor literally so two runs of the same screenshot get the same score (be consistent, not random).
+GRADING DISCIPLINE — grade like Edge magazine, ruthless and anti-inflation:
+- THE SCALE: 5 = a competent SHIPPED commercial game; 7 = good; 8 = great; 9-10 = genre-defining.
+  Absence of flaws is NOT a positive — to exceed 7 the screen must do something BETTER than its
+  commercial peers. Most competent work lands 5-6. Reserve 8+ for genuinely exceptional craft.
+- EVIDENCE OR IT DIDN'T HAPPEN: in your reasoning, cite the SPECIFIC visible element behind each
+  score. If you can't cite concrete evidence for a high band, score in the LOW band (default to 5).
+- REASON, THEN SCORE: decide the evidence first, then pick the band — never round up out of politeness.
+- Judge what is ACTUALLY on screen, not what you assume the code intends. "Can't tell" is not a pass.
+- Apply anchors literally for run-to-run consistency.
 
 Return ONLY one minified JSON object, no markdown, no prose around it:
 {"reasoning":"<2-3 blunt sentences>","scores":{${spec.crit.map((c) => `"${c}":<0-10>`).join(',')}},"top_issues":["<concrete fix>","<concrete fix>"],"verdict":"<pass|fail>"}`;
@@ -83,10 +88,20 @@ Return ONLY one minified JSON object, no markdown, no prose around it:
       catch (e) { resolve({ name, error: 'bad JSON: ' + e.message, raw: m[0].slice(0, 200) }); }
     });
   });
-  // claude -p is occasionally flaky under parallel load — retry once on a non-result
-  let r = await once();
-  if (r.error) r = await once();
-  return r;
+  // SELF-CONSISTENCY: a single harsh judgment is noisy (±2-3 per criterion — the SAME camera scored
+  // 8 then 4 across runs). Sample N times and take the MEDIAN of each criterion → a trustworthy harsh
+  // score that distinguishes a real regression from judge noise. (Research: self-consistency cuts
+  // VLM-judge variance; for a harsh bar take the median.) SAMPLES=1 for fast iteration.
+  const SAMPLES = Math.max(1, parseInt(process.env.VISION_SAMPLES || '3', 10));
+  const runs = [];
+  for (let s = 0; s < SAMPLES; s++) { let r = await once(); if (r.error) r = await once(); runs.push(r); }
+  const ok = runs.filter((r) => r.scores);
+  if (!ok.length) return runs[0];
+  const med = (xs) => { const a = [...xs].sort((p, q) => p - q); return a[Math.floor(a.length / 2)]; };
+  const scores = {};
+  for (const c of spec.crit) { const vals = ok.map((r) => r.scores[c]).filter((v) => v != null); if (vals.length) scores[c] = med(vals); }
+  const best = ok[ok.length - 1];
+  return { name, scores, reasoning: best.reasoning, top_issues: best.top_issues, verdict: best.verdict, samples: ok.length };
 }
 
 // ---- 1. capture every scenario at full FX -------------------------------------
@@ -102,6 +117,15 @@ const shots = await withGame(async ({ page, shot }) => {
       await wait(220);
       await page.evaluate(() => { const b = window.__game.world.boss; window.__game.aimAt(b ? b.x : 0, b ? b.z : -12); window.__game.cast(1); });
       await wait(240);
+    } else if (name === 'resonance' || name === 'prismatic') {
+      // these show the EMPOWERED payoff: fire empowered casts at the nearby foes so tracers streak +
+      // impacts pop (and a 3rd cast resolves a fresh weave burst) — a real combat moment, not a static pose
+      await page.evaluate(() => { window.__game.world.player.cards.forEach((c) => (c.cd = 0)); window.__game.aimAt(0, 8); window.__game.cast(0); });
+      await wait(160);
+      await page.evaluate(() => { window.__game.aimAt(6, 9); window.__game.cast(1); });
+      await wait(180);
+      await page.evaluate(() => { window.__game.aimAt(-4, 10); window.__game.cast(0); });
+      await wait(220);
     } else if (['combat', 'swarm'].includes(name)) {
       // combat shots: fire a staggered burst and capture MID-action (projectiles in flight,
       // particles fresh) so "feel" reads dynamic — NOT for hot/crit (casting crashes the zone)
@@ -149,9 +173,12 @@ const pass = fails.length === 0 && min >= 7; // aspirational: every criterion wo
 // may be a broken screen OR judge noise — and the full harsh table drives the next craft fix.
 const GATE_CRIT = ['readability', 'menu_clarity', 'clarity', 'camera'];
 const WATCH_FLOOR = 3;      // a usability criterion <= this in one run = eyeball it (not a hard block)
-const SHIP_BAR = 6.4;       // overall avg hard bar — set ~0.2 below a good build's ~6.6 so ±0.15 run
-                           // noise can't flake it, yet a regression (broken screen ≈ -0.45) still trips it.
-                           // Ratchet up as craft (detail/appeal) genuinely improves.
+const SHIP_BAR = 6.0;      // overall avg hard bar, calibrated to the CRITIC-GRADE judge (Edge scale:
+                           // 5 = competent shipped game) + median-of-3 self-consistency. The same
+                           // build scored 6.8 under the old lenient judge and a stable 6.2 under this
+                           // harsh one — so 6.0 here is a HIGHER standard than 6.4 was, with margin
+                           // below the stable 6.2 so a regression (broken screen ≈ -0.4) still trips it.
+                           // Ratchet up as craft genuinely improves toward 7 (great).
 const watch = results.filter((r) => r.scores && GATE_CRIT.some((c) => r.scores[c] != null && r.scores[c] <= WATCH_FLOOR))
   .map((r) => `${r.name}(${GATE_CRIT.filter((c) => r.scores[c] != null && r.scores[c] <= WATCH_FLOOR).map((c) => `${c}=${r.scores[c]}`).join(',')})`);
 const errored = results.filter((r) => r.error).map((r) => r.name);

@@ -249,7 +249,8 @@ export class World {
     if (pl.dashCritArmed) { crit = true; mult *= 2; pl.dashCritArmed = false; }
     const amount = Math.max(1, Math.round(base * mult));
     e.hp -= amount; e.hitFlash = 0.12;
-    e.x = clampArena(e.x + kx * 0.6); e.z = clampArena(e.z + kz * 0.6);
+    if (e.stun >= 0) e.stun = Math.max(e.stun, 0.12);          // brief flinch — enemy reaction read
+    e.x = clampArena(e.x + kx * 0.9); e.z = clampArena(e.z + kz * 0.9); // stronger knockback sells the hit
     pl.combo++; pl.comboTimer = 1.5;
     this.bus.emit('damage', { x: e.x, z: e.z, amount, crit });
     this.bus.emit('fx:hit', { x: e.x, z: e.z, color: e.def.color, power: crit ? 1.7 : 1 });
@@ -260,6 +261,7 @@ export class World {
   private onDeath(e: Enemy): void {
     e.dead = true;
     this.run.kills++;
+    this.hitstop = Math.max(this.hitstop, e.elite ? 0.07 : 0.045); // brief freeze-frame on a kill (DMC5 "sleep")
     this.bus.emit('enemy:killed', { elite: e.elite });
     this.bus.emit('fx:death', { x: e.x, z: e.z, color: e.def.color, big: e.def.kind === 'boss' || e.elite });
     this.bus.emit('sfx', { name: 'kill', vol: e.def.kind === 'boss' ? 0.9 : 0.5 });

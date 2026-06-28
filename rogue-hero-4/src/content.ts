@@ -32,21 +32,22 @@ export const CHARACTERS: CharacterDef[] = [
 const E = (kind: EnemyKind, def: Omit<EnemyDef, 'kind'>): EnemyDef => ({ kind, ...def });
 export const ENEMIES: Record<EnemyKind, EnemyDef> = {
   darter:   E('darter',   { name: 'Darter',   hp: 20,  speed: 9.7, radius: 0.7, damage: 9,  touch: 0.7, color: NEON.red }),
-  brute:    E('brute',    { name: 'Brute',    hp: 78,  speed: 4.7, radius: 1.2, damage: 22, touch: 1.0, color: NEON.red }),
+  brute:    E('brute',    { name: 'Brute',    hp: 78,  speed: 4.7, radius: 1.2, damage: 22, touch: 1.0, color: NEON.amber }),
   caster:   E('caster',   { name: 'Caster',   hp: 30,  speed: 5.6, radius: 0.8, damage: 11, touch: 0,   color: NEON.violet, ranged: true, fireRate: 1.25 }),
   splitter: E('splitter', { name: 'Splitter', hp: 46,  speed: 6.2, radius: 1.0, damage: 12, touch: 0.9, color: NEON.green, splits: 2 }),
   boss:     E('boss',     { name: 'The Conductor', hp: 620, speed: 3.8, radius: 2.5, damage: 24, touch: 1.1, color: NEON.cyan, ranged: true, fireRate: 0.95, scoreboard: true }),
 };
 
 export const RELICS: RelicDef[] = [
-  { id: 'razor',      name: 'Razor Battery', icon: '⚡', desc: '+18% damage' },
-  { id: 'iron',       name: 'Iron Pulse',    icon: '🛡️', desc: '+30 max HP (healed now)' },
-  { id: 'metronome',  name: 'Metronome',     icon: '⏱️', desc: 'Resonance empowers +1 extra cast' },
-  { id: 'runaway',    name: 'Runaway Core',  icon: '🔥', desc: 'Weave bursts +35% radius' },
-  { id: 'grease',     name: 'Comet Grease',  icon: '💨', desc: '+20% move speed' },
-  { id: 'siphon',     name: 'Siphon Coil',   icon: '🩸', desc: 'Kills heal 5 HP' },
-  { id: 'overcharge', name: 'Overcharge',    icon: '💥', desc: 'Weave bursts deal +70% damage & radius' },
-  { id: 'resonator',  name: 'Resonator',     icon: '🔮', desc: 'Empowered casts pierce +2 targets' },
+  // arcane rune glyphs (NOT browser emoji — emoji read as placeholder art & tank the detail score)
+  { id: 'razor',      name: 'Razor Battery', icon: '✦', desc: '+18% damage' },
+  { id: 'iron',       name: 'Iron Pulse',    icon: '⬢', desc: '+30 max HP (healed now)' },
+  { id: 'metronome',  name: 'Metronome',     icon: '⟳', desc: 'Resonance empowers +1 extra cast' },
+  { id: 'runaway',    name: 'Runaway Core',  icon: '▲', desc: 'Weave bursts +35% radius' },
+  { id: 'grease',     name: 'Comet Grease',  icon: '≫', desc: '+20% move speed' },
+  { id: 'siphon',     name: 'Siphon Coil',   icon: '◍', desc: 'Kills heal 5 HP' },
+  { id: 'overcharge', name: 'Overcharge',    icon: '✺', desc: 'Weave bursts deal +70% damage & radius' },
+  { id: 'resonator',  name: 'Resonator',     icon: '◈', desc: 'Empowered casts pierce +2 targets' },
 ];
 export const RELIC_BY_ID = new Map(RELICS.map((r) => [r.id, r]));
 

@@ -78,12 +78,20 @@ export class View {
     this.scene.fog = new THREE.FogExp2(0x1a1448, 0.014);
     this.scene.add(starfield());
 
-    this.hemi = new THREE.HemisphereLight(0xaecbff, 0x241038, 1.15);
+    // Lighting that REVEALS FORM without washing the wet floor: a warm directional KEY gives a
+    // light→shadow gradient across curved surfaces; a cool hemisphere fills shadows without going
+    // flat; ONE low magenta back-RIM separates silhouettes from the neon background. (Strong/extra
+    // rims blew specular hotspots off the reflective metal floor — kept subtle on purpose.)
+    this.hemi = new THREE.HemisphereLight(0xaecbff, 0x241038, 0.95);
     this.scene.add(this.hemi);
-    const key = new THREE.DirectionalLight(0xdfe9ff, 0.9);
-    key.position.set(10, 26, 14); this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0xff6cc4, 0.35); // magenta rim from the far wall
-    rim.position.set(-6, 8, -24); this.scene.add(rim);
+    const key = new THREE.DirectionalLight(0xffe6cf, 1.1);
+    key.position.set(11, 24, 13); this.scene.add(key);
+    key.castShadow = true; key.shadow.mapSize.set(1536, 1536);
+    key.shadow.camera.near = 2; key.shadow.camera.far = 90;
+    const SC = key.shadow.camera; SC.left = -ARENA; SC.right = ARENA; SC.top = ARENA; SC.bottom = -ARENA; SC.updateProjectionMatrix();
+    key.shadow.bias = -0.0005; key.shadow.normalBias = 0.02;
+    const rim = new THREE.DirectionalLight(0xff7ccf, 0.4); // subtle magenta back-rim for silhouette separation
+    rim.position.set(-7, 9, -24); this.scene.add(rim);
 
     // detailed paneled/circuit floor (procedural texture = albedo + glowing emissive seams),
     // so the arena reads as a built surface, not a flat plane. Seams are white in the texture
@@ -93,7 +101,7 @@ export class View {
     const ftex = floorTex();
     this.floorMat = new THREE.MeshStandardMaterial({ map: ftex, emissiveMap: ftex, emissive: NEON.mag, emissiveIntensity: 0.55, roughness: 0.16, metalness: 0.9, envMapIntensity: 1.9 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(ARENA * 2.4, ARENA * 2.4), this.floorMat);
-    floor.rotation.x = -Math.PI / 2; floor.position.y = -0.02; this.scene.add(floor);
+    floor.rotation.x = -Math.PI / 2; floor.position.y = -0.02; floor.receiveShadow = true; this.scene.add(floor);
 
     // a cool violet floor glow (NOT the biome accent) so the floor stays indigo, not monochrome
     this.floorGlow = new THREE.Mesh(
@@ -118,7 +126,7 @@ export class View {
       const wz = horiz ? (i === 0 ? -ARENA : ARENA) : 0;
       const w = new THREE.Mesh(new THREE.BoxGeometry(horiz ? len : 0.8, WH, horiz ? 0.8 : len),
         new THREE.MeshStandardMaterial({ color: 0x120a2c, emissive: NEON.mag, emissiveIntensity: 0.55, roughness: 0.5, metalness: 0.45, map: wtex, emissiveMap: wtex }));
-      w.position.set(wx, WH / 2, wz);
+      w.position.set(wx, WH / 2, wz); w.castShadow = true; w.receiveShadow = true;
       const stripGeo = new THREE.BoxGeometry(horiz ? len : 0.62, 0.5, horiz ? 0.62 : len);
       const rail = new THREE.Mesh(stripGeo, neonMat(NEON.mag, 2.6).clone()); rail.position.y = WH / 2 - 0.05; rail.userData.glow = true;
       const base = new THREE.Mesh(stripGeo, neonMat(NEON.mag, 2.0).clone()); base.position.y = -WH / 2 + 0.5; base.userData.glow = true;
@@ -171,6 +179,7 @@ export class View {
   async init(): Promise<void> {
     this.models = await loadModels();
     this.playerMesh.add(this.models.player);
+    this.models.player.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true; }); // hero casts a shadow
     // hero energy aura + orbiting shards (life / "designed character" read)
     // tight, faint energy shell — small enough that the chrome hero silhouette reads ABOVE it
     // (a big bright aura was the main cause of the "glowing blob" read).
@@ -366,7 +375,7 @@ export class View {
     }
 
     // boss mesh — big, imposing, grounded glow
-    if (w.boss && !this.bossMesh && this.models) { this.bossMesh = this.models.boss; this.scene.add(this.bossMesh); }
+    if (w.boss && !this.bossMesh && this.models) { this.bossMesh = this.models.boss; this.bossMesh.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).castShadow = true; }); this.scene.add(this.bossMesh); }
     if (!w.boss && this.bossMesh) { this.scene.remove(this.bossMesh); this.bossMesh = null; }
     if (w.boss && this.bossMesh) {
       this.bossMesh.position.set(w.boss.x, UP + 2.0 + Math.sin(w.t * 2) * 0.3, w.boss.z);
@@ -386,6 +395,7 @@ export class View {
         g = buildEnemy(e.def.kind, e.def.color); // distinct designed creature (own materials)
         const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: ENEMY_FIRE, transparent: true, opacity: 0.95, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = -UP + 0.04; ring.name = 'ring';
+        g.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m.name !== 'ring') m.castShadow = true; }); // enemies cast shadows (not the flat threat ring)
         g.add(ring); g.userData.born = w.t; this.scene.add(g); this.enemyMeshes.set(e.id, g);
       }
       const body = g.getObjectByName('body') as THREE.Mesh;
@@ -399,9 +409,10 @@ export class View {
       // face the player (models point +Z) + idle sway, bob, charge-grow
       g.rotation.y = Math.atan2(pl.x - e.x, pl.z - e.z) + Math.sin(w.t * 2 + e.id) * 0.08;
       g.position.set(e.x, UP + Math.sin(w.t * 2.5 + e.id) * 0.12, e.z);
-      g.scale.setScalar((e.elite ? 1.5 : 1.1) * spawn * (1 + charge * 0.14));
-      body.scale.setScalar(1 + f * 0.3);
-      body.rotation.z = Math.sin(w.t * 3 + e.id) * 0.07;         // idle rock
+      g.scale.setScalar((e.elite ? 1.7 : 1.28) * spawn * (1 + charge * 0.14)); // bigger so the layered detail reads at chase-cam distance
+      const breath = 1 + Math.sin(w.t * 2.2 + e.id) * 0.05;      // living idle: subtle breathing
+      body.scale.set(1 + f * 0.3, (1 + f * 0.3) * breath, 1 + f * 0.3);
+      body.rotation.z = Math.sin(w.t * 3 + e.id) * 0.07 + charge * 0.18; // idle rock + rear-back on charge (telegraph)
       const bm = body.material as THREE.MeshStandardMaterial;
       bm.emissive.setHex(e.def.color).lerp(WHITE, f + charge * 0.5); // flash white on hit / charge
       bm.emissiveIntensity = 0.7 + f * 3 + charge * 2;
@@ -410,8 +421,9 @@ export class View {
       // animate the distinct parts: wings flap (faster mid-lunge), runes orbit, pods pulse out
       for (const c of g.children) {
         if (c.userData.wing !== undefined) c.rotation.y = c.userData.wing * (0.5 + Math.sin(w.t * (lunge ? 34 : 14) + e.id) * 0.35);
-        else if (c.userData.orbit !== undefined) { const a = w.t * 2.5 + (c.userData.orbit / 3) * Math.PI * 2; c.position.set(Math.cos(a) * 0.95, Math.sin(w.t * 3 + c.userData.orbit) * 0.3, Math.sin(a) * 0.95); c.rotation.x += dt * 4; }
-        else if (c.userData.pod !== undefined) { const a = (c.userData.pod / 3) * Math.PI * 2; const r = 0.72 + charge * 0.4 + Math.sin(w.t * 4 + c.userData.pod) * 0.07; c.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); }
+        else if (c.userData.orbit !== undefined) { const a = w.t * 2.5 + (c.userData.orbit / 4) * Math.PI * 2; c.position.set(Math.cos(a) * 0.95, 0.1 + Math.sin(w.t * 3 + c.userData.orbit) * 0.3, Math.sin(a) * 0.95); c.rotation.x += dt * 4; }
+        else if (c.userData.pod !== undefined) { const a = (c.userData.pod / 4) * Math.PI * 2; const r = 0.78 + charge * 0.5 + Math.sin(w.t * 4 + c.userData.pod) * 0.08; c.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); }
+        else if (c.userData.plate !== undefined) c.rotation.z = c.userData.plate * (0.42 + charge * 0.35 + Math.sin(w.t * 2.6 + e.id) * 0.07); // shoulder plates heave (breathe + telegraph)
       }
     }
     for (const [id, g] of this.enemyMeshes) if (!seen.has(id)) {
@@ -431,7 +443,7 @@ export class View {
       (m.material as THREE.MeshStandardMaterial).emissive.setHex(col);
       const sp = Math.hypot(p.vx, p.vz) || 1;
       m.lookAt(p.x + p.vx / sp, UP, p.z + p.vz / sp); // long axis (local Z) faces travel
-      const len = p.friendly ? 2.6 : 2.2, wid = p.friendly ? 0.7 : 0.95;
+      const len = p.friendly ? 3.2 : 2.2, wid = p.friendly ? 0.95 : 0.95; // beefier friendly tracers read as power
       m.scale.set(wid, wid, len);
     }
     for (; pi < this.projPool.length; pi++) this.projPool[pi].visible = false;

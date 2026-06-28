@@ -32,12 +32,14 @@ const FRAMES = 8;
 function judge(name) {
   const prompt = `You are the MOTION/FEEL judge for a neon-arcade roguelike. Design intent: @docs/GAME_BIBLE.md.
 This is a FILMSTRIP — ${FRAMES} consecutive frames (left→right, top→bottom) of one "${name}" moment: @shots/motion-${name}.png
-Judge the MOTION across frames, not one still. Be a HARSH critic. Anchors:
-- feel (0-10): 8-10 = punchy/alive (projectiles flying, particle bursts, hit flashes, screen kick); 4-6 = some motion; 0-3 = nearly static/frozen.
-- readability_in_motion (0-10): 8-10 = you can still track hero vs enemies vs projectiles as it moves; 0-3 = chaos/can't tell.
-- juice (0-10): 8-10 = lots of satisfying feedback FX (trails, sparks, flashes, knockback); 0-3 = flat/no feedback.
-- animation (0-10): 8-10 = entities have real CHARACTER animation across frames (idle motion, attack anticipation/recoil, hit reactions, squash/stretch, spawn/death scaling); 4-6 = a little; 0-3 = entities only translate/spin rigidly like static props — no animation.
-Return ONLY one minified JSON object: {"reasoning":"<2 blunt sentences>","scores":{"feel":<n>,"readability_in_motion":<n>,"juice":<n>,"animation":<n>},"top_issues":["<fix>","<fix>"]}`;
+Judge the MOTION across frames, not one still. Grade like Edge: 5 = a competent shipped game, 8 = great,
+9-10 = genre-defining; "no obvious problem" is a 5, not an 8. Cite the specific frames behind each score;
+if you can't cite evidence for a high band, default LOW. Anchors:
+- feel (0-10): 8-10 = punchy/alive (projectiles flying, particle bursts, hit flashes, screen kick across frames); 4-6 = some motion; 0-3 = nearly static/frozen.
+- readability_in_motion (0-10): 8-10 = hero/enemies/projectiles stay the highest-contrast, separable elements even in chaos; 4-6 = trackable with effort; 0-3 = same-hue VFX soup / can't tell.
+- juice (0-10): 8-10 = layered feedback at the contact point — flash + impact burst + knockback/flinch + shake, AND a visible HIT-STOP (a 1-3 frame freeze on impact); 4-6 = one or two cues, no hit-stop; 0-3 = flat/no feedback.
+- animation (0-10): 8-10 = real CHARACTER animation — visible ATTACK ANTICIPATION (a wind-up pose before the strike), FOLLOW-THROUGH (parts settle after), a LIVING IDLE (breathing/sway, not pixel-identical frames), and ENEMY REACTION poses (flinch/stagger when hit); 4-6 = some bob/recoil but rigid; 0-3 = entities only translate/spin like static props.
+Return ONLY one minified JSON object: {"reasoning":"<2 blunt evidence-citing sentences>","scores":{"feel":<n>,"readability_in_motion":<n>,"juice":<n>,"animation":<n>},"top_issues":["<fix>","<fix>"]}`;
   return new Promise((resolve) => {
     const p = spawn('claude', ['-p', '--model', 'sonnet'], { cwd: ROOT, shell: true });
     let out = ''; p.stdout.on('data', (d) => (out += d)); p.stderr.on('data', () => {});

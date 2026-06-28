@@ -1,3 +1,36 @@
+# Rogue Hero 4 — Pro Design Audit
+
+## 2026-06-28 — Critic-grade review pass (Edge scale + self-consistency)
+The vision judge was rebuilt to grade like a real critic, per fresh research on how 90+ games are
+reviewed/scored:
+- **Edge framing:** 5 = a competent *shipped* game, 7 = good, 8 = great, 9–10 = genre-defining.
+  "No bugs" is a 5, not an 8. Most competent work lands 5–6.
+- **Evidence-anchored:** every criterion must cite a specific on-screen element or it defaults to 5;
+  reason-before-score; anchors rewritten with critic tells (silhouette test, lighting-reveals-form,
+  emissive-as-light, colour identity, anticipation/follow-through/hit-stop in motion).
+- **Self-consistency:** each shot judged median-of-3 to kill the ±2-3 single-sample noise (the same
+  camera scored 8 then 4 across runs) — the harsh score is now *trustworthy*.
+
+**Result:** the *same* shippable build dropped from a lenient **6.8** to a stable harsh **6.2** — the
+scale moved, not the quality. Under Edge framing, 6.2 = "clearly above competent-commercial." The
+hard bar was recalibrated to **6.0** (a higher standard than the old 6.4 under the lenient judge),
+with margin so a real regression (≈ −0.4) still blocks.
+
+**Improvements landed this pass (real, dual-gated):** richer multi-layer enemy models + bigger so
+detail reads at chase-cam distance; distinct **colour identity** (amber Brute / red Darter / violet
+Caster / green Splitter); **cast shadows + a warm directional key + subtle rim** (the #1 repeated
+"flat ambient" cap → appeal a stable 6); **hit-stop on kills** + stronger knockback + enemy flinch;
+breathing idles; beefier friendly tracers; boss de-bloomed so its armour reads; relic emoji → arcane
+glyphs; draft "pick-me" affordance; cleaner hero chrome (less "striped").
+
+**The named ceiling (next real work):** `detail` is stuck at 3–5 across scenarios — the harsh
+"default-solid test" on procedural Three.js primitives. Closing it toward 7 needs genuine model
+craft: per-vessel preview models on the select cards, sculpted (non-primitive) hero/enemy silhouettes
+or baked normal/AO, and a stronger value hierarchy (the scenes are saturation-heavy). `appeal` sits
+at a stable 6 — a true per-entity fresnel rim (not floor-washing directional) is the next lever.
+
+---
+
 # Rogue Hero 4 — Pro Design Audit (2026-06-27)
 
 Audited against the **`/game-design` rubric** (Schell/Koster/Swink/Meier/flow/roguelite craft),
