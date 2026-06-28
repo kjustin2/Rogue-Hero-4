@@ -83,6 +83,52 @@ export function tintPlayer(player: THREE.Object3D, color: number): void {
   });
 }
 
+// Distinct, designed enemy creatures (WoW-ish unique silhouettes) built from primitives, fresh
+// per enemy so each owns its materials (hit-flash + disposal). The main hittable shell is named
+// 'body'; the glowing core is 'core'; decorative parts are tagged userData.wing/.orbit/.pod so
+// the renderer can animate them. Returned facing +Z (the renderer turns it toward the player).
+// shared per-kind part geometries (created once, reused across every enemy — materials stay
+// per-instance for hit-flash/disposal; geometries must NOT be per-enemy or they leak).
+const eGeo = new Map<string, THREE.BufferGeometry>();
+const cg = (key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry => {
+  let g = eGeo.get(key); if (!g) { g = make(); eGeo.set(key, g); } return g;
+};
+export function buildEnemy(kind: string, color: number): THREE.Group {
+  const g = new THREE.Group();
+  const dark = () => new THREE.MeshStandardMaterial({ color: 0x160d2e, emissive: color, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0.6, transparent: true, opacity: 0.92 });
+  const glow = (i = 2.8) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: i, roughness: 0.3 });
+  const shell = (geo: THREE.BufferGeometry) => { const m = new THREE.Mesh(geo, dark()); m.name = 'body'; g.add(m); return m; };
+  const core = (geo: THREE.BufferGeometry, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, glow(3.2)); m.name = 'core'; m.position.set(x, y, z); g.add(m); return m; };
+  switch (kind) {
+    case 'darter': { // sleek dart/wasp
+      shell(cg('d-body', () => new THREE.ConeGeometry(0.55, 1.8, 6))).rotation.x = Math.PI / 2;
+      for (const s of [-1, 1]) { const wing = new THREE.Mesh(cg('d-wing', () => new THREE.BoxGeometry(0.06, 0.55, 1.1)), glow(1.7)); wing.position.set(s * 0.5, 0, -0.25); wing.rotation.y = s * 0.5; wing.userData.wing = s; g.add(wing); }
+      core(cg('d-core', () => new THREE.IcosahedronGeometry(0.24, 0)), 0, 0, 0.7);
+      break;
+    }
+    case 'brute': { // hulking bruiser with shoulder plates + a glowing maw
+      shell(cg('b-body', () => new THREE.IcosahedronGeometry(1.05, 0)));
+      for (const s of [-1, 1]) { const pl = new THREE.Mesh(cg('b-plate', () => new THREE.BoxGeometry(0.75, 0.55, 0.75)), dark()); pl.position.set(s * 1.0, 0.45, 0); pl.rotation.z = s * 0.45; g.add(pl); }
+      core(cg('b-maw', () => new THREE.BoxGeometry(0.8, 0.28, 0.35)), 0, -0.1, 0.9);
+      break;
+    }
+    case 'caster': { // floating sorcerer: tall crystal + orbiting runes + focus core
+      shell(cg('c-body', () => new THREE.OctahedronGeometry(0.82, 0))).scale.y = 1.5;
+      core(cg('c-core', () => new THREE.IcosahedronGeometry(0.32, 0)));
+      for (let i = 0; i < 3; i++) { const rune = new THREE.Mesh(cg('c-rune', () => new THREE.TorusGeometry(0.2, 0.045, 6, 14)), glow(2.4)); rune.userData.orbit = i; g.add(rune); }
+      break;
+    }
+    case 'splitter':
+    default: { // pod cluster, visibly ready to split apart
+      shell(cg('s-body', () => new THREE.DodecahedronGeometry(0.72, 0)));
+      for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI * 2; const pod = new THREE.Mesh(cg('s-pod', () => new THREE.IcosahedronGeometry(0.42, 0)), dark()); pod.position.set(Math.cos(a) * 0.72, 0, Math.sin(a) * 0.72); pod.userData.pod = i; g.add(pod); }
+      core(cg('s-core', () => new THREE.IcosahedronGeometry(0.36, 0)));
+      break;
+    }
+  }
+  return g;
+}
+
 // Procedural neon polyhedron for minion enemies — shared geo/material per kind.
 const geoCache = new Map<string, THREE.BufferGeometry>();
 export function enemyGeo(kind: string): THREE.BufferGeometry {

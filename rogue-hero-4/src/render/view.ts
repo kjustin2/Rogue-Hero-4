@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { World } from '../sim/world';
 import { Bus } from '../bus';
 import { ARENA, NEON } from '../content';
-import { loadModels, neonMat, tintPlayer, enemyGeo, type Models } from './models';
+import { loadModels, neonMat, tintPlayer, buildEnemy, type Models } from './models';
 
 interface Particle { spr: THREE.Sprite; vx: number; vy: number; vz: number; life: number; max: number; size: number; }
 
@@ -46,11 +46,8 @@ export class View {
   private walls: THREE.Mesh[] = [];
   private pillars: THREE.Mesh[] = [];
   private ringGeo = new THREE.RingGeometry(0.78, 1.05, 28);
-  private wireMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false });
   private teleGeo = new THREE.CircleGeometry(1, 36);
   private telePool: { mesh: THREE.Mesh; t: number; dur: number; r: number }[] = [];
-  private coreGeo = new THREE.IcosahedronGeometry(0.42, 0);
-  private shardGeo = new THREE.OctahedronGeometry(0.2, 0);
   // combat-FX pools: expanding shockwave rings, melee slash arcs, death shatter shards
   private shockGeo = new THREE.RingGeometry(0.78, 1.0, 48);
   private shockPool: { mesh: THREE.Mesh; t: number; dur: number; maxR: number }[] = [];
@@ -367,52 +364,39 @@ export class View {
       seen.add(e.id);
       let g = this.enemyMeshes.get(e.id);
       if (!g) {
-        g = new THREE.Group();
-        // designed construct: a dark SEMI-TRANSPARENT faceted shell (per-instance mat so it can
-        // flash white on hit) around a bright glowing energy CORE, with neon wireframe edges.
-        const body = new THREE.Mesh(enemyGeo(e.def.kind), new THREE.MeshStandardMaterial({
-          color: 0x140c28, emissive: e.def.color, emissiveIntensity: 0.9, roughness: 0.35, metalness: 0.6, transparent: true, opacity: 0.6 }));
-        body.name = 'body';
-        const wire = new THREE.Mesh(enemyGeo(e.def.kind), this.wireMat); wire.scale.setScalar(1.07); body.add(wire);
-        const core = new THREE.Mesh(this.coreGeo, neonMat(e.def.color, 3.4)); core.name = 'core'; body.add(core);
-        // orbiting shards (extra layers/pieces) — shared material, animated each frame
-        const shards = new THREE.Group(); shards.name = 'shards';
-        for (let k = 0; k < (e.def.kind === 'brute' || e.def.kind === 'splitter' ? 3 : 2); k++) shards.add(new THREE.Mesh(this.shardGeo, neonMat(e.def.color, 2.8)));
-        // threat-orange ground ring so foes POP against any biome's accent colour (and read as hostile)
+        g = buildEnemy(e.def.kind, e.def.color); // distinct designed creature (own materials)
         const ring = new THREE.Mesh(this.ringGeo, new THREE.MeshBasicMaterial({ color: ENEMY_FIRE, transparent: true, opacity: 0.95, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = -UP + 0.04; ring.name = 'ring';
-        g.add(body, ring, shards); g.userData.born = w.t; this.scene.add(g); this.enemyMeshes.set(e.id, g);
+        g.add(ring); g.userData.born = w.t; this.scene.add(g); this.enemyMeshes.set(e.id, g);
       }
       const body = g.getObjectByName('body') as THREE.Mesh;
-      const core = g.getObjectByName('core') as THREE.Mesh;
+      const core = g.getObjectByName('core') as THREE.Mesh | null;
       const ring = g.getObjectByName('ring') as THREE.Mesh;
       const f = Math.min(1, e.hitFlash / 0.12);                  // 1 right after a hit -> 0
       const age = w.t - (g.userData.born ?? w.t);
       const spawnUp = Math.min(1, age / 0.32); const spawn = spawnUp * (2 - spawnUp); // ease-out scale-in
       const charge = e.windup > 0 ? 1 : 0;                        // brute charging a slam
-      const chargePulse = 1 + charge * (0.22 + Math.sin(w.t * 30) * 0.1);
-      const pop = (1 + f * 0.45 + Math.sin(w.t * 3 + e.id) * 0.04) * chargePulse; // hit-pop + breathe + charge
-      g.position.set(e.x, UP + Math.sin(w.t * 2.5 + e.id) * 0.12, e.z); // idle bob
-      body.scale.setScalar((e.elite ? 1.6 : 1.15) * pop * spawn);
-      body.rotation.y += dt * (e.def.kind === 'darter' ? 6 : 1.5) * (1 + charge * 4); body.rotation.x += dt * 0.8;
-      core.rotation.y -= dt * 2.5; core.rotation.z += dt * 1.5;   // core counter-spins
-      core.scale.setScalar((0.9 + Math.sin(w.t * 6 + e.id) * 0.12) * (1 + f + charge * 0.6)); // pulse + flare on hit/charge
-      ring.scale.setScalar(e.elite ? 1.7 : 1.2);
-      // orbiting shards (extra pieces + animation); fling outward when charging
-      const shards = g.getObjectByName('shards') as THREE.Group;
-      const rad = (e.elite ? 1.9 : 1.4) + charge * 0.7;
-      for (let k = 0; k < shards.children.length; k++) {
-        const sh = shards.children[k]; const a = w.t * 3 + (k / shards.children.length) * Math.PI * 2 + e.id;
-        sh.position.set(Math.cos(a) * rad, Math.sin(w.t * 4 + k) * 0.35, Math.sin(a) * rad);
-        sh.rotation.y += dt * 5; sh.rotation.x += dt * 3;
-      }
+      const lunge = e.lunge > 0 ? 1 : 0;
+      // face the player (models point +Z) + idle sway, bob, charge-grow
+      g.rotation.y = Math.atan2(pl.x - e.x, pl.z - e.z) + Math.sin(w.t * 2 + e.id) * 0.08;
+      g.position.set(e.x, UP + Math.sin(w.t * 2.5 + e.id) * 0.12, e.z);
+      g.scale.setScalar((e.elite ? 1.5 : 1.1) * spawn * (1 + charge * 0.14));
+      body.scale.setScalar(1 + f * 0.3);
+      body.rotation.z = Math.sin(w.t * 3 + e.id) * 0.07;         // idle rock
       const bm = body.material as THREE.MeshStandardMaterial;
-      bm.emissive.setHex(e.def.color).lerp(WHITE, f + charge * 0.5);  // flash white on hit / charge
-      bm.emissiveIntensity = 0.9 + f * 3 + charge * 2; bm.opacity = 0.6 + f * 0.4;
+      bm.emissive.setHex(e.def.color).lerp(WHITE, f + charge * 0.5); // flash white on hit / charge
+      bm.emissiveIntensity = 0.7 + f * 3 + charge * 2;
+      if (core) { core.rotation.y += dt * 3; core.scale.setScalar((0.9 + Math.sin(w.t * 6 + e.id) * 0.14) * (1 + f + charge * 0.6)); }
+      ring.scale.setScalar(e.elite ? 1.7 : 1.2);
+      // animate the distinct parts: wings flap (faster mid-lunge), runes orbit, pods pulse out
+      for (const c of g.children) {
+        if (c.userData.wing !== undefined) c.rotation.y = c.userData.wing * (0.5 + Math.sin(w.t * (lunge ? 34 : 14) + e.id) * 0.35);
+        else if (c.userData.orbit !== undefined) { const a = w.t * 2.5 + (c.userData.orbit / 3) * Math.PI * 2; c.position.set(Math.cos(a) * 0.95, Math.sin(w.t * 3 + c.userData.orbit) * 0.3, Math.sin(a) * 0.95); c.rotation.x += dt * 4; }
+        else if (c.userData.pod !== undefined) { const a = (c.userData.pod / 3) * Math.PI * 2; const r = 0.72 + charge * 0.4 + Math.sin(w.t * 4 + c.userData.pod) * 0.07; c.position.set(Math.cos(a) * r, 0, Math.sin(a) * r); }
+      }
     }
     for (const [id, g] of this.enemyMeshes) if (!seen.has(id)) {
-      const body = g.getObjectByName('body') as THREE.Mesh; const ring = g.getObjectByName('ring') as THREE.Mesh;
-      (body.material as THREE.Material).dispose(); (ring.material as THREE.Material).dispose(); // per-instance mats (core/wire are shared)
+      g.traverse((o) => { const m = (o as THREE.Mesh).material; if (m) (m as THREE.Material).dispose(); }); // free per-enemy mats
       this.scene.remove(g); this.enemyMeshes.delete(id);
     }
 
