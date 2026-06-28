@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { World } from '../sim/world';
 import { Bus } from '../bus';
 import { ARENA, NEON } from '../content';
+import { zoneOf, zoneColor } from '../sim/tempo';
 import { loadModels, neonMat, tintPlayer, buildEnemy, type Models } from './models';
 
 interface Particle { spr: THREE.Sprite; vx: number; vy: number; vz: number; life: number; max: number; size: number; }
@@ -10,6 +11,7 @@ const UP = 0.9; // entity hover height
 const ENEMY_FIRE = 0xff5a2a; // ALL enemy fire is hot-orange so friend/foe reads instantly
 const WHITE = new THREE.Color(0xffffff);
 const HURT = new THREE.Color(0xff3b5c);
+const ZONECOL = new THREE.Color(); // scratch for the hero's tempo-zone tint
 
 export class View {
   scene = new THREE.Scene();
@@ -317,34 +319,43 @@ export class View {
     this.aimDart.position.set(pl.x + Math.cos(pl.angle) * reach, 0.3, pl.z + Math.sin(pl.angle) * reach);
     this.aimDart.rotation.set(Math.PI / 2, 0, -pl.angle - Math.PI / 2);
     (this.aimDart.material as THREE.MeshBasicMaterial).opacity = 0.7 + this.castPunch * 0.3;
+    // DYNAMIC state: the hero charges with the TEMPO zone (HOT->red, COLD->ice, CRIT->magenta),
+    // brightens with combo, and pulses red when low on HP.
+    const energy = Math.min(1, Math.abs(pl.tempo - 50) / 50);   // 0 neutral -> 1 at the extremes
+    ZONECOL.setHex(zoneColor(zoneOf(pl.tempo)));
+    const lowHp = pl.hp / pl.maxHp < 0.3 ? (0.5 + Math.sin(w.t * 11) * 0.5) : 0;
+    const combo = Math.min(1, pl.combo / 16);
     this.playerLight.position.set(pl.x, 3.2, pl.z);
-    this.playerLight.intensity = 1.0 + this.castPunch * 1.6 + this.dashT;
+    this.playerLight.color.setHex(this.charColor).lerp(ZONECOL, energy * 0.7);
+    this.playerLight.intensity = 1.0 + energy * 0.8 + combo * 0.6 + this.castPunch * 1.6 + this.dashT;
 
     // energy core (chest): pulse, flare on cast, redden on hurt
     if (this.heroCore) {
       this.heroCore.visible = pl.alive;
       this.heroCore.position.set(pl.x, py + 0.9, pl.z);
       this.heroCore.rotation.y += dt * 3; this.heroCore.rotation.x += dt * 2;
-      this.heroCore.scale.setScalar((0.9 + Math.sin(w.t * 7) * 0.12) * (1 + this.castPunch * 0.6));
+      this.heroCore.scale.setScalar((0.9 + Math.sin(w.t * 7) * 0.12) * (1 + this.castPunch * 0.6 + combo * 0.25));
       const cm = this.heroCore.material as THREE.MeshStandardMaterial;
-      cm.emissive.setHex(this.charColor).lerp(HURT, this.hurtT);
-      cm.emissiveIntensity = 3.6 + this.castPunch * 3;
+      cm.emissive.setHex(this.charColor).lerp(ZONECOL, energy * 0.8).lerp(HURT, Math.max(this.hurtT, lowHp * 0.6));
+      cm.emissiveIntensity = 3.2 + energy * 2 + combo * 1.5 + this.castPunch * 3;
     }
     if (this.heroAura) {
       this.heroAura.visible = pl.alive;
       this.heroAura.position.set(pl.x, py + 0.3, pl.z);
-      this.heroAura.scale.setScalar(1 + Math.sin(w.t * 4) * 0.06 + this.castPunch * 0.35 + this.dashT * 0.3);
+      this.heroAura.scale.setScalar(1 + Math.sin(w.t * 4) * 0.06 + this.castPunch * 0.35 + this.dashT * 0.3 + energy * 0.15 + combo * 0.15);
       const am = this.heroAura.material as THREE.MeshBasicMaterial;
-      am.color.setHex(this.charColor).lerp(HURT, this.hurtT * 0.8);
-      am.opacity = 0.2 + this.castPunch * 0.2 + this.hurtT * 0.3;
+      am.color.setHex(this.charColor).lerp(ZONECOL, energy * 0.8).lerp(HURT, Math.max(this.hurtT, lowHp) * 0.8);
+      am.opacity = 0.18 + this.castPunch * 0.2 + this.hurtT * 0.3 + energy * 0.12 + lowHp * 0.16 + combo * 0.08;
     }
     if (this.dashT > 0.35) this.burst(pl.x, py, this.charColor, 2, 1.2, 1.1, 0.28); // dash afterimage trail
     for (let i = 0; i < this.heroShards.length; i++) {
       const s = this.heroShards[i]; s.visible = pl.alive;
-      const a = w.t * 1.6 + i * (Math.PI * 2 / this.heroShards.length);
-      const rad = 1.5 + this.dashT * 0.9; // shards fling out on dash
+      const a = w.t * (1.6 + combo * 1.6) + i * (Math.PI * 2 / this.heroShards.length); // spin up with combo
+      const rad = 1.5 + this.dashT * 0.9 + energy * 0.25;
       s.position.set(pl.x + Math.cos(a) * rad, py + 0.7 + Math.sin(w.t * 3 + i) * 0.2, pl.z + Math.sin(a) * rad);
       s.rotation.y += dt * 3; s.rotation.x += dt * 2;
+      const sm = s.material as THREE.MeshStandardMaterial;
+      sm.emissive.setHex(this.charColor).lerp(ZONECOL, energy * 0.85); sm.color.copy(sm.emissive);
     }
 
     // boss mesh — big, imposing, grounded glow
