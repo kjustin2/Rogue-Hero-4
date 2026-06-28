@@ -88,8 +88,10 @@ export class View {
     // detailed paneled/circuit floor (procedural texture = albedo + glowing emissive seams),
     // so the arena reads as a built surface, not a flat plane. Seams are white in the texture
     // and tinted per-biome via the emissive colour.
+    // REFLECTIVE floor (high metalness + low roughness) catches the neon IBL env -> the iconic
+    // wet-arena sheen; the circuit texture is albedo + glowing emissive seams.
     const ftex = floorTex();
-    this.floorMat = new THREE.MeshStandardMaterial({ map: ftex, emissiveMap: ftex, emissive: NEON.mag, emissiveIntensity: 0.5, roughness: 0.55, metalness: 0.35 });
+    this.floorMat = new THREE.MeshStandardMaterial({ map: ftex, emissiveMap: ftex, emissive: NEON.mag, emissiveIntensity: 0.55, roughness: 0.16, metalness: 0.9, envMapIntensity: 1.9 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(ARENA * 2.4, ARENA * 2.4), this.floorMat);
     floor.rotation.x = -Math.PI / 2; floor.position.y = -0.02; this.scene.add(floor);
 
@@ -284,6 +286,7 @@ export class View {
   sync(dt: number): void {
     if (!this.ready) return;
     const w = this.world; const pl = w.player;
+    this.floorMat.emissiveIntensity = 0.45 + Math.sin(w.t * 1.2) * 0.16; // slow floor energy pulse
 
     // ---- hero: idle / walk / cast / dash / hurt animation -------------------
     this.castPunch = Math.max(0, this.castPunch - dt * 4);
@@ -595,28 +598,49 @@ function starfield(): THREE.Points {
   const m = new THREE.PointsMaterial({ color: 0xbcd0ff, size: 1.1, sizeAttenuation: true, transparent: true, opacity: 0.85, fog: false });
   const p = new THREE.Points(g, m); p.name = 'stars'; return p;
 }
+// Neon environment (equirect) for image-based lighting: a deep gradient with a bright neon
+// horizon band + colored streaks — what the reflective floor/metallic surfaces catch.
+export function neonEnvTex(): THREE.CanvasTexture {
+  const w = 512, h = 256, c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d')!;
+  const grd = g.createLinearGradient(0, 0, 0, h);
+  grd.addColorStop(0, '#0a0620'); grd.addColorStop(0.42, '#2e2068'); grd.addColorStop(0.52, '#9a3ad0'); grd.addColorStop(1, '#0c0726');
+  g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(255,108,242,0.95)'; g.fillRect(0, h * 0.5, w, 10);          // bright neon horizon band
+  for (let i = 0; i < 14; i++) { g.fillStyle = i % 2 ? 'rgba(77,251,255,0.8)' : 'rgba(255,108,242,0.85)'; g.fillRect((i / 14) * w + 6, h * 0.3, 9, h * 0.34); } // vivid wall streaks
+  const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 // Distant world backdrop: an instanced neon SKYLINE of spires (2 draw calls) ringing the
 // arena beyond the walls + a celestial ring/moon high in the sky. Gives real depth so the
 // background isn't an empty gradient.
 function buildBackdrop(): THREE.Group {
   const g = new THREE.Group();
-  const N = 30;
-  const spireMat = new THREE.MeshStandardMaterial({ color: 0x0e0826, emissive: 0x2e2068, emissiveIntensity: 0.5, roughness: 0.7, fog: true });
-  const capMat = new THREE.MeshBasicMaterial({ color: 0x7a5cff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  const N = 42;
+  const spireMat = new THREE.MeshStandardMaterial({ color: 0x0e0826, emissive: 0x3a2a7a, emissiveIntensity: 0.6, roughness: 0.7, fog: true });
+  const capMat = new THREE.MeshBasicMaterial({ color: 0x8a6cff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
   const bodies = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), spireMat, N);
   const caps = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.7, 1), capMat, N);
   const d = new THREE.Object3D();
   for (let i = 0; i < N; i++) {
-    const a = (i / N) * Math.PI * 2; const r = 60 + (i % 4) * 8;
-    const h = 20 + ((i * 53) % 40); const wdt = 3.5 + (i % 3) * 1.8; // tall enough to loom OVER the arena walls
+    // a NEON CITY SKYLINE close behind the walls (radius 34-56) so it looms over the wall-line
+    // and reads as the in-play horizon backdrop (the down-cam can't see far/tall sky structures).
+    const a = (i / N) * Math.PI * 2; const r = 34 + (i % 6) * 4.5;
+    const h = 12 + ((i * 53) % 24); const wdt = 3.5 + (i % 3) * 2.2;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
-    d.position.set(x, h / 2 - 3, z); d.rotation.set(0, a, 0); d.scale.set(wdt, h, wdt); d.updateMatrix(); bodies.setMatrixAt(i, d.matrix);
-    d.position.set(x, h - 3, z); d.scale.set(wdt + 0.5, 0.9, wdt + 0.5); d.updateMatrix(); caps.setMatrixAt(i, d.matrix);
+    d.position.set(x, h / 2 - 3, z); d.rotation.set(0, a + (i % 3) * 0.2, 0); d.scale.set(wdt, h, wdt); d.updateMatrix(); bodies.setMatrixAt(i, d.matrix);
+    d.position.set(x, h - 3, z); d.scale.set(wdt + 0.6, 1.0, wdt + 0.6); d.updateMatrix(); caps.setMatrixAt(i, d.matrix);
   }
   g.add(bodies, caps);
-  // celestial ring/moon — low + large enough to read above the back wall
+  // colossal central megastructure (The Conductor's spire) — dramatic in cutscenes/wide shots
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(5, 13, 72, 6),
+    new THREE.MeshStandardMaterial({ color: 0x0c0826, emissive: 0x6a3cff, emissiveIntensity: 0.55, roughness: 0.6 }));
+  tower.position.set(0, 30, -98); g.add(tower);
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(9, 1.6, 8, 28), new THREE.MeshBasicMaterial({ color: 0x9a7cff, transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+  crown.position.set(0, 64, -98); crown.rotation.x = Math.PI / 2; g.add(crown);
+  // celestial ring/moon
   const moon = new THREE.Mesh(new THREE.SphereGeometry(18, 24, 18), new THREE.MeshBasicMaterial({ color: 0x2a2060, fog: false }));
-  moon.position.set(-22, 40, -95); g.add(moon);
+  moon.position.set(-30, 48, -110); g.add(moon);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(27, 1.4, 10, 56), new THREE.MeshBasicMaterial({ color: 0x9a7cff, transparent: true, opacity: 0.65, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
   ring.position.copy(moon.position); ring.rotation.set(1.15, 0.4, 0); g.add(ring);
   return g;

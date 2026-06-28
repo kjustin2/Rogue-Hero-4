@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { View } from './view';
+import { View, neonEnvTex } from './view';
 
 // Renderer + graded post chain. The full bloom stack stalls under SwiftShader,
 // so ?lowfx (and ?nofx) drop to a plain blit — same scene, no composer.
@@ -20,6 +20,12 @@ export class Stage {
     this.renderer.setPixelRatio(lowfx ? 1 : Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
+    // image-based lighting: a neon environment so the reflective floor + metallic surfaces pick
+    // up a premium neon sheen (the iconic wet-arena look) without a per-frame reflection pass.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const eq = neonEnvTex();
+    view.scene.environment = pmrem.fromEquirectangular(eq).texture;
+    eq.dispose(); pmrem.dispose();
     this.resize();
 
     if (!lowfx) {
