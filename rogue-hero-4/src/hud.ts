@@ -181,20 +181,30 @@ export class Hud {
   // ---- overlay screens ----------------------------------------------------
   private screen(html: string): HTMLElement {
     this.overlay.querySelector('.screen')?.remove();
-    const s = document.createElement('div'); s.className = 'screen'; s.innerHTML = html;
-    this.overlay.appendChild(s); return s;
+    // content sits inside a beveled neon PANEL (auto-hugs content) so menus read as crafted
+    // SC2-style frames instead of text floating over the arena (the VLM flagged "no container").
+    const s = document.createElement('div'); s.className = 'screen';
+    s.innerHTML = `<div class="screen-inner">${html}</div>`;
+    this.overlay.appendChild(s); return s.querySelector('.screen-inner') as HTMLElement;
   }
   hideOverlay(): void { this.overlay.querySelector('.screen')?.remove(); }
 
-  showTitle(onPlay: () => void, onHow: () => void): void {
+  showTitle(onPlay: () => void, onTutorial: () => void, onHow: () => void, onExit: () => void): void {
     const s = this.screen(`
       <div class="title-big">ROGUE HERO 4</div>
       <div class="subtitle">Neon · Arcane · Relentless</div>
-      <p class="hint" style="max-width:520px">Dance on the TEMPO meter — shove it HOT to hit hard, ride it COLD to tank,
+      <p class="hint" style="max-width:520px;font-size:15px;opacity:0.95">Dance on the TEMPO meter — shove it HOT to hit hard, ride it COLD to tank,
         slam it to 0 or 100 to detonate the room. Clear six depths and silence The Conductor.</p>
-      <div class="row"><button class="btn primary" data-play>▶ Play</button><button class="btn" data-how>How to Play</button></div>`);
+      <div class="row"><button class="btn primary" data-play>▶ Play</button></div>
+      <div class="row">
+        <button class="btn" data-tut>⌁ Tutorial</button>
+        <button class="btn" data-how>How to Play</button>
+        <button class="btn" data-exit>⏻ Exit</button>
+      </div>`);
     s.querySelector('[data-play]')!.addEventListener('click', onPlay);
+    s.querySelector('[data-tut]')!.addEventListener('click', onTutorial);
     s.querySelector('[data-how]')!.addEventListener('click', onHow);
+    s.querySelector('[data-exit]')!.addEventListener('click', onExit);
   }
 
   showHowTo(onBack: () => void): void {

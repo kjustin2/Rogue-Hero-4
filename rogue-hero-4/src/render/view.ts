@@ -172,8 +172,10 @@ export class View {
     this.models = await loadModels();
     this.playerMesh.add(this.models.player);
     // hero energy aura + orbiting shards (life / "designed character" read)
-    this.heroAura = new THREE.Mesh(new THREE.SphereGeometry(1.6, 18, 14),
-      new THREE.MeshBasicMaterial({ color: this.charColor, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false }));
+    // tight, faint energy shell — small enough that the chrome hero silhouette reads ABOVE it
+    // (a big bright aura was the main cause of the "glowing blob" read).
+    this.heroAura = new THREE.Mesh(new THREE.SphereGeometry(1.05, 18, 14),
+      new THREE.MeshBasicMaterial({ color: this.charColor, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false }));
     this.scene.add(this.heroAura);
     this.heroCore = new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 0), neonMat(this.charColor, 3.6).clone());
     this.scene.add(this.heroCore);
@@ -348,7 +350,7 @@ export class View {
       this.heroAura.scale.setScalar(1 + Math.sin(w.t * 4) * 0.06 + this.castPunch * 0.35 + this.dashT * 0.3 + energy * 0.15 + combo * 0.15);
       const am = this.heroAura.material as THREE.MeshBasicMaterial;
       am.color.setHex(this.charColor).lerp(ZONECOL, energy * 0.8).lerp(HURT, Math.max(this.hurtT, lowHp) * 0.8);
-      am.opacity = 0.18 + this.castPunch * 0.2 + this.hurtT * 0.3 + energy * 0.12 + lowHp * 0.16 + combo * 0.08;
+      am.opacity = 0.10 + this.castPunch * 0.2 + this.hurtT * 0.3 + energy * 0.1 + lowHp * 0.16 + combo * 0.06;
     }
     if (this.dashT > 0.35) this.burst(pl.x, py, this.charColor, 2, 1.2, 1.1, 0.28); // dash afterimage trail
     for (let i = 0; i < this.heroShards.length; i++) {
@@ -365,8 +367,9 @@ export class View {
     if (w.boss && !this.bossMesh && this.models) { this.bossMesh = this.models.boss; this.scene.add(this.bossMesh); }
     if (!w.boss && this.bossMesh) { this.scene.remove(this.bossMesh); this.bossMesh = null; }
     if (w.boss && this.bossMesh) {
-      this.bossMesh.position.set(w.boss.x, UP + 2.6 + Math.sin(w.t * 2) * 0.3, w.boss.z);
+      this.bossMesh.position.set(w.boss.x, UP + 2.0 + Math.sin(w.t * 2) * 0.3, w.boss.z);
       this.bossMesh.rotation.y += dt * 0.5;
+      const br = this.bossMesh.getObjectByName('bossRing'); if (br) br.rotation.y -= dt * 1.1; // batons counter-spin
     }
     this.bossRing.visible = !!w.boss;
     if (w.boss) { this.bossRing.position.set(w.boss.x, 0.05, w.boss.z); this.bossRing.scale.setScalar(1 + Math.sin(w.t * 3) * 0.08); }

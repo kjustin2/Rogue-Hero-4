@@ -37,15 +37,13 @@ export async function loadModels(): Promise<Models> {
   const texLoader = new THREE.TextureLoader();
   const tex = (p: string) => texLoader.load(url(p));
 
-  const [flyerGltf, orbGltf] = await Promise.all([
-    loader.loadAsync(url('models/enemy-flyer.glb')),
+  const [orbGltf] = await Promise.all([
     loader.loadAsync(url('models/orb.glb')),
   ]);
 
   const player = buildHero(0x9ff0ff); // procedural articulated hero (replaces the plain GLB blob)
 
-  const boss = retint(flyerGltf.scene, 0x36f9ff, 1.8);
-  boss.scale.setScalar(9.0);
+  const boss = buildBoss(0x36f9ff);   // procedural "Conductor" — big, distinct, multi-part
 
   const orbProto = retint(orbGltf.scene, 0x53ff8a, 1.4);
   orbProto.scale.setScalar(1.1);
@@ -58,17 +56,50 @@ export async function loadModels(): Promise<Models> {
 // orb recoil on cast). Far better silhouette + animation than a single retinted GLB blob.
 function buildHero(color: number): THREE.Group {
   const g = new THREE.Group();
-  const darkMat = () => new THREE.MeshStandardMaterial({ color: 0x171030, emissive: color, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.65 });
-  const glowMat = () => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.4, roughness: 0.3, metalness: 0.2 });
+  // Body = polished neon-chrome that READS as a hard silhouette under the IBL (metalness 1 +
+  // envMapIntensity picks up the magenta/cyan environment). It is NOT emissive, so bloom doesn't
+  // dissolve it into a glow blob — only the named accent parts bloom. This is the fix for the
+  // "featureless glowing capsule" read: contrast between a lit chassis and a few bright accents.
+  const bodyMat = () => new THREE.MeshStandardMaterial({ color: 0xc2ccec, emissive: color, emissiveIntensity: 0.14, roughness: 0.28, metalness: 1.0, envMapIntensity: 2.0 });
+  const trimMat = () => new THREE.MeshStandardMaterial({ color: 0x2a2350, emissive: color, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.9, envMapIntensity: 1.4 });
+  const glowMat = () => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 2.5, roughness: 0.25, metalness: 0.2 });
   const add = (mesh: THREE.Mesh, glow: boolean, name?: string) => { mesh.userData.glow = glow; if (name) mesh.name = name; g.add(mesh); return mesh; };
-  add(new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.0, 8), darkMat()), false).position.y = 0.5;           // robe base
-  add(new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.5, 0.75, 8), darkMat()), false).position.y = 1.05; // torso
-  add(new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), glowMat()), true, 'gem').position.set(0, 1.1, 0.32); // chest gem
-  for (const sx of [-0.46, 0.46]) add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 0), darkMat()), false).position.set(sx, 1.3, 0); // shoulders
-  add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.28, 0), glowMat()), true, 'head').position.y = 1.62;     // head core
-  const halo = add(new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.045, 8, 22), glowMat()), true, 'halo'); halo.position.y = 1.96; halo.rotation.x = Math.PI / 2;
-  add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), glowMat()), true, 'orb').position.set(0, 1.0, 0.72); // front focus orb
+  add(new THREE.Mesh(new THREE.ConeGeometry(0.64, 1.15, 8), bodyMat()), false).position.y = 0.55;            // armoured robe base
+  add(new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.08, 6, 16), trimMat()), false).position.y = 0.95;        // waist ring (layer)
+  add(new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.5, 0.8, 8), bodyMat()), false).position.y = 1.12;    // torso
+  add(new THREE.Mesh(new THREE.OctahedronGeometry(0.21, 0), glowMat()), true, 'gem').position.set(0, 1.16, 0.34); // chest gem
+  for (const sx of [-1, 1]) {
+    add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 0), bodyMat()), false).position.set(sx * 0.5, 1.42, 0);            // pauldron
+    const vane = add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.62, 0.18), trimMat()), false); vane.position.set(sx * 0.62, 1.18, -0.05); vane.rotation.z = sx * 0.4; // arm vane (silhouette width)
+  }
+  add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.26, 0.34, 8), bodyMat()), false).position.y = 1.74;  // neck/gorget
+  add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.26, 0), glowMat()), true, 'head').position.y = 1.98;    // head core (accent)
+  add(new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.5, 5), bodyMat()), false).position.y = 2.32;             // crown spike (knightly silhouette)
+  const halo = add(new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.05, 8, 22), glowMat()), true, 'halo'); halo.position.y = 2.36; halo.rotation.x = Math.PI / 2;
+  add(new THREE.Mesh(new THREE.IcosahedronGeometry(0.22, 0), glowMat()), true, 'orb').position.set(0, 1.05, 0.78); // front focus orb
   g.scale.setScalar(1.7);
+  return g;
+}
+
+// The Conductor — the climax boss. A LARGE, cold, armoured entity built to read as a clear
+// size + silhouette threat distinct from the warm hero (warm chrome vs cold dark armour): a
+// dark-metal diamond core, a single glaring eye, shoulder pylons, an outer ring of conductor
+// "batons", and a halo crown. Multi-part + lit-metal so it never reads as a glowing blob.
+function buildBoss(color: number): THREE.Group {
+  const g = new THREE.Group();
+  // armour is BRIGHT steel-teal (reads under the IBL) and carries the silhouette; the glow accents
+  // are kept MODEST so the whole stack of batons+eye+crown doesn't cumulatively bloom to a white
+  // smear (the first pass blew the boss out to pure white — readability lost).
+  const armor = () => new THREE.MeshStandardMaterial({ color: 0x3d6378, emissive: color, emissiveIntensity: 0.4, roughness: 0.3, metalness: 1.0, envMapIntensity: 1.9 });
+  const glow = (i = 1.6) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: i, roughness: 0.25, metalness: 0.3 });
+  const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.5, 0), armor()); core.scale.y = 1.2; g.add(core);
+  const eye = new THREE.Mesh(new THREE.IcosahedronGeometry(0.62, 0), glow(1.9)); eye.position.set(0, 0.2, 1.25); eye.name = 'bossEye'; g.add(eye);
+  for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.ConeGeometry(0.52, 1.9, 5), armor()); p.position.set(s * 1.7, 0.7, 0); p.rotation.z = s * -0.55; g.add(p); }
+  const ring = new THREE.Group(); ring.name = 'bossRing';
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; const b = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.6, 0.22), glow(1.1)); b.position.set(Math.cos(a) * 2.6, Math.sin(i * 1.7) * 0.5, Math.sin(a) * 2.6); b.lookAt(0, 0, 0); ring.add(b); }
+  g.add(ring);
+  const crown = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.14, 8, 28), glow(1.4)); crown.position.y = 1.9; crown.rotation.x = Math.PI / 2; g.add(crown);
+  g.scale.setScalar(2.3);
   return g;
 }
 
@@ -95,7 +126,11 @@ const cg = (key: string, make: () => THREE.BufferGeometry): THREE.BufferGeometry
 };
 export function buildEnemy(kind: string, color: number): THREE.Group {
   const g = new THREE.Group();
-  const dark = () => new THREE.MeshStandardMaterial({ color: 0x160d2e, emissive: color, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0.6, transparent: true, opacity: 0.92 });
+  // Shell = the enemy colour as LIT metallic armour (a darkened tint of the colour, not near-black)
+  // so each creature reads as a solid coloured silhouette catching the neon IBL — with a brighter
+  // glowing core for the menace. Opaque (transparency washed them out / merged with the floor).
+  const shellHex = new THREE.Color(color).multiplyScalar(0.55).getHex();
+  const dark = () => new THREE.MeshStandardMaterial({ color: shellHex, emissive: color, emissiveIntensity: 0.5, roughness: 0.38, metalness: 0.9, envMapIntensity: 1.5 });
   const glow = (i = 2.8) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: i, roughness: 0.3 });
   const shell = (geo: THREE.BufferGeometry) => { const m = new THREE.Mesh(geo, dark()); m.name = 'body'; g.add(m); return m; };
   const core = (geo: THREE.BufferGeometry, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, glow(3.2)); m.name = 'core'; m.position.set(x, y, z); g.add(m); return m; };

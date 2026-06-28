@@ -55,13 +55,17 @@ function recordRunEnd(): void {
 }
 
 // ---- flow / state machine -------------------------------------------------
-function toTitle(): void { mode = 'title'; hud.showTitle(toSelect, () => toHowTo(toTitle)); }
+function toTitle(): void { mode = 'title'; hud.showTitle(toSelect, () => startTutorialRun(lastChar), () => toHowTo(toTitle), exitGame); }
+// Electron 'core' window: close → app quits. In a browser this is a guarded no-op (an unguarded
+// window.close logs the "scripts may only close windows they opened" warning the smoke gate flags).
+function exitGame(): void { if (/electron/i.test(navigator.userAgent)) window.close(); }
 function toSelect(): void { mode = 'select'; hud.showSelect(unlockedSet(), beginRun, toTitle); }
 // how-to overlay over the title tableau (mode stays 'title' → orbit cam, no HUD)
 function toHowTo(onDone: () => void): void { mode = 'title'; hud.showHowTo(onDone); }
 
 // core run setup (no cutscene) — also the path scenarios use for instant state jumps
 function startRun(charId: string): void {
+  tutorial.stop(); // every run/scenario jump starts clean — the banner must never linger over combat
   lastChar = CHARACTERS.find((c) => c.id === charId) ? charId : 'pyre';
   world.startRun(lastChar);
   view.setCharColor(world.player.char.color);
@@ -242,10 +246,12 @@ let frameMsEMA = 16;
 let titleT = 0;
 function titleOrbit(dt: number): void {
   titleT += dt;
-  const a = titleT * 0.12;
-  // low, slow cinematic orbit — matches the in-game low chase look, not a top-down view
-  view.camera.position.set(Math.sin(a) * 22, 9 + Math.sin(titleT * 0.4) * 1.5, Math.cos(a) * 22);
-  view.camera.lookAt(0, 2.2, 0);
+  const a = titleT * 0.1;
+  // close, low hero-feature orbit: the chrome hero is the subject, the reflective floor +
+  // neon skyline + megastructure sweep behind it (replaces the empty far-out boxy orbit).
+  const px = world.player.x, pz = world.player.z;
+  view.camera.position.set(px + Math.sin(a) * 8.5, 4.2 + Math.sin(titleT * 0.35) * 0.7, pz + Math.cos(a) * 8.5);
+  view.camera.lookAt(px, 2.1, pz);
 }
 
 function frame(now: number): void {
@@ -313,7 +319,7 @@ function scenario(spec: string): string {
     case 'swarm': startRun('pyre'); world.enemies = [];
       // a wall of foes AHEAD of the hero (not on top of them) so the swarm reads and the hero stays visible
       for (let i = 0; i < 14; i++) world.spawnEnemy('darter', ((i % 7) - 3) * 6, -2 - Math.floor(i / 7) * 8, i % 6 === 0); hud.update(world); break;
-    case 'boss': startRun('pyre'); world.enterRoom(BOSS_DEPTH); world.player.z = 0; mode = 'playing'; view.setBiome(world.biome.fog, world.biome.accent); hud.update(world); break;
+    case 'boss': startRun('pyre'); world.enterRoom(BOSS_DEPTH); world.player.z = world.boss ? world.boss.z + 8 : -6; mode = 'playing'; view.setBiome(world.biome.fog, world.biome.accent); hud.update(world); break;
     case 'crit': startRun('pyre'); pl().tempo = 97; pl().tempoStall = 3; hud.update(world); break;
     case 'cold': startRun('pyre'); pl().tempo = 6; pl().tempoStall = 3; hud.update(world); break;
     case 'hot': startRun('pyre'); pl().tempo = 82; pl().tempoStall = 3; hud.update(world); break;

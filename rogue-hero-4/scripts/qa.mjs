@@ -1,8 +1,10 @@
 // QA — ONE confident gate. Runs every check and prints a single verdict so you never
 // ship with a broken type, an overlapping menu, a perf regression, or an ugly screen.
 //
-//   hard gates (fail the build): typecheck, flow/layout invariants, perf
-//   advisory (reported, read them): vision look/feel, doctor contact sheet
+//   hard gates (fail the build): typecheck, flow/layout invariants, perf, vision SHIP GATE
+//     (vision blocks on a usability floor — readability/clarity/camera/menu — + an overall avg bar;
+//      craft criteria stay harsh-but-advisory so the stingy VLM can't deadlock the build)
+//   advisory (reported, read them): motion/feel, doctor contact sheet
 //
 // Usage: node scripts/qa.mjs            (full)
 //        node scripts/qa.mjs --fast     (skip vision + doctor — fast deterministic gate)
@@ -39,7 +41,7 @@ gate('perf', true, 'node', ['scripts/perf.mjs'], /(PASS|FAIL)[^\n]*/);
 // --- advisory (look/feel) ---------------------------------------------------
 let visionAvg = '';
 if (!FAST) {
-  const v = gate('vision look/feel', false, 'node', ['scripts/vision.mjs'], /avg [\d.]+ · min \d+|avg [\d.]+, min \d+/);
+  const v = gate('vision SHIP GATE', true, 'node', ['scripts/vision.mjs'], /avg [\d.]+ · min \d+|avg [\d.]+, min \d+/);
   visionAvg = pick(v.out, /avg [\d.]+/);
   gate('motion / feel', false, 'node', ['scripts/motion.mjs'], /frozen moment|all moving/);
   gate('doctor contact sheet', false, 'node', ['scripts/doctor.mjs'], /\d+ black, \d+ errors/);
