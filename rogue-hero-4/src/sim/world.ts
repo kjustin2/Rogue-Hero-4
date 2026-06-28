@@ -274,7 +274,9 @@ export class World {
   damagePlayer(amount: number): void {
     const pl = this.player;
     if (!pl.alive || pl.iframe > 0) return;
-    let amt = amount * incomingMult(pl.tempo);
+    // difficulty RAMP (flow channel): incoming damage scales with depth so deeper rooms apply
+    // real pressure — audit showed full HP at depth 4 (too flat / outside the flow channel).
+    let amt = amount * incomingMult(pl.tempo) * (1 + (this.run.depth - 1) * 0.16);
     if (pl.char.dmgResist) amt *= 1 - pl.char.dmgResist;
     amt = Math.max(1, Math.round(amt));
     pl.hp -= amt; pl.iframe = 0.45;
@@ -377,7 +379,7 @@ export class World {
       if (e.stun > 0) { e.stun -= dt; continue; }
       const sl = e.slow > 0 ? 0.45 : 1;
       const dx = pl.x - e.x, dz = pl.z - e.z; const d = Math.hypot(dx, dz) || 1;
-      const spd = e.def.speed * sl;
+      const spd = e.def.speed * sl * (1 + (this.run.depth - 1) * 0.06); // faster + more pressure at depth
 
       // committed lunge (a darter dart): fast dash along a STORED direction — readable + dodgeable
       if (e.lunge > 0) {
@@ -404,7 +406,7 @@ export class World {
           const ang = Math.atan2(dz, dx);
           if (e.def.kind === 'boss') this.spawnProjectile(e.x, e.z, ang, 19, e.def.damage, e.def.color, false, 0, 2.4);
           else for (let s = -1; s <= 1; s++) this.spawnProjectile(e.x, e.z, ang + s * 0.16, 20, e.def.damage, e.def.color, false, 0, 2.4); // 3-round fan
-          e.cd = (e.def.fireRate ?? 1.5) * (e.phase >= 1 ? 0.6 : 1);
+          e.cd = (e.def.fireRate ?? 1.5) * (e.phase >= 1 ? 0.6 : 1) * (1 - Math.min(0.4, (this.run.depth - 1) * 0.07)); // ranged pressure ramps with depth
         }
         if (e.def.kind === 'boss') this.bossUpdate(e, dt, d);
       } else {

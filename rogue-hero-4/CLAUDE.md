@@ -96,6 +96,14 @@ logic/perf harness passes it, while `tour`/`doctor` leave them on to screenshot 
   (dispose anything you create per-frame) · run-state in `world.run`, META unlocks in
   `localStorage['rh4.meta']` (wrapped in try/catch).
 
+## Design direction & rubric (judge fun, not vibes)
+`docs/DESIGN.md` is the living design doc (core idea = the TEMPO meter; pillars: game-feel-first,
+interesting decisions, readability, flow, meta=variety). Every gameplay/feel/screen change is
+judged against the **`/game-design` skill's 10-line rubric** (Schell/Koster/Swink/Meier/flow/
+roguelite craft) — dual-gated: a vision probe (`npm run vision`/`motion` vs `docs/GAME_BIBLE.md`,
+which embeds the rubric) AND a logic assertion (`npm run audit` plays runs for the balance/flow
+signal; `perf`/`flow`/`e2e`). Don't declare fun from code alone — prove it on-screen + by assertion.
+
 ## Where to add content
 Cards/characters/enemies/relics/biomes are all data in `src/content.ts`. A new card needs a
 `CardDef` + a `case` in `World.execCard`; a new enemy needs an `EnemyDef`, a mesh in

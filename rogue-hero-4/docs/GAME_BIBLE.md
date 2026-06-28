@@ -96,3 +96,17 @@ scores covers, **per the relevant scenario**:
 
 **Pass bar for the rebuild:** every scenario ≥ 7 on every applicable criterion, and **no**
 single criterion < 6 anywhere. A scenario below bar names the specific fix in `top_issues`.
+
+## 8. Design rubric (judge against real design knowledge, not vibes)
+Grounded in Schell (lenses), Koster (fun=learning), Swink (game feel), Meier (interesting
+decisions), flow theory, and roguelite craft — full reference in the `/game-design` skill. When
+judging a screenshot/filmstrip, weigh the visual lines of this rubric:
+- **Game feel** (Swink): does the moment look responsive/snappy with layered feedback (ADSR
+  attack on hits)? Floaty/laggy/flat = low.
+- **Interesting decisions** (Meier): on menus/draft, are the choices clear, distinct, and
+  non-dominated (impactful + informed)? Obvious/blind/samey choices = low.
+- **Readability wins ties**: hero vs enemy vs projectile vs hazard instantly distinct; juice
+  never buries the read.
+- **Flow**: combat reads as engaging — not empty (boring) and not unreadable chaos (anxiety).
+- **Clarity of goal + feedback**: the player can always tell the goal and see the result.
+- **Look/cohesion**: reads as a shipped pro game (art direction + crafted detail), not programmer art.
