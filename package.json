@@ -1,0 +1,35 @@
+{
+  "name": "rogue-hero-4",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Rogue Hero 4 — neon-arcane 3rd-person roguelite (Needle Engine + Three.js)",
+  "scripts": {
+    "dev": "vite --host",
+    "start": "npm run dev",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "build:production": "tsc --noEmit && vite build -- --production",
+    "build:dev": "vite build",
+    "smoke": "node scripts/smoke.mjs",
+    "beauty": "node scripts/beauty.mjs",
+    "e2e": "node scripts/e2e.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "flow": "node scripts/investigate.mjs",
+    "serve": "vite preview --port 8000 --host 127.0.0.1 --strictPort",
+    "app": "npm run build && electron electron/main.cjs",
+    "deploy": "npm run build && npx --yes needle-cloud deploy dist --token"
+  },
+  "dependencies": {
+    "@needle-tools/engine": "5.1.2",
+    "three": "npm:@needle-tools/three@0.169.19"
+  },
+  "devDependencies": {
+    "@needle-tools/helper": "^1.11.4",
+    "@types/three": "0.169.0",
+    "@vitejs/plugin-basic-ssl": "2",
+    "electron": "^42.5.0",
+    "puppeteer-core": "^23.11.1",
+    "typescript": "^5.0.4",
+    "vite": "8.0.3"
+  }
+}

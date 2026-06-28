@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+  <html lang="en">
+    
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="favicon.ico">
+    <meta name="viewport" content="width=device-width, user-scalable=no, viewport-fit=cover">
+    <title>Rogue Hero 4 — neon-arcane roguelite</title>
+    <meta name="robots" content="index,follow">
+    <link rel="stylesheet" href="./src/styles/style.css">
+  </head>
+
+  <body>
+    <script type="module" src="./src/main.ts"></script>
+    <!-- camera-controls="0": we drive a third-person follow camera ourselves.
+         tone-mapping="none": the PostProcessingManager tone-maps in the post chain. -->
+    <needle-engine
+      camera-controls="0"
+      background-color="#06060c"
+      tone-mapping="none"
+      environment-image="https://cdn.needle.tools/static/hdris/photo_studio_01_4k.pmrem.ktx2"></needle-engine>
+  </body>
+
+</html>

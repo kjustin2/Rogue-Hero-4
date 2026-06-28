@@ -1,0 +1,65 @@
+name: Test Deployment
+
+on:
+  push:
+    branches: ["test"]
+
+  workflow_dispatch:
+    inputs:
+        webhookUrl:
+          description: 'Webhook URL for notifications'
+          required: false
+        overrideVersion:
+          description: 'needle-cloud CLI version/tag to use (e.g. rc, dev, next)'
+          required: false
+          default: 'rc'
+        api:
+          description: 'API environment: production or staging'
+          required: false
+          default: 'production'
+
+# Allow one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CLOUD_TOKEN: ${{ inputs.api == 'staging' && secrets.NEEDLE_CLOUD_TOKEN_STAGING || secrets.NEEDLE_CLOUD_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+      - run: npm ci
+      - name: Build
+        run: npm run build:production
+        env:
+          NEEDLE_CLOUD_TOKEN: ${{ env.CLOUD_TOKEN }}
+          NEEDLE_CLOUD_CLI_VERSION_OVERRIDE: ${{ inputs.overrideVersion || 'rc' }}
+
+      - name: Deploy to Needle Cloud
+        uses: needle-tools/deploy-to-needle-cloud-action@v1
+        id: deploy
+        with:
+            token: ${{ env.CLOUD_TOKEN }}
+            dir: ./dist
+            name: ${{ github.repository }}-test
+            webhookUrl: ${{ inputs.webhookUrl || secrets.DISCORD_WEBHOOK }}
+            overrideVersion: ${{ inputs.overrideVersion || 'rc' }}
+        
+      - name: Display deployment URL
+        run: |
+          echo "::notice title=Deployment URL::Deployed to ${{ steps.deploy.outputs.url }}"
+          
+
+
+    
+
