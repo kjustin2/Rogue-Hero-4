@@ -163,13 +163,17 @@ export class World {
     const ang = pl.angle;
     switch (def.kind) {
       case 'strike':
-        this.meleeCone(def.range, 0.42, def.damage, 0); break;
+        this.meleeCone(def.range, 0.42, def.damage, 0);
+        this.bus.emit('fx:slash', { x: pl.x, z: pl.z, angle: ang, range: def.range, color: def.color }); break;
       case 'siphon':
-        this.meleeCone(def.range, 0.45, def.damage, 4); break;
+        this.meleeCone(def.range, 0.45, def.damage, 4);
+        this.bus.emit('fx:slash', { x: pl.x, z: pl.z, angle: ang, range: def.range, color: def.color }); break;
       case 'arc':
-        this.aoe(def.range, def.damage, 0); break;
+        this.aoe(def.range, def.damage, 0);
+        this.bus.emit('fx:shock', { x: pl.x, z: pl.z, r: def.range, color: def.color }); break;
       case 'nova':
-        this.aoe(def.range, def.damage, 2.6); break;
+        this.aoe(def.range, def.damage, 2.6);
+        this.bus.emit('fx:shock', { x: pl.x, z: pl.z, r: def.range, color: def.color }); break;
       case 'bolt':
         this.fireBolt(ang, def); break;
       case 'volley': {
@@ -182,14 +186,16 @@ export class World {
       case 'dash': {
         const tx = clampArena(pl.x + Math.cos(ang) * def.range);
         const tz = clampArena(pl.z + Math.sin(ang) * def.range);
+        this.bus.emit('fx:shock', { x: pl.x, z: pl.z, r: 2.4, color: def.color }); // departure ring
         pl.x = tx; pl.z = tz;
         pl.iframe = Math.max(pl.iframe, 0.28 + (pl.char.dashIframe ?? 0));
         if (pl.char.postDashCrit) pl.dashCritArmed = true;
         this.aoe(2.6, def.damage, 0);
+        this.bus.emit('fx:shock', { x: tx, z: tz, r: 3, color: def.color }); // arrival shock
         break;
       }
       case 'overload':
-        break; // pure tempo surge
+        this.bus.emit('fx:shock', { x: pl.x, z: pl.z, r: 5, color: def.color }); break; // pure tempo surge
     }
   }
 
@@ -311,9 +317,10 @@ export class World {
       this.hitEnemy(e, hot ? dmg : dmg * 0.5, dx / d, dz / d);
       if (!hot) { e.stun = 1.6; e.slow = 2.5; }
     }
-    pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0.6; this.shake += 1; this.hitstop = 0.05;
+    pl.tempo = TEMPO_NEUTRAL; pl.tempoStall = 0.6; this.shake += 1.4; this.hitstop = 0.09;
     this.bus.emit('tempo:crash', { hot });
     this.bus.emit('fx:crash', { x: pl.x, z: pl.z, hot });
+    this.bus.emit('fx:shock', { x: pl.x, z: pl.z, r: radius, color: hot ? 0xff5a2a : NEON.ice });
     this.bus.emit('fx:shake', { power: 1 });
     this.bus.emit('sfx', { name: 'crash', vol: 0.9 });
   }
@@ -430,6 +437,7 @@ export class World {
     if (dx * dx + dz * dz < r * r) this.damagePlayer(Math.round(e.def.damage * 1.6));
     this.shake += 0.8; this.hitstop = Math.max(this.hitstop, 0.04);
     this.bus.emit('fx:death', { x: e.stx, z: e.stz, color: NEON.red, big: true });
+    this.bus.emit('fx:shock', { x: e.stx, z: e.stz, r: r, color: NEON.red });
     this.bus.emit('fx:shake', { power: 0.8 });
     this.bus.emit('sfx', { name: 'crash', vol: 0.5 });
     e.lungeCd = this.rng.range(3, 4.2);

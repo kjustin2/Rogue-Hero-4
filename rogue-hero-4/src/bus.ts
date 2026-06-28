@@ -8,6 +8,8 @@ export interface EventMap {
   'fx:death': { x: number; z: number; color: number; big?: boolean };
   'fx:crash': { x: number; z: number; hot: boolean };
   'fx:telegraph': { x: number; z: number; radius: number; dur: number; color: number }; // attack warning marker
+  'fx:shock': { x: number; z: number; r: number; color: number };                       // expanding shockwave ring (AoE)
+  'fx:slash': { x: number; z: number; angle: number; range: number; color: number };     // sweeping melee arc
   'fx:pickup': { x: number; z: number; color: number };
   'fx:shake': { power: number };
   'sfx': { name: string; vol?: number };

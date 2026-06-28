@@ -51,6 +51,14 @@ export class View {
   private telePool: { mesh: THREE.Mesh; t: number; dur: number; r: number }[] = [];
   private coreGeo = new THREE.IcosahedronGeometry(0.42, 0);
   private shardGeo = new THREE.OctahedronGeometry(0.2, 0);
+  // combat-FX pools: expanding shockwave rings, melee slash arcs, death shatter shards
+  private shockGeo = new THREE.RingGeometry(0.78, 1.0, 48);
+  private shockPool: { mesh: THREE.Mesh; t: number; dur: number; maxR: number }[] = [];
+  private slashGeo = new THREE.RingGeometry(0.55, 1.0, 24, 1, -0.7, 1.4); // crescent arc
+  private slashPool: { mesh: THREE.Mesh; t: number; dur: number }[] = [];
+  private shatterGeo = new THREE.TetrahedronGeometry(0.28);
+  private shatterPool: { mesh: THREE.Mesh; vx: number; vy: number; vz: number; t: number; dur: number }[] = [];
+  private shatterCursor = 0;
 
   cinematic = false; // when true, the camera is driven externally (cutscene / title orbit)
   camYaw = 0;                // orbit angle of the chase cam (player-controlled + auto-framed)
@@ -189,6 +197,10 @@ export class View {
       m.rotation.x = -Math.PI / 2; m.position.y = 0.03; m.visible = false; this.scene.add(m);
       this.telePool.push({ mesh: m, t: 0, dur: 1, r: 1 });
     }
+    const fxMat = () => new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (let i = 0; i < 12; i++) { const m = new THREE.Mesh(this.shockGeo, fxMat()); m.rotation.x = -Math.PI / 2; m.position.y = 0.07; m.visible = false; this.scene.add(m); this.shockPool.push({ mesh: m, t: 0, dur: 1, maxR: 1 }); }
+    for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(this.slashGeo, fxMat()); m.visible = false; this.scene.add(m); this.slashPool.push({ mesh: m, t: 0, dur: 1 }); }
+    for (let i = 0; i < 32; i++) { const mat = neonMat(0xffffff, 2.2).clone(); mat.transparent = true; const m = new THREE.Mesh(this.shatterGeo, mat); m.visible = false; this.scene.add(m); this.shatterPool.push({ mesh: m, vx: 0, vy: 0, vz: 0, t: 0, dur: 1 }); }
     this.subscribe();
     this.ready = true;
   }
@@ -228,13 +240,27 @@ export class View {
       if (p.power > 1.5) this.shakeT = Math.max(this.shakeT, 0.35);        // crit kick
     });
     this.bus.on('fx:cast', (p) => { this.burst(p.x, p.z, p.color, 10, 8, 0.9, 0.45); this.castPunch = 1; if (p.kind === 'dash') this.dashT = 1; });
-    this.bus.on('fx:death', (p) => { this.burst(p.x, p.z, p.color, p.big ? 44 : 18, p.big ? 15 : 9, 1.5, 0.7); if (p.big) this.shakeT = Math.max(this.shakeT, 1); });
-    this.bus.on('fx:crash', (p) => { const c = p.hot ? 0xff5a2a : NEON.ice; this.burst(p.x, p.z, c, 64, 19, 2.3, 0.9); this.shakeT = 1; });
+    this.bus.on('fx:death', (p) => { this.burst(p.x, p.z, p.color, p.big ? 44 : 18, p.big ? 15 : 9, 1.5, 0.7); this.shatter(p.x, p.z, p.color, p.big ? 16 : 7); if (p.big) this.shakeT = Math.max(this.shakeT, 1); });
+    this.bus.on('fx:crash', (p) => { const c = p.hot ? 0xff5a2a : NEON.ice; this.burst(p.x, p.z, c, 64, 19, 2.3, 0.9); this.shakeT = 1.1; });
     this.bus.on('fx:telegraph', (p) => {
       const s = this.telePool.find((q) => q.t <= 0) || this.telePool[0];
       s.t = p.dur; s.dur = p.dur; s.r = p.radius;
       (s.mesh.material as THREE.MeshBasicMaterial).color.setHex(p.color);
       s.mesh.position.set(p.x, 0.03, p.z); s.mesh.scale.setScalar(p.radius); s.mesh.visible = true;
+    });
+    this.bus.on('fx:shock', (p) => {
+      const s = this.shockPool.find((q) => q.t <= 0) || this.shockPool[0];
+      s.t = s.dur = 0.5; s.maxR = p.r;
+      (s.mesh.material as THREE.MeshBasicMaterial).color.setHex(p.color);
+      s.mesh.position.set(p.x, 0.07, p.z); s.mesh.scale.setScalar(0.3); s.mesh.visible = true;
+    });
+    this.bus.on('fx:slash', (p) => {
+      const s = this.slashPool.find((q) => q.t <= 0) || this.slashPool[0];
+      s.t = s.dur = 0.26;
+      (s.mesh.material as THREE.MeshBasicMaterial).color.setHex(p.color);
+      s.mesh.position.set(p.x, 0.7, p.z);
+      s.mesh.rotation.set(-Math.PI / 2, 0, -p.angle); // lay flat, sweep toward aim
+      s.mesh.scale.setScalar(p.range * 0.7); s.mesh.visible = true;
     });
     this.bus.on('fx:pickup', (p) => this.burst(p.x, p.z, p.color, 12, 6, 0.9, 0.5));
     this.bus.on('fx:shake', (p) => { this.shakeT = Math.max(this.shakeT, p.power); });
@@ -426,7 +452,49 @@ export class View {
 
     this.updateParticles(dt);
     this.updateTelegraphs(dt);
+    this.updateCombatFx(dt);
     if (!this.cinematic) this.updateCamera(dt);
+  }
+
+  private shatter(x: number, z: number, color: number, n: number): void {
+    const cnt = this.lowfx ? Math.ceil(n * 0.5) : n;
+    for (let i = 0; i < cnt; i++) {
+      const f = this.shatterPool[this.shatterCursor]; this.shatterCursor = (this.shatterCursor + 1) % this.shatterPool.length;
+      const a = Math.random() * Math.PI * 2, sp = 4 + Math.random() * 9;
+      f.vx = Math.cos(a) * sp; f.vz = Math.sin(a) * sp; f.vy = 4 + Math.random() * 7;
+      f.t = f.dur = 0.7 + Math.random() * 0.4;
+      f.mesh.position.set(x, UP, z); f.mesh.scale.setScalar(0.6 + Math.random() * 0.8); f.mesh.visible = true;
+      const m = f.mesh.material as THREE.MeshStandardMaterial; m.color.setHex(color); m.emissive.setHex(color); m.opacity = 1;
+    }
+  }
+
+  private updateCombatFx(dt: number): void {
+    for (const s of this.shockPool) {
+      if (s.t <= 0) continue; s.t -= dt;
+      const mat = s.mesh.material as THREE.MeshBasicMaterial;
+      if (s.t <= 0) { s.mesh.visible = false; mat.opacity = 0; continue; }
+      const e = 1 - s.t / s.dur;
+      s.mesh.scale.setScalar(0.3 + (s.maxR - 0.3) * (1 - Math.pow(1 - e, 3))); // ease-out expansion
+      mat.opacity = (1 - e) * 0.9;
+    }
+    for (const s of this.slashPool) {
+      if (s.t <= 0) continue; s.t -= dt;
+      const mat = s.mesh.material as THREE.MeshBasicMaterial;
+      if (s.t <= 0) { s.mesh.visible = false; mat.opacity = 0; continue; }
+      s.mesh.rotation.z += dt * 3.5;            // sweep the crescent
+      s.mesh.scale.multiplyScalar(1 + dt * 1.6); // slight follow-through grow
+      mat.opacity = (s.t / s.dur) * 0.95;
+    }
+    for (const f of this.shatterPool) {
+      if (f.t <= 0) continue; f.t -= dt;
+      const mat = f.mesh.material as THREE.MeshStandardMaterial;
+      if (f.t <= 0) { f.mesh.visible = false; continue; }
+      f.vy -= dt * 15;
+      f.mesh.position.x += f.vx * dt; f.mesh.position.y += f.vy * dt; f.mesh.position.z += f.vz * dt;
+      if (f.mesh.position.y < 0.15) { f.mesh.position.y = 0.15; f.vy *= -0.4; f.vx *= 0.7; f.vz *= 0.7; }
+      f.mesh.rotation.x += dt * 8; f.mesh.rotation.y += dt * 6;
+      const k = f.t / f.dur; f.mesh.scale.setScalar(0.55 + k * 0.6); mat.opacity = Math.min(1, k * 1.5);
+    }
   }
 
   private updateTelegraphs(dt: number): void {
