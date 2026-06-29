@@ -22,7 +22,7 @@ export class Boss implements Hittable {
   hp = 520;
   alive = true;
   kind = "boss";
-  hitColor = 0xff5ea0;
+  hitColor = 0x4fe0d0; // cold soul-fire — an undead warden, contrasting the firelit keep
   hitTop = 9; // tall vertical hitbox so high bolts connect
   readonly weakRadius = 2.0;
 
@@ -175,7 +175,7 @@ export class Boss implements Hittable {
     this.ctx.cam.addTrauma(0.85);
     this.ctx.sfx.bossRoar();
     this.light.intensity = 55;
-    this.light.color.setHex(0xff7a3c); // the Warden ignites for the final phase
+    this.light.color.setHex(0xa0fff0); // the Warden's soul-fire blazes white for the final phase
     this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 20, color: 0xffffff, duration: 0.7, y: 0.2, startRadius: 1 });
     this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 26, color: this.hitColor, duration: 0.9, y: 0.15, startRadius: 2 });
     this.ctx.fx.burst({ x: this.pos.x, y: 5, z: this.pos.z, count: 90, color: [this.hitColor, 0xffffff], speed: [8, 20], life: [0.5, 1.1] });

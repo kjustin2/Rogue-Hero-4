@@ -32,7 +32,7 @@ export const COMBOS: ComboDef[] = [
   },
   {
     name: "ARC LANCE", recipe: ["bolt", "bolt", "strike"], tier: 2,
-    damageMult: 2.2, effect: "lance", radius: 2.2, color: 0x46e0ff,
+    damageMult: 2.2, effect: "lance", radius: 2.2, color: 0xffc24a,
     blurb: "Bolt · Bolt · Strike",
   },
   {
@@ -42,17 +42,17 @@ export const COMBOS: ComboDef[] = [
   },
   {
     name: "VOID NOVA", recipe: ["strike", "cleave", "bolt"], tier: 3,
-    damageMult: 3.2, effect: "nova", radius: 7.5, color: 0xc28bff,
+    damageMult: 3.2, effect: "nova", radius: 7.5, color: 0xffe6b0,
     blurb: "Strike · Cleave · Bolt",
   },
   {
     name: "TEMPEST", recipe: ["bolt", "bolt", "bolt"], tier: 2,
-    damageMult: 2.0, effect: "nova", radius: 6.5, color: 0xc28bff,
+    damageMult: 2.0, effect: "nova", radius: 6.5, color: 0xffc24a,
     blurb: "Bolt · Bolt · Bolt",
   },
   {
     name: "ONSLAUGHT", recipe: ["strike", "strike", "strike"], tier: 1,
-    damageMult: 1.8, effect: "slam", radius: 4.0, color: 0x46e0ff,
+    damageMult: 1.8, effect: "slam", radius: 4.0, color: 0xdfe7ff,
     blurb: "Strike · Strike · Strike",
   },
 ];

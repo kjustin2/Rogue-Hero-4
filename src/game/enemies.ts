@@ -18,11 +18,12 @@ interface KindCfg {
   bodyY: number;
 }
 
+// the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
-  husk: { hp: 30, radius: 0.6, speed: 5.0, contactDmg: 10, attackRange: 2.4, windup: 0.45, color: 0x46e0ff, bodyY: 0 },
-  spitter: { hp: 22, radius: 0.6, speed: 3.2, contactDmg: 9, attackRange: 13, windup: 0.7, color: 0xc28bff, bodyY: 1.0 },
-  brute: { hp: 90, radius: 1.05, speed: 2.6, contactDmg: 26, attackRange: 4.4, windup: 1.0, color: 0xff7a3c, bodyY: 0 },
-  wraith: { hp: 26, radius: 0.55, speed: 7.2, contactDmg: 15, attackRange: 9, windup: 0.5, color: 0xff5ea0, bodyY: 0.7 },
+  husk: { hp: 30, radius: 0.6, speed: 5.0, contactDmg: 10, attackRange: 2.4, windup: 0.45, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
+  spitter: { hp: 22, radius: 0.6, speed: 3.2, contactDmg: 9, attackRange: 13, windup: 0.7, color: 0x8ad26a, bodyY: 1.0 }, // witchfire caster
+  brute: { hp: 90, radius: 1.05, speed: 2.6, contactDmg: 26, attackRange: 4.4, windup: 1.0, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
+  wraith: { hp: 26, radius: 0.55, speed: 7.2, contactDmg: 15, attackRange: 9, windup: 0.5, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
 };
 
 // Waves, one per gate (see level.ts GATES_Z). Cleared → the gate opens. Escalating:
@@ -111,41 +112,48 @@ export class Enemy implements Hittable {
         this.group.add(fin, tatter);
       }
     } else if (this.kind === "spitter") {
-      // armored eye: split shell, glowing iris, energy ring, antennae, orbiting shards
-      const back = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), plateMat);
-      back.rotation.x = -Math.PI / 2; back.castShadow = true;
-      const brow = new THREE.Mesh(new THREE.SphereGeometry(0.64, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.32), plateMat);
-      brow.rotation.x = Math.PI / 2; brow.position.z = 0.02;
-      this.core = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), this.coreMat);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.05, 8, 30), edgeMat);
-      ring.rotation.x = Math.PI / 2;
-      this.group.add(back, brow, this.core, ring);
+      // hooded witchfire caster: a drooping robe, a cowl over a dark void, an orb it conjures
+      const robe = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.7, 7, 1, true), shellMat);
+      robe.position.y = -0.2; robe.castShadow = true;
+      const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.85, 7), plateMat);
+      cowl.position.y = 0.7;
+      const voidHead = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshBasicMaterial({ color: 0x05060a }));
+      voidHead.position.y = 0.52;
+      this.core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), this.coreMat); // the witchfire orb it hurls
+      this.core.position.set(0, 0.15, 0.45);
+      this.group.add(robe, cowl, voidHead, this.core);
+      // two skeletal arms cupping the orb
       for (const sx of [-1, 1]) {
-        const ant = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.6, 4), edgeMat);
-        ant.position.set(sx * 0.35, 0.55, -0.1); ant.rotation.z = sx * 0.4;
-        this.group.add(ant);
+        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.7, 5), edgeMat);
+        arm.position.set(sx * 0.28, 0.15, 0.28); arm.rotation.set(0.9, 0, sx * 0.5);
+        this.group.add(arm);
       }
-      for (let i = 0; i < 3; i++) {
-        const a = (i / 3) * Math.PI * 2;
-        const sh = new THREE.Mesh(new THREE.TetrahedronGeometry(0.16), edgeMat);
-        sh.position.set(Math.cos(a) * 1.0, Math.sin(a * 1.7) * 0.2, Math.sin(a) * 1.0);
-        this.group.add(sh);
+      // ragged robe hem
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const tatter = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.05), plateMat);
+        tatter.position.set(Math.cos(a) * 0.5, -0.85, Math.sin(a) * 0.5);
+        this.group.add(tatter);
       }
     } else if (this.kind === "wraith") {
-      // sleek delta: layered arrowhead, swept fins, elongated trailing core, edge lines
-      const head = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.5, 4), shellMat);
-      head.rotation.x = Math.PI / 2; head.castShadow = true; // points forward; group yaw aims it
-      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.9, 4), plateMat);
-      tail.rotation.x = -Math.PI / 2; tail.position.z = -0.7;
-      this.core = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.9, 6), this.coreMat);
-      this.core.rotation.x = Math.PI / 2; this.core.position.z = -0.3;
-      this.group.add(head, tail, this.core);
+      // hooded banshee: a cowl over a baleful eye, a tapering spectral body, trailing tatters + reaching arms
+      const body = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.6, 6, 1, true), shellMat);
+      body.position.y = -0.1; body.rotation.x = Math.PI; body.castShadow = true; // wide shoulders → wisp tail
+      const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.85, 6), plateMat);
+      cowl.position.y = 0.7;
+      this.core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), this.coreMat); // single baleful eye
+      this.core.position.set(0, 0.5, 0.28);
+      this.group.add(body, cowl, this.core);
+      for (let i = 0; i < 4; i++) {
+        const a = -0.5 + (i / 3) * 1.0;
+        const tatter = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.04), edgeMat);
+        tatter.position.set(Math.sin(a) * 0.35, -0.5, -0.3 + Math.cos(a) * 0.1); tatter.rotation.x = -0.3;
+        this.group.add(tatter);
+      }
       for (const sx of [-1, 1]) {
-        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 0.8), shellMat);
-        fin.position.set(sx * 0.36, 0, 0.4); fin.rotation.z = sx * 0.45;
-        const edge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.4), edgeMat);
-        edge.position.set(sx * 0.16, 0, 0);
-        this.group.add(fin, edge);
+        const arm = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.8, 4), shellMat);
+        arm.position.set(sx * 0.5, 0.25, 0.2); arm.rotation.z = sx * 1.3;
+        this.group.add(arm);
       }
     } else {
       // brute: hulking golem — stacked torso plates, spiked pauldrons, grated chest core

@@ -171,7 +171,7 @@ export class Hud {
       this.danger.style.opacity = "0";
     }
     this.hpFill.style.width = (frac * 100).toFixed(1) + "%";
-    this.hpFill.style.background = frac > 0.3 ? "linear-gradient(90deg,#2bd4ff,#8affd0)" : "linear-gradient(90deg,#ff4252,#ff8a3d)";
+    this.hpFill.style.background = frac > 0.3 ? "linear-gradient(90deg,#ffb24a,#ffe2a0)" : "linear-gradient(90deg,#ff4252,#ff8a3d)";
     this.hpText.textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;
 
     // glyph cooldowns
