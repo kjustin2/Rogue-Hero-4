@@ -24,22 +24,28 @@ interface SwingKey { t: number; pose: Pose; flash?: number; stretch?: number }
  * so the hit reads in first person.
  */
 const SWINGS: Record<GlyphId, SwingKey[]> = {
+  // fast diagonal slash: big wind-up up-right (blade rolled) → rip through to low-left → follow-through
   strike: [
     { t: 0, pose: REST },
-    { t: 0.2, pose: [0.72, -0.46, -0.82, -0.15, -0.8, 0.7] }, // wind up upper-right
-    { t: 0.42, pose: [0.26, -0.68, -1.32, 0.25, 1.05, -0.8], flash: 3.5, stretch: 1.6 }, // slash down-left
+    { t: 0.14, pose: [0.74, -0.42, -0.8, -0.25, -0.9, 0.95] },
+    { t: 0.34, pose: [0.2, -0.7, -1.42, 0.35, 1.15, -1.0], flash: 3.8, stretch: 1.7 },
+    { t: 0.5, pose: [0.34, -0.66, -1.05, 0.2, 0.7, -0.5] },
     { t: 1, pose: REST },
   ],
+  // overhead chop: raise high (anticipation) → heavy slam → recoil → settle
   cleave: [
     { t: 0, pose: REST },
-    { t: 0.34, pose: [0.42, -0.16, -0.78, -1.35, -0.1, 0.12] }, // raise overhead
-    { t: 0.56, pose: [0.42, -0.72, -1.28, 1.15, -0.05, 0.05], flash: 4.5, stretch: 1.5 }, // slam down
+    { t: 0.3, pose: [0.4, -0.04, -0.7, -1.6, -0.1, 0.15] },
+    { t: 0.5, pose: [0.42, -0.8, -1.38, 1.35, -0.05, 0.0], flash: 5, stretch: 1.6 },
+    { t: 0.66, pose: [0.46, -0.66, -1.0, 0.5, -0.1, 0.05] },
     { t: 1, pose: REST },
   ],
+  // ranged thrust: draw back + up → punch forward (flash) → settle
   bolt: [
     { t: 0, pose: REST },
-    { t: 0.4, pose: [0.58, -0.5, -0.68, -0.12, -0.28, 0.1] }, // draw back
-    { t: 0.6, pose: [0.5, -0.55, -1.5, 0.28, -0.18, 0.05], flash: 4 }, // thrust forward
+    { t: 0.38, pose: [0.6, -0.48, -0.62, -0.2, -0.3, 0.12] },
+    { t: 0.58, pose: [0.5, -0.55, -1.55, 0.3, -0.16, 0.04], flash: 4.5 },
+    { t: 0.72, pose: [0.54, -0.55, -1.05, 0.1, -0.2, 0.06] },
     { t: 1, pose: REST },
   ],
 };

@@ -67,8 +67,10 @@ export class Projectiles {
 
       if (s.friendly) {
         for (const t of this.ctx.combat.targets()) {
-          if (Math.hypot(p.x - t.pos.x, p.z - t.pos.z) <= t.radius + RADIUS && Math.abs(p.y - 1) < t.radius + 1.4) {
-            this.ctx.combat.dealDamage(t, s.dmg, { knockback: s.knockback, fromX: p.x - s.vel.x, fromZ: p.z - s.vel.z });
+          const top = t.hitTop ?? 2.6;
+          if (Math.hypot(p.x - t.pos.x, p.z - t.pos.z) <= t.radius + RADIUS && p.y >= 0.2 && p.y <= top) {
+            const weak = t.isWeakHit ? t.isWeakHit(p.x, p.y, p.z) : false;
+            this.ctx.combat.dealDamage(t, s.dmg, { knockback: s.knockback, fromX: p.x - s.vel.x, fromZ: p.z - s.vel.z, weak });
             this.burst(p, s.mat.color.getHex());
             this.kill(s);
             break;

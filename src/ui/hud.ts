@@ -30,6 +30,7 @@ export class Hud {
   private streakT = 0;
   private dmgFlash!: HTMLElement;
   private danger!: HTMLElement;
+  private crosshair!: HTMLElement;
   private dmgT = 0;
   private t = 0;
 
@@ -88,6 +89,7 @@ export class Hud {
     this.streak = this.hud.querySelector("#streak")!;
     this.dmgFlash = this.hud.querySelector("#dmgflash")!;
     this.danger = this.hud.querySelector("#danger")!;
+    this.crosshair = this.hud.querySelector("#crosshair")!;
     for (const g of GLYPH_ORDER) {
       const cell = this.hud.querySelector(`.glyph[data-g="${g}"]`)!;
       this.slot[g] = { ready: cell as HTMLElement, cd: cell.querySelector(".glyph-cd") as HTMLElement };
@@ -139,6 +141,9 @@ export class Hud {
     const armed = matchCombo(buf);
     this.chain.innerHTML = buf.map((g) => `<span class="pip" style="background:${cssHex(MOVES[g].color)}"></span>`).join("")
       + (armed ? `<span class="pip-armed" style="color:${cssHex(armed.color)}">▶ ${armed.name}</span>` : "");
+
+    // crosshair turns gold when the aim ray is on the boss weak point
+    this.crosshair.classList.toggle("weak", this.ctx.combat.isAimingWeak());
 
     // boss bar
     const boss = this.ctx.boss;

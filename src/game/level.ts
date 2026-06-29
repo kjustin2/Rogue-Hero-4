@@ -33,6 +33,11 @@ export class Level {
   readonly group = new THREE.Group();
   readonly gates: Gate[] = [];
   private barrierMat: THREE.MeshBasicMaterial[] = [];
+  private vt = 0;
+  private flowTex?: THREE.Texture;
+  private portalRings: THREE.Mesh[] = [];
+  private motes?: THREE.Points;
+  private moteVel?: Float32Array;
 
   constructor(private ctx: Ctx) {}
 
@@ -200,7 +205,109 @@ export class Level {
     this.group.add(this.makeStars(300, 1.6, true));
     this.group.add(this.makeStars(620, 0.7, false));
 
+    // --- overhead arches spanning the causeway (grandeur + detail) ---
+    const archDark = new THREE.MeshStandardMaterial({ color: 0x0c0e18, roughness: 0.5, metalness: 0.72, envMapIntensity: 1.0 });
+    let ai = 0;
+    for (let z = 30; z < ARENA_BLEND_Z; z += 36) {
+      const color = NEON[ai++ % NEON.length];
+      const r = HALF_WIDTH + 1.5;
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(r, 0.55, 8, 28, Math.PI), archDark);
+      arch.position.set(0, 0, z); arch.castShadow = true;
+      const archGlow = new THREE.Mesh(new THREE.TorusGeometry(r, 0.18, 8, 28, Math.PI), this.emissiveMat(color, 1.6));
+      archGlow.position.set(0, 0, z + 0.02);
+      const key = new THREE.Mesh(new THREE.OctahedronGeometry(0.6), this.emissiveMat(color, 2.4));
+      key.position.set(0, r, z);
+      this.group.add(arch, archGlow, key);
+    }
+
+    // --- flowing energy layer over the central seam (scrolls toward the boss) ---
+    this.flowTex = this.makeFlowTexture();
+    this.flowTex.wrapS = this.flowTex.wrapT = THREE.RepeatWrapping;
+    this.flowTex.repeat.set(1, pathLen / 10);
+    const flow = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.4, pathLen),
+      new THREE.MeshBasicMaterial({ map: this.flowTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0.85, fog: false }),
+    );
+    flow.rotation.x = -Math.PI / 2;
+    flow.position.set(0, 0.08, pathLen / 2 - 8);
+    this.group.add(flow);
+
+    // --- giant rift portal behind the boss ---
+    const portal = new THREE.Group();
+    for (let i = 0; i < 4; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(4 + i * 1.9, 0.32 - i * 0.05, 8, 40), this.emissiveMat(NEON[i % NEON.length], 1.9 - i * 0.25));
+      this.portalRings.push(ring);
+      portal.add(ring);
+    }
+    const pcore = new THREE.Mesh(new THREE.CircleGeometry(4, 40), new THREE.MeshBasicMaterial({ color: 0x160b2e, side: THREE.DoubleSide }));
+    portal.add(pcore);
+    portal.position.set(ARENA_CENTER.x, 11, ARENA_CENTER.y + 22);
+    this.group.add(portal);
+
+    // --- wall buttresses + emissive window panels ---
+    for (const sx of [-1, 1]) {
+      for (let z = 8; z < ARENA_BLEND_Z; z += 18) {
+        const but = new THREE.Mesh(new THREE.BoxGeometry(0.8, 11, 1.6), archDark);
+        but.position.set(sx * (HALF_WIDTH + 0.2), 5.5, z); but.castShadow = true;
+        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 1.0), this.emissiveMat(NEON[((z / 18) | 0) % NEON.length], 0.9));
+        pane.position.set(sx * (HALF_WIDTH - 0.4), 6, z + 9);
+        this.group.add(but, pane);
+      }
+    }
+
+    // --- drifting ambient motes ---
+    const M = 160;
+    const mp = new Float32Array(M * 3);
+    this.moteVel = new Float32Array(M);
+    for (let i = 0; i < M; i++) {
+      mp[i * 3] = this.ctx.rng.range(-HALF_WIDTH, HALF_WIDTH);
+      mp[i * 3 + 1] = this.ctx.rng.range(0.5, 12);
+      mp[i * 3 + 2] = this.ctx.rng.range(0, ARENA_BLEND_Z);
+      this.moteVel[i] = this.ctx.rng.range(0.3, 1.0);
+    }
+    const mgeo = new THREE.BufferGeometry();
+    mgeo.setAttribute("position", new THREE.BufferAttribute(mp, 3));
+    this.motes = new THREE.Points(mgeo, new THREE.PointsMaterial({ color: 0x7fb4ff, size: 0.13, sizeAttenuation: true, transparent: true, opacity: 0.7, depthWrite: false, fog: false }));
+    this.group.add(this.motes);
+
     scene.add(this.group);
+  }
+
+  /** Animate the living environment — flowing floor energy, portal rings, motes. */
+  update(dt: number): void {
+    this.vt += dt;
+    if (this.flowTex) this.flowTex.offset.y = (this.flowTex.offset.y - dt * 0.4) % 1;
+    for (let i = 0; i < this.portalRings.length; i++) {
+      this.portalRings[i].rotation.z += dt * (0.2 + i * 0.1) * (i % 2 ? -1 : 1);
+    }
+    if (this.motes && this.moteVel) {
+      const pos = this.motes.geometry.attributes.position as THREE.BufferAttribute;
+      const arr = pos.array as Float32Array;
+      for (let i = 0; i < this.moteVel.length; i++) {
+        arr[i * 3 + 1] += this.moteVel[i] * dt;
+        if (arr[i * 3 + 1] > 13) arr[i * 3 + 1] = 0.3;
+      }
+      pos.needsUpdate = true;
+    }
+  }
+
+  private makeFlowTexture(): THREE.CanvasTexture {
+    const w = 64, h = 256;
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const g = cv.getContext("2d")!;
+    g.fillStyle = "#000";
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 5; i++) {
+      const y = (i / 5) * h + 12;
+      const grad = g.createLinearGradient(0, y - 44, 0, y + 44);
+      grad.addColorStop(0, "rgba(0,0,0,0)");
+      grad.addColorStop(0.5, "rgba(130,205,255,0.95)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grad;
+      g.fillRect(w * 0.28, y - 44, w * 0.44, 88);
+    }
+    return new THREE.CanvasTexture(cv);
   }
 
   private makeStars(count: number, size: number, tinted: boolean): THREE.Points {

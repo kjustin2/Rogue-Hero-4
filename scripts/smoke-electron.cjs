@@ -196,6 +196,18 @@ app.whenReady().then(async () => {
       await frames(20);
       await shot(win, "boss");
 
+      // --- weak point: look up at the core → gold crosshair + a bolt lands on it
+      await js(`window.__rh4.cam.pitch = 0.16`);
+      await frames(2);
+      expect(await js(`window.__rh4.combat.isAimingWeak()`), "aim ray not on the boss core when looking up");
+      const bHp0 = await js(`window.__rh4.boss.hp`);
+      await tap("KeyE");
+      await frames(36);
+      const bHp1 = await js(`window.__rh4.boss.hp`);
+      expect(bHp1 < bHp0, "bolt aimed at the core did not hit the boss");
+      await shot(win, "weakpoint");
+      await js(`window.__rh4.cam.pitch = 0`);
+
       // --- drive the boss into phase 3 (collapse): break past 50% then 25%
       await js(`window.__rh4.boss.takeDamage(window.__rh4.boss.maxHp*0.55, {})`);
       await frames(3);

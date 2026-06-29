@@ -208,6 +208,7 @@ function frame(dt: number): void {
   if (state === "playing") updatePlaying(dt);
 
   ctx.cam.update(dt, state === "playing" ? ctx.player.moveAmount : 0);
+  ctx.level.update(dt);
   ctx.fx.update(dt);
   ctx.tele.update(dt);
   ctx.music.update(dt);

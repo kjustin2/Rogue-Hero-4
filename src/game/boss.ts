@@ -3,6 +3,9 @@ import type { Ctx } from "./ctx";
 import type { Hittable, HitOpts } from "./combat";
 import type { TelegraphHandle } from "../render/telegraphs";
 import { BOSS_ANCHOR, ARENA_CENTER, ARENA_RADIUS } from "./level";
+import { damp } from "../core/math";
+
+const CORE_Y = 6.0; // world height of the weak-point core
 
 type Attack = "slam" | "volley" | "sweep" | "collapse" | null;
 
@@ -20,10 +23,14 @@ export class Boss implements Hittable {
   alive = true;
   kind = "boss";
   hitColor = 0xff5ea0;
+  hitTop = 9; // tall vertical hitbox so high bolts connect
+  readonly weakRadius = 2.0;
 
   private phase = 1;
   private summoned = false;
   private rise = 0;
+  private charge = 0; // attack wind-up inflate
+  private lunge = 0; // strike snap
   private spots: THREE.Vector3[] = [];
   private teles: TelegraphHandle[] = [];
   private cd = 2.2;
@@ -69,6 +76,15 @@ export class Boss implements Hittable {
     const light = new THREE.PointLight(this.hitColor, 30, 40, 2);
     light.position.y = 5;
     this.group.add(light);
+  }
+
+  /** World position of the weak-point core (drives crosshair + crit aim). */
+  coreWorld(out: THREE.Vector3): THREE.Vector3 {
+    return out.set(this.pos.x, CORE_Y + this.group.position.y, this.pos.z);
+  }
+
+  isWeakHit(x: number, y: number, z: number): boolean {
+    return Math.hypot(x - this.pos.x, y - (CORE_Y + this.group.position.y), z - this.pos.z) < this.weakRadius;
   }
 
   takeDamage(dmg: number, _opts: HitOpts): boolean {
@@ -120,8 +136,15 @@ export class Boss implements Hittable {
     if (this.rise < 1 && !this.dying) {
       this.rise = Math.min(1, this.rise + dt * 0.8);
       this.group.scale.setScalar((1 - (1 - this.rise) ** 3) * 1.3);
+      this.group.position.y = Math.sin(this.t * 1.2) * 0.2;
+    } else if (!this.dying) {
+      // attack body animation: inflate + rise on wind-up, squash + drop on the strike
+      this.charge = this.attack ? 1 - this.windup / this.windupMax : damp(this.charge, 0, 6, dt);
+      this.lunge = damp(this.lunge, 0, 7, dt);
+      this.group.scale.setScalar(1.3 * (1 + this.charge * 0.08 - this.lunge * 0.14));
+      this.group.position.y = Math.sin(this.t * 1.2) * 0.2 + this.charge * 0.35 - this.lunge * 0.5;
+      this.coreMat.emissiveIntensity += this.charge * 4;
     }
-    this.group.position.y = Math.sin(this.t * 1.2) * 0.2;
 
     // face the player
     const p = this.ctx.player;
@@ -186,6 +209,8 @@ export class Boss implements Hittable {
     const a = this.attack;
     this.attack = null;
     this.tele = null;
+    this.charge = 0;
+    this.lunge = 1; // snap the body forward/down on the strike
     this.cd = this.phase === 3 ? 1.0 : this.phase === 2 ? 1.4 : 2.2;
     const p = this.ctx.player;
 

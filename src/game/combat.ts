@@ -7,6 +7,8 @@ export interface HitOpts {
   fromX?: number;
   fromZ?: number;
   heavy?: boolean;
+  /** Hit landed on a weak point (e.g. the boss core) — full damage + crit feel. */
+  weak?: boolean;
 }
 
 /** Anything the player can hit — enemies and the boss both implement this. */
@@ -19,6 +21,10 @@ export interface Hittable {
   kind: string;
   /** Spark palette for hit feedback. */
   hitColor: number;
+  /** Top of the vertical hitbox (default ~2.6); tall bosses set this higher. */
+  hitTop?: number;
+  /** True if (x,y,z) lands inside this thing's weak point (boss core). */
+  isWeakHit?(x: number, y: number, z: number): boolean;
   /** Returns true if this hit killed it. */
   takeDamage(dmg: number, opts: HitOpts): boolean;
 }
@@ -34,7 +40,30 @@ function cssHex(c: number): string {
  * through resolveCombo. Centralizing it keeps feel + balance in one auditable place.
  */
 export class Combat {
+  private aimEye = new THREE.Vector3();
+  private aimDir = new THREE.Vector3(0, 0, 1);
+  private wp = new THREE.Vector3();
+  private cp = new THREE.Vector3();
+
   constructor(private ctx: Ctx) {}
+
+  /**
+   * Is the live first-person aim ray on the boss weak point (core)? Read from the
+   * camera each call so the gold crosshair tracks where you look, and melee crits
+   * only when you're looking up at the core. Vertical aim matters.
+   */
+  isAimingWeak(): boolean {
+    const b = this.ctx.boss;
+    if (!b || !b.alive) return false;
+    const cam = this.ctx.stage.camera;
+    cam.getWorldPosition(this.aimEye);
+    cam.getWorldDirection(this.aimDir);
+    b.coreWorld(this.wp);
+    const t = this.wp.clone().sub(this.aimEye).dot(this.aimDir);
+    if (t < 0) return false;
+    this.cp.copy(this.aimEye).addScaledVector(this.aimDir, t);
+    return this.cp.distanceTo(this.wp) < b.weakRadius;
+  }
 
   targets(): Hittable[] {
     const list: Hittable[] = [...this.ctx.enemies.living()];
@@ -44,18 +73,30 @@ export class Combat {
   }
 
   dealDamage(t: Hittable, dmg: number, opts: HitOpts = {}): void {
+    const weak = !!opts.weak;
+    const isBoss = t.kind === "boss";
+    // Boss body is armored — chip damage unless you land the core (vertical aim matters).
+    if (isBoss && !weak) dmg *= 0.45;
     dmg = Math.max(1, Math.round(dmg));
     const killed = t.takeDamage(dmg, opts);
     const heavy = !!opts.heavy;
-    this.ctx.events.emit("ENEMY_HIT", { x: t.pos.x, y: 1.1, z: t.pos.z, dmg, heavy, killed });
-    this.ctx.floaters.spawn(t.pos.x, 1.8, t.pos.z, String(dmg), heavy ? "crit" : "dmg");
+    const crit = heavy || (weak && isBoss);
+    // where the feedback shows: at the core for a weak hit, else mid-body
+    const fy = weak && isBoss ? this.wp.y : 1.6;
+    this.ctx.events.emit("ENEMY_HIT", { x: t.pos.x, y: fy, z: t.pos.z, dmg, heavy: crit, killed });
+    if (weak && isBoss) {
+      this.ctx.floaters.spawn(t.pos.x, fy + 0.4, t.pos.z, "WEAK " + dmg, "crit", "#ffd24a");
+      this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.0, color: 0xffd24a, duration: 0.3, y: fy });
+    } else {
+      this.ctx.floaters.spawn(t.pos.x, fy, t.pos.z, String(dmg), crit ? "crit" : "dmg");
+    }
     this.ctx.fx.burst({
-      x: t.pos.x, y: 1.1, z: t.pos.z, count: heavy ? 16 : 9, color: t.hitColor,
-      speed: heavy ? [4, 11] : [3, 7], size: [0.12, 0.34], life: [0.2, 0.5],
+      x: t.pos.x, y: fy, z: t.pos.z, count: crit ? 18 : 9, color: weak ? [t.hitColor, 0xffd24a] : t.hitColor,
+      speed: crit ? [4, 11] : [3, 7], size: [0.12, 0.34], life: [0.2, 0.5],
     });
-    if (heavy) this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.4, color: t.hitColor, duration: 0.32, y: 1 });
-    this.ctx.cam.addTrauma(heavy ? 0.22 : 0.08);
-    if (heavy) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.05);
+    if (crit) this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.4, color: t.hitColor, duration: 0.32, y: 1 });
+    this.ctx.cam.addTrauma(crit ? 0.22 : 0.08);
+    if (crit) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.05);
     if (killed) {
       this.ctx.events.emit("KILL", { x: t.pos.x, z: t.pos.z, kind: t.kind });
       this.ctx.fx.burst({
@@ -78,7 +119,9 @@ export class Combat {
       const nd = d || 1;
       const cos = (dx / nd) * dirX + (dz / nd) * dirZ;
       if (cos < half && d > t.radius) continue; // outside the cone (unless overlapping)
-      this.dealDamage(t, dmg, { heavy, knockback: kb, fromX: ox, fromZ: oz });
+      // a melee swing crits the boss only if you're looking up at its core
+      const weak = t.kind === "boss" && this.isAimingWeak();
+      this.dealDamage(t, dmg, { heavy, knockback: kb, fromX: ox, fromZ: oz, weak });
       hit.push(t);
     }
     return hit;
