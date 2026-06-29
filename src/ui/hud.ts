@@ -125,6 +125,10 @@ export class Hud {
   }
 
   showBanner(text: string, color: number): void {
+    // a state banner (wave/gate/boss) clears any combo splash so the two never stack
+    this.comboSplash.style.animation = "none";
+    this.comboFlash.style.animation = "none";
+    this.comboSplash.style.opacity = "0";
     this.banner.textContent = text;
     this.banner.style.color = cssHex(color);
     this.banner.style.opacity = "1";
@@ -134,6 +138,9 @@ export class Hud {
 
   /** Big centered combo payoff: name + recipe chips + a color flash that snaps in. */
   showComboSplash(name: string, color: number, recipe: readonly GlyphId[]): void {
+    // a combo splash clears any state banner so the two never overlap
+    this.banner.style.opacity = "0";
+    this.bannerT = 0;
     const hex = cssHex(color);
     this.comboName.textContent = name;
     this.comboName.style.color = hex;

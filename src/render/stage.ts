@@ -74,18 +74,21 @@ export class Stage {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x06080f);
-    this.fog = new THREE.FogExp2(0x0a1430, 0.015);
+    this.scene.background = new THREE.Color(0x0a0705);
+    // warm, torch-lit gloom — fog the colour of dim embers
+    this.fog = new THREE.FogExp2(0x140a06, 0.016);
     this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 220);
     this.camera.position.set(0, 16, 11);
     this.camera.lookAt(0, 0, 0);
 
-    this.hemiLight = new THREE.HemisphereLight(0x8899ff, 0x140a18, 0.95);
+    // low warm ambient: a dim amber sky over deep shadow, so torchlight does the work
+    this.hemiLight = new THREE.HemisphereLight(0x6a4326, 0x100805, 0.6);
     this.scene.add(this.hemiLight);
 
-    this.keyLight = new THREE.DirectionalLight(0xfff2e0, 1.6);
+    // warm low key (moonless, flame-lit) — pools of torchlight carry the scene
+    this.keyLight = new THREE.DirectionalLight(0xffb877, 1.05);
     this.keyLight.position.set(14, 26, 8);
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.set(2048, 2048);
@@ -112,13 +115,14 @@ export class Stage {
     try {
       const pmrem = new THREE.PMREMGenerator(this.renderer);
       const env = new THREE.Scene();
-      env.background = new THREE.Color(0x04060e);
+      env.background = new THREE.Color(0x0a0604);
+      // warm torch-lit reflections — amber/ember panels so PBR surfaces catch firelight
       const panels: [number, [number, number, number]][] = [
-        [0x2b6cff, [0, 7, -22]],
-        [0x46e0ff, [0, 7, 22]],
-        [0xc28bff, [22, 5, 0]],
-        [0xff5ea0, [-22, 5, 0]],
-        [0x10306a, [0, 22, 0]],
+        [0xff7a2c, [0, 7, -22]],
+        [0xffae4a, [0, 7, 22]],
+        [0xff5022, [22, 5, 0]],
+        [0xffc878, [-22, 5, 0]],
+        [0x3a1a08, [0, 22, 0]],
       ];
       const tmp: THREE.Mesh[] = [];
       for (const [c, p] of panels) {

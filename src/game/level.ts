@@ -27,7 +27,8 @@ export interface Gate {
   light: THREE.PointLight;
 }
 
-const NEON = [0x46e0ff, 0xc28bff, 0xff7a3c, 0x4affc4];
+// warm, flame-lit palette — torch orange, amber, ember-red, gold
+const EMBER = [0xff7a2c, 0xffb24a, 0xff5022, 0xffd480];
 
 export class Level {
   readonly group = new THREE.Group();
@@ -41,6 +42,7 @@ export class Level {
   private floorMats: THREE.MeshStandardMaterial[] = [];
   private panes: THREE.MeshStandardMaterial[] = [];
   private starMats: THREE.ShaderMaterial[] = [];
+  private flames: { obj: THREE.Object3D; mat: THREE.MeshBasicMaterial; phase: number; light?: THREE.PointLight; lightBase: number }[] = [];
   private motes?: THREE.Points;
   private moteVel?: Float32Array;
 
@@ -50,13 +52,13 @@ export class Level {
     const scene = this.ctx.stage.scene;
     this.group.clear();
 
-    // --- path floor: glossy reflective slab with a glowing neon-grid texture ---
+    // --- path floor: damp flagstone with warm cracks glowing like buried embers ---
     const pathLen = ARENA_BLEND_Z + 14;
-    const grid = this.makeGridTexture();
+    const grid = this.makeStoneTexture();
     grid.repeat.set((HALF_WIDTH * 2) / 6, pathLen / 6);
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x080c18, roughness: 0.18, metalness: 0.88,
-      map: grid, emissive: 0x3a86ff, emissiveMap: grid, emissiveIntensity: 1.05, envMapIntensity: 1.5,
+      color: 0x141015, roughness: 0.62, metalness: 0.2,
+      map: grid, emissive: 0xff5a1e, emissiveMap: grid, emissiveIntensity: 0.85, envMapIntensity: 0.9,
     });
     this.floorMats.push(floorMat);
     const floor = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2, 1, pathLen), floorMat);
@@ -64,8 +66,8 @@ export class Level {
     floor.receiveShadow = true;
     this.group.add(floor);
 
-    // arena floor disc (its own grid scale so the cells stay square)
-    const agrid = this.makeGridTexture();
+    // arena floor disc (its own stone scale so the flags stay square)
+    const agrid = this.makeStoneTexture();
     agrid.repeat.set(ARENA_RADIUS / 4, ARENA_RADIUS / 4);
     const arenaMat = floorMat.clone();
     arenaMat.map = agrid;
@@ -76,69 +78,84 @@ export class Level {
     arena.receiveShadow = true;
     this.group.add(arena);
 
-    // --- glowing center seam down the path (emissive strip) ---
-    const seam = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, pathLen), this.emissiveMat(0x3a86ff, 2.4));
+    // --- molten central channel running the path (a seam of fire toward the boss) ---
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, pathLen), this.emissiveMat(0xff5a1e, 2.6));
     seam.position.set(0, 0.04, pathLen / 2 - 8);
     this.group.add(seam);
 
-    // --- side rails (low emissive curbs) ---
-    // shared paneled-wall material: dark metal + a canvas-painted neon circuit/window
-    // texture as both map and emissiveMap, so the walls glow with detail (not flat dark).
-    const wallTex = this.makeWallTexture();
+    // --- castle walls: mortared stone block texture (map + subtle emissive cracks) ---
+    const wallTex = this.makeStoneWallTexture();
     wallTex.repeat.set(3, pathLen / 16);
     const wallMat = new THREE.MeshStandardMaterial({
-      color: 0x06070f, roughness: 0.5, metalness: 0.62,
-      map: wallTex, emissive: 0x2a5cc8, emissiveMap: wallTex, emissiveIntensity: 0.85, envMapIntensity: 0.9,
+      color: 0x2a221d, roughness: 0.92, metalness: 0.04,
+      map: wallTex, emissive: 0xff5a1e, emissiveMap: wallTex, emissiveIntensity: 0.32, envMapIntensity: 0.7,
     });
+    const ironMat = new THREE.MeshStandardMaterial({ color: 0x100c0a, roughness: 0.6, metalness: 0.7, envMapIntensity: 1.0 });
+    const bannerTex = this.makeBannerTexture();
     for (const sx of [-1, 1]) {
-      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, pathLen), this.emissiveMat(0x1b4fd0, 1.1));
-      rail.position.set(sx * HALF_WIDTH, 0.35, pathLen / 2 - 8);
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, pathLen), new THREE.MeshStandardMaterial({ color: 0x241d18, roughness: 0.9, metalness: 0.05 }));
+      rail.position.set(sx * HALF_WIDTH, 0.45, pathLen / 2 - 8);
       this.group.add(rail);
-      // tall paneled containment wall: textured glow + glowing top trim + ribs
+      // tall stone containment wall + a stone crenellated top course + iron base band
       const wall = new THREE.Mesh(new THREE.BoxGeometry(1.4, 13, pathLen), wallMat);
       wall.position.set(sx * (HALF_WIDTH + 1.4), 5.5, pathLen / 2 - 8);
       wall.castShadow = true;
       wall.receiveShadow = true;
       this.group.add(wall);
-      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, pathLen), this.emissiveMat(0x4a9bff, 2.6));
-      trim.position.set(sx * (HALF_WIDTH + 0.95), 11.9, pathLen / 2 - 8);
-      this.group.add(trim);
-      // a second, lower accent line of light running the wall
-      const accent = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, pathLen), this.emissiveMat(0x2b6cff, 1.8));
-      accent.position.set(sx * (HALF_WIDTH + 0.95), 2.4, pathLen / 2 - 8);
-      this.group.add(accent);
+      const cope = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, pathLen), ironMat);
+      cope.position.set(sx * (HALF_WIDTH + 1.4), 12.1, pathLen / 2 - 8);
+      this.group.add(cope);
+      const baseBand = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, pathLen), ironMat);
+      baseBand.position.set(sx * (HALF_WIDTH + 1.3), 1.0, pathLen / 2 - 8);
+      this.group.add(baseBand);
+      // stone buttress pilasters every so often
       for (let z = 14; z < ARENA_BLEND_Z; z += 24) {
-        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.35, 9, 0.5), this.emissiveMat(NEON[((z / 24) | 0) % NEON.length], 1.1));
-        rib.position.set(sx * (HALF_WIDTH + 0.72), 5.5, z);
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.6, 11, 1.6), wallMat);
+        rib.position.set(sx * (HALF_WIDTH + 0.5), 5.5, z);
+        rib.castShadow = true;
         this.group.add(rib);
+      }
+      // wall sconce torches lining the causeway (emissive flame, bloom carries the glow)
+      for (let z = 12; z < ARENA_BLEND_Z; z += 18) {
+        const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.5), ironMat);
+        bracket.position.set(sx * (HALF_WIDTH - 0.3), 6.4, z);
+        this.group.add(bracket);
+        const flame = this.makeFlame(0.85, false);
+        flame.position.set(sx * (HALF_WIDTH - 0.55), 6.7, z);
+        this.group.add(flame);
+      }
+      // hanging cloth banners with a sigil, between sconces
+      for (let z = 30; z < ARENA_BLEND_Z; z += 54) {
+        const banner = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.4, 5.5),
+          new THREE.MeshStandardMaterial({ map: bannerTex, emissive: 0xff5a1e, emissiveMap: bannerTex, emissiveIntensity: 0.5, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide }),
+        );
+        banner.position.set(sx * (HALF_WIDTH - 0.15), 7.4, z);
+        banner.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2;
+        this.group.add(banner);
       }
     }
 
-    // --- arch pillars along the path: emissive + co-located point light (light = glow) ---
-    let ci = 0;
+    // --- stone path pillars topped with flaming braziers (the warm path light) ---
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x2a221d, roughness: 0.9, metalness: 0.05, envMapIntensity: 0.7 });
+    let li = 0;
     for (let z = 18; z < ARENA_BLEND_Z; z += 28) {
-      const color = NEON[ci++ % NEON.length];
       for (const sx of [-1, 1]) {
-        const pillar = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.55, 0.8, 9, 8),
-          this.emissiveMat(color, 1.0),
-        );
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.85, 9, 8), stoneMat);
         pillar.position.set(sx * (HALF_WIDTH - 0.6), 4.5, z);
         pillar.castShadow = true;
-        this.group.add(pillar);
-        const cap = new THREE.Mesh(new THREE.SphereGeometry(0.9, 12, 10), this.emissiveMat(color, 2.2));
-        cap.position.set(sx * (HALF_WIDTH - 0.6), 9, z);
-        this.group.add(cap);
+        const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.45, 0.7, 10), ironMat);
+        bowl.position.set(sx * (HALF_WIDTH - 0.6), 9.2, z);
+        const flame = this.makeFlame(1.15, li++ % 2 === 0); // alternate which braziers cast a real light
+        flame.position.set(sx * (HALF_WIDTH - 0.6), 9.5, z);
+        this.group.add(pillar, bowl, flame);
       }
-      const light = new THREE.PointLight(color, 22, 34, 2);
-      light.position.set(0, 7, z);
-      this.group.add(light);
     }
 
     // --- gate barriers ---
     for (let i = 0; i < GATES_Z.length; i++) {
       const z = GATES_Z[i];
-      const color = NEON[i % NEON.length];
+      const color = EMBER[i % EMBER.length];
       const mat = new THREE.MeshBasicMaterial({
         color, transparent: true, opacity: 0.5, side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending, depthWrite: false,
@@ -162,7 +179,7 @@ export class Level {
     // --- arena ring of tall pillars + a central dais ---
     for (let a = 0; a < 12; a++) {
       const ang = (a / 12) * Math.PI * 2;
-      const color = NEON[a % NEON.length];
+      const color = EMBER[a % EMBER.length];
       const px = ARENA_CENTER.x + Math.cos(ang) * (ARENA_RADIUS + 1.5);
       const pz = ARENA_CENTER.y + Math.sin(ang) * (ARENA_RADIUS + 1.5);
       const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.0, 14, 8), this.emissiveMat(color, 0.9));
@@ -172,14 +189,14 @@ export class Level {
     }
     const dais = new THREE.Mesh(
       new THREE.CylinderGeometry(8, 9, 0.6, 40),
-      this.emissiveMat(0x7a3cff, 0.7),
+      this.emissiveMat(0xff5a1e, 0.8),
     );
     dais.position.set(BOSS_ANCHOR.x, 0.3, BOSS_ANCHOR.z);
     this.group.add(dais);
 
-    // --- glowing floor rungs down the path (depth cue + circuit read) ---
+    // --- warm iron inlay strips across the flags (depth cue + wayfinding) ---
     for (let z = 6; z < ARENA_BLEND_Z; z += 10) {
-      const rung = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2 - 1, 0.05, 0.16), this.emissiveMat(0x1b4fd0, 0.7));
+      const rung = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2 - 1, 0.05, 0.16), this.emissiveMat(0xff5a1e, 0.5));
       rung.position.set(0, 0.03, z);
       this.group.add(rung);
     }
@@ -190,10 +207,10 @@ export class Level {
       new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false,
         uniforms: {
-          top: { value: new THREE.Color(0x0b1838) },
-          mid: { value: new THREE.Color(0x090a1a) },
-          bot: { value: new THREE.Color(0x05060d) },
-          horizon: { value: new THREE.Color(0x1a3f7e) },
+          top: { value: new THREE.Color(0x140a06) },
+          mid: { value: new THREE.Color(0x0c0704) },
+          bot: { value: new THREE.Color(0x070403) },
+          horizon: { value: new THREE.Color(0x5a2308) },
         },
         vertexShader: "varying vec3 vp; void main(){ vp = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
         fragmentShader:
@@ -206,10 +223,10 @@ export class Level {
     sky.position.set(ARENA_CENTER.x, 0, 110);
     this.group.add(sky);
 
-    // --- horizon rift-glow behind the arena ---
+    // --- horizon fire-glow behind the arena (distant burning sky) ---
     const glow = new THREE.Mesh(
       new THREE.PlaneGeometry(210, 100),
-      new THREE.MeshBasicMaterial({ color: 0x3a6cff, transparent: true, opacity: 0.26, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+      new THREE.MeshBasicMaterial({ color: 0xff5a1e, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
     );
     glow.position.set(ARENA_CENTER.x, 26, ARENA_CENTER.y + 48);
     this.group.add(glow);
@@ -226,11 +243,11 @@ export class Level {
     this.group.add(this.makeStars(340, 2.2, true));
     this.group.add(this.makeStars(660, 1.0, false));
 
-    // --- overhead arches spanning the causeway (grandeur + detail) ---
-    const archDark = new THREE.MeshStandardMaterial({ color: 0x0c0e18, roughness: 0.5, metalness: 0.72, envMapIntensity: 1.0 });
+    // --- overhead stone arches spanning the causeway (grandeur + detail) ---
+    const archDark = new THREE.MeshStandardMaterial({ color: 0x251e19, roughness: 0.9, metalness: 0.05, envMapIntensity: 0.7 });
     let ai = 0;
     for (let z = 30; z < ARENA_BLEND_Z; z += 36) {
-      const color = NEON[ai++ % NEON.length];
+      const color = EMBER[ai++ % EMBER.length];
       const r = HALF_WIDTH + 1.5;
       const arch = new THREE.Mesh(new THREE.TorusGeometry(r, 0.55, 8, 28, Math.PI), archDark);
       arch.position.set(0, 0, z); arch.castShadow = true;
@@ -256,46 +273,44 @@ export class Level {
     // --- giant rift portal behind the boss ---
     const portal = new THREE.Group();
     // soft additive glow disc behind the rings (pulses in update)
-    this.portalGlowMat = new THREE.MeshBasicMaterial({ map: this.makeGlowTexture(), color: 0x7a4cff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    this.portalGlowMat = new THREE.MeshBasicMaterial({ map: this.makeGlowTexture(), color: 0xff5a1e, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
     this.portalGlow = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), this.portalGlowMat);
     this.portalGlow.position.z = -0.6;
     portal.add(this.portalGlow);
-    const pcore = new THREE.Mesh(new THREE.CircleGeometry(5, 48), new THREE.MeshBasicMaterial({ color: 0x1a0b34, side: THREE.DoubleSide }));
+    const pcore = new THREE.Mesh(new THREE.CircleGeometry(5, 48), new THREE.MeshBasicMaterial({ color: 0x1a0a04, side: THREE.DoubleSide }));
     portal.add(pcore);
     for (let i = 0; i < 5; i++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(5 + i * 2.1, 0.38 - i * 0.045, 10, 48), this.emissiveMat(NEON[i % NEON.length], 2.5 - i * 0.28));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(5 + i * 2.1, 0.38 - i * 0.045, 10, 48), this.emissiveMat(EMBER[i % EMBER.length], 2.5 - i * 0.28));
       this.portalRings.push(ring);
       portal.add(ring);
     }
     portal.position.set(ARENA_CENTER.x, 12, ARENA_CENTER.y + 22);
     this.group.add(portal);
 
-    // --- wall buttresses + emissive window panels ---
+    // --- glowing arrow-slit windows high on the walls (inner firelight) ---
     for (const sx of [-1, 1]) {
-      for (let z = 8; z < ARENA_BLEND_Z; z += 18) {
-        const but = new THREE.Mesh(new THREE.BoxGeometry(0.8, 11, 1.6), archDark);
-        but.position.set(sx * (HALF_WIDTH + 0.2), 5.5, z); but.castShadow = true;
-        const paneMat = this.emissiveMat(NEON[((z / 18) | 0) % NEON.length], 1.3);
-        this.panes.push(paneMat);
-        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5, 1.2), paneMat);
-        pane.position.set(sx * (HALF_WIDTH - 0.4), 6.2, z + 9);
-        this.group.add(but, pane);
+      for (let z = 21; z < ARENA_BLEND_Z; z += 36) {
+        const slitMat = this.emissiveMat(0xff7a2c, 1.1);
+        this.panes.push(slitMat);
+        const slit = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3, 0.5), slitMat);
+        slit.position.set(sx * (HALF_WIDTH - 0.35), 8.6, z);
+        this.group.add(slit);
       }
     }
 
-    // --- drifting ambient motes ---
-    const M = 160;
+    // --- rising embers drifting off the firelit causeway ---
+    const M = 200;
     const mp = new Float32Array(M * 3);
     this.moteVel = new Float32Array(M);
     for (let i = 0; i < M; i++) {
       mp[i * 3] = this.ctx.rng.range(-HALF_WIDTH, HALF_WIDTH);
       mp[i * 3 + 1] = this.ctx.rng.range(0.5, 12);
       mp[i * 3 + 2] = this.ctx.rng.range(0, ARENA_BLEND_Z);
-      this.moteVel[i] = this.ctx.rng.range(0.3, 1.0);
+      this.moteVel[i] = this.ctx.rng.range(0.6, 1.6);
     }
     const mgeo = new THREE.BufferGeometry();
     mgeo.setAttribute("position", new THREE.BufferAttribute(mp, 3));
-    this.motes = new THREE.Points(mgeo, new THREE.PointsMaterial({ color: 0x7fb4ff, size: 0.13, sizeAttenuation: true, transparent: true, opacity: 0.7, depthWrite: false, fog: false }));
+    this.motes = new THREE.Points(mgeo, new THREE.PointsMaterial({ color: 0xff9a44, size: 0.16, sizeAttenuation: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     this.group.add(this.motes);
 
     scene.add(this.group);
@@ -320,6 +335,14 @@ export class Level {
     for (let i = 0; i < this.panes.length; i++) this.panes[i].emissiveIntensity = 1.0 + 0.8 * (0.5 + 0.5 * Math.sin(t * 1.5 + i * 0.7));
     // twinkling / drifting stars
     for (let i = 0; i < this.starMats.length; i++) this.starMats[i].uniforms.uTime.value = t;
+    // torch + brazier flicker (two incommensurate sines per flame = organic, not jitter)
+    for (let i = 0; i < this.flames.length; i++) {
+      const f = this.flames[i];
+      const fl = 0.78 + 0.16 * Math.sin(t * 13 + f.phase) + 0.1 * Math.sin(t * 23 + f.phase * 1.7);
+      f.obj.scale.set(0.9 + 0.1 * fl, fl, 0.9 + 0.1 * fl);
+      f.mat.opacity = 0.6 + 0.35 * fl;
+      if (f.light) f.light.intensity = f.lightBase * (0.65 + 0.5 * fl);
+    }
     if (this.motes && this.moteVel) {
       const pos = this.motes.geometry.attributes.position as THREE.BufferAttribute;
       const arr = pos.array as Float32Array;
@@ -331,30 +354,84 @@ export class Level {
     }
   }
 
-  /** Canvas-painted neon wall panel: glowing seams, vertical light strips, window cells. */
-  private makeWallTexture(): THREE.CanvasTexture {
+  /** Canvas-painted mortared stone blocks, with a few faintly ember-lit cracks. */
+  private makeStoneWallTexture(): THREE.CanvasTexture {
     const w = 256, h = 256;
     const cv = document.createElement("canvas");
     cv.width = w; cv.height = h;
     const g = cv.getContext("2d")!;
-    g.fillStyle = "#04050c";
+    g.fillStyle = "#1a1410";
     g.fillRect(0, 0, w, h);
-    // horizontal panel seams (brighter) + vertical seams (dim)
-    g.strokeStyle = "rgba(60,120,235,0.55)"; g.lineWidth = 3;
-    for (let y = 0; y <= h; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
-    g.strokeStyle = "rgba(40,80,180,0.3)"; g.lineWidth = 2;
-    for (let x = 0; x <= w; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-    // bright vertical light strips
-    g.fillStyle = "rgba(95,175,255,0.85)";
-    g.fillRect(40, 8, 5, h - 16);
-    g.fillRect(w - 45, 8, 5, h - 16);
-    // window cells per panel
-    g.fillStyle = "rgba(120,200,255,0.9)";
-    for (let yy = 18; yy < h; yy += 64) for (let xx = 86; xx < w - 58; xx += 48) g.fillRect(xx, yy, 18, 28);
+    // running-bond courses: each course offset by half a block
+    const rowH = 42, blockW = 64;
+    for (let row = 0, y = 0; y < h; row++, y += rowH) {
+      const off = (row % 2) * (blockW / 2);
+      for (let x = -blockW; x < w + blockW; x += blockW) {
+        const bx = x + off + 2, by = y + 2, bw = blockW - 4, bh = rowH - 4;
+        // block face — slight per-block value variation for a hewn look
+        const v = 26 + ((row * 7 + x) % 5) * 4;
+        g.fillStyle = `rgb(${v + 12},${v + 4},${v - 2})`;
+        g.fillRect(bx, by, bw, bh);
+        // top-left highlight + bottom-right shadow bevel
+        g.fillStyle = "rgba(255,210,170,0.06)"; g.fillRect(bx, by, bw, 3);
+        g.fillStyle = "rgba(0,0,0,0.35)"; g.fillRect(bx, by + bh - 3, bw, 3);
+      }
+    }
+    // a handful of ember-lit cracks (these glow via emissiveMap)
+    g.strokeStyle = "rgba(255,110,40,0.8)"; g.lineWidth = 2;
+    for (let i = 0; i < 6; i++) {
+      const x = (i * 53) % w, y = (i * 97) % h;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + 18 - i * 4, y + 26); g.lineTo(x + 6, y + 48); g.stroke();
+    }
     const tex = new THREE.CanvasTexture(cv);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.anisotropy = 8;
     return tex;
+  }
+
+  /** Hanging cloth banner: dark field, gold border, a simple chevron sigil. */
+  private makeBannerTexture(): THREE.CanvasTexture {
+    const w = 128, h = 256;
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const g = cv.getContext("2d")!;
+    g.fillStyle = "#3a1208"; g.fillRect(0, 0, w, h);
+    g.fillStyle = "#5a1c0a"; g.fillRect(8, 0, w - 16, h);
+    g.strokeStyle = "#ffb24a"; g.lineWidth = 5; g.strokeRect(12, 6, w - 24, h - 12);
+    // sigil: stacked chevrons + a central diamond
+    g.fillStyle = "#ffce6a";
+    for (let i = 0; i < 3; i++) {
+      const cy = 70 + i * 46;
+      g.beginPath();
+      g.moveTo(w / 2, cy); g.lineTo(w / 2 + 26, cy + 22); g.lineTo(w / 2 + 18, cy + 22);
+      g.lineTo(w / 2, cy + 8); g.lineTo(w / 2 - 18, cy + 22); g.lineTo(w / 2 - 26, cy + 22);
+      g.closePath(); g.fill();
+    }
+    g.beginPath(); g.moveTo(w / 2, 30); g.lineTo(w / 2 + 16, 48); g.lineTo(w / 2, 66); g.lineTo(w / 2 - 16, 48); g.closePath(); g.fill();
+    return new THREE.CanvasTexture(cv);
+  }
+
+  /** Low-poly stylized flame (stacked additive cones) + optional flickering torch light. */
+  private makeFlame(scale: number, withLight: boolean): THREE.Group {
+    const grp = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff7a1e, transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    const outer = new THREE.Mesh(new THREE.ConeGeometry(0.34 * scale, 1.2 * scale, 7), mat);
+    outer.position.y = 0.6 * scale;
+    const inner = new THREE.Mesh(
+      new THREE.ConeGeometry(0.17 * scale, 0.74 * scale, 7),
+      new THREE.MeshBasicMaterial({ color: 0xffe39a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+    );
+    inner.position.y = 0.46 * scale;
+    grp.add(outer, inner);
+    const lightBase = 15 * scale;
+    let light: THREE.PointLight | undefined;
+    if (withLight) {
+      light = new THREE.PointLight(0xff7a2c, lightBase, 22, 2);
+      light.position.y = 0.9 * scale;
+      grp.add(light);
+    }
+    this.flames.push({ obj: grp, mat, phase: this.ctx.rng.range(0, Math.PI * 2), light, lightBase });
+    return grp;
   }
 
   /** Twinkling, drifting starfield material (per-star phase) — uTime advanced in update. */
@@ -394,7 +471,7 @@ export class Level {
     return new THREE.CanvasTexture(cv);
   }
 
-  /** Painted nebula blotches (purple/blue/pink) — additive band behind the arena. */
+  /** Painted nebula blotches (ember/amber/smoke) — additive burning-sky band behind the arena. */
   private makeNebulaTexture(): THREE.CanvasTexture {
     const w = 512, h = 256;
     const cv = document.createElement("canvas");
@@ -402,7 +479,7 @@ export class Level {
     const g = cv.getContext("2d")!;
     g.fillStyle = "#000";
     g.fillRect(0, 0, w, h);
-    const cols = ["rgba(96,64,205,", "rgba(44,92,210,", "rgba(205,72,162,", "rgba(64,184,212,"];
+    const cols = ["rgba(220,110,40,", "rgba(180,60,30,", "rgba(240,170,70,", "rgba(120,50,120,"];
     for (let i = 0; i < 28; i++) {
       const x = this.ctx.rng.range(0, w);
       const y = this.ctx.rng.range(h * 0.08, h * 0.92);
@@ -429,7 +506,7 @@ export class Level {
       const y = (i / 5) * h + 12;
       const grad = g.createLinearGradient(0, y - 44, 0, y + 44);
       grad.addColorStop(0, "rgba(0,0,0,0)");
-      grad.addColorStop(0.5, "rgba(130,205,255,0.95)");
+      grad.addColorStop(0.5, "rgba(255,170,70,0.95)");
       grad.addColorStop(1, "rgba(0,0,0,0)");
       g.fillStyle = grad;
       g.fillRect(w * 0.28, y - 44, w * 0.44, 88);
@@ -441,7 +518,7 @@ export class Level {
     const pos = new Float32Array(count * 3);
     const col = new Float32Array(count * 3);
     const phase = new Float32Array(count);
-    const tints = [new THREE.Color(0xbfe0ff), new THREE.Color(0xc9a8ff), new THREE.Color(0xff9ec8), new THREE.Color(0xffffff)];
+    const tints = [new THREE.Color(0xffd9a0), new THREE.Color(0xffb46a), new THREE.Color(0xff8a4a), new THREE.Color(0xfff0d8)];
     const c = new THREE.Color();
     for (let i = 0; i < count; i++) {
       const ang = this.ctx.rng.range(0, Math.PI * 2);
@@ -468,50 +545,31 @@ export class Level {
     });
   }
 
-  /** Canvas-painted neon grid — used as both map and emissiveMap so the lines glow. */
-  private makeGridTexture(): THREE.CanvasTexture {
+  /**
+   * Canvas-painted flagstone floor — a 2×2 grid of hewn stone tiles with deep mortar
+   * gaps that glow faintly (used as emissiveMap), so the floor reads as cracked stone
+   * lit from within by buried embers rather than a neon grid.
+   */
+  private makeStoneTexture(): THREE.CanvasTexture {
     const s = 256;
     const cv = document.createElement("canvas");
     cv.width = cv.height = s;
     const g = cv.getContext("2d")!;
-    g.fillStyle = "#070a14";
+    // mortar base (glows warm via emissiveMap)
+    g.fillStyle = "#5a2410";
     g.fillRect(0, 0, s, s);
-    // soft inner glow
-    const grad = g.createRadialGradient(s / 2, s / 2, 10, s / 2, s / 2, s / 1.4);
-    grad.addColorStop(0, "rgba(40,90,200,0.10)");
-    grad.addColorStop(1, "rgba(0,0,0,0)");
-    g.fillStyle = grad;
-    g.fillRect(0, 0, s, s);
-    // grid border + cross
-    g.strokeStyle = "#4a8bff";
-    g.lineWidth = 5;
-    g.strokeRect(2, 2, s - 4, s - 4);
-    g.globalAlpha = 0.55;
-    g.beginPath();
-    g.moveTo(s / 2, 0); g.lineTo(s / 2, s); g.moveTo(0, s / 2); g.lineTo(s, s / 2);
-    g.stroke();
-    g.globalAlpha = 1;
-    // finer violet subdivisions (cooler two-tone read)
-    g.strokeStyle = "rgba(150,110,240,0.22)";
-    g.lineWidth = 1;
-    for (const f of [0.25, 0.75]) {
-      g.beginPath();
-      g.moveTo(s * f, 0); g.lineTo(s * f, s); g.moveTo(0, s * f); g.lineTo(s, s * f);
-      g.stroke();
-    }
-    // clipped corner diagonals (tech chamfer)
-    g.strokeStyle = "rgba(90,190,255,0.55)";
-    g.lineWidth = 2;
-    const dd = 38;
-    for (const [cx, cy, dx, dy] of [[0, 0, 1, 1], [s, 0, -1, 1], [0, s, 1, -1], [s, s, -1, -1]] as const) {
-      g.beginPath();
-      g.moveTo(cx, cy + dy * dd); g.lineTo(cx + dx * dd, cy);
-      g.stroke();
-    }
-    // corner nodes
-    g.fillStyle = "#8ac6ff";
-    for (const [x, y] of [[2, 2], [s - 2, 2], [2, s - 2], [s - 2, s - 2]]) {
-      g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
+    // four flagstones with a gap, slightly varied tone + a bevel
+    const gap = 7, half = s / 2;
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
+      const x = c * half + gap, y = r * half + gap, sz = half - gap * 2;
+      const v = 30 + ((r * 2 + c) % 3) * 6;
+      g.fillStyle = `rgb(${v + 6},${v},${v - 4})`;
+      g.fillRect(x, y, sz, sz);
+      g.fillStyle = "rgba(255,200,150,0.05)"; g.fillRect(x, y, sz, 4);
+      g.fillStyle = "rgba(0,0,0,0.4)"; g.fillRect(x, y + sz - 4, sz, 4);
+      // a couple of hairline cracks in the stone
+      g.strokeStyle = "rgba(255,110,40,0.35)"; g.lineWidth = 1;
+      g.beginPath(); g.moveTo(x + sz * 0.3, y); g.lineTo(x + sz * 0.45, y + sz * 0.5); g.lineTo(x + sz * 0.35, y + sz); g.stroke();
     }
     const tex = new THREE.CanvasTexture(cv);
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
