@@ -10,11 +10,11 @@ import { clamp } from "../core/math";
  * fights leading to the boss you can see waiting at the end.
  */
 export const START_Z = 0;
-export const HALF_WIDTH = 12; // path is 24 wide
+export const HALF_WIDTH = 18; // path is 36 wide
 export const GATES_Z = [50, 100, 150];
 export const ARENA_BLEND_Z = 184;
 export const ARENA_CENTER = new THREE.Vector2(0, 214);
-export const ARENA_RADIUS = 30;
+export const ARENA_RADIUS = 38;
 export const PLAYER_SPAWN = new THREE.Vector3(0, 0, 4);
 export const BOSS_ANCHOR = new THREE.Vector3(0, 0, 226);
 

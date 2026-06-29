@@ -255,6 +255,7 @@ w.__rh4debug = {
   // deterministic stepping for headless tests (rAF is suspended in a hidden window)
   tick: (dt = 0.033) => frame(dt),
   frames: (n: number, dt = 0.033) => { for (let i = 0; i < n; i++) frame(dt); },
+  god: (on: boolean) => { ctx.player.god = on; },
 };
 
 // --------------------------------------------------------------------- finish boot

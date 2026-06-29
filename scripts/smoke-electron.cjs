@@ -129,26 +129,29 @@ app.whenReady().then(async () => {
 
       // --- start the run
       await js(`window.__rh4debug.start()`);
+      await js(`window.__rh4debug.god(true)`); // survive the scripted demo (toggled off before the death beat)
       await frames(3);
       expect(await js(`window.__rh4state()==='playing'`), "run did not enter playing");
       await shot(win, "path-start");
 
-      // --- player advances forward on W (yaw faces +Z down the causeway)
+      // --- walk down the (wider) causeway; advancing past the trigger spawns gate 1's wave
       const z0 = await js(`window.__rh4.player.pos.z`);
       await key("KeyW", "keydown");
-      await frames(24);
+      await frames(64);
+      await shot(win, "path-mid");
       await key("KeyW", "keyup");
       const z1 = await js(`window.__rh4.player.pos.z`);
       expect(z1 > z0 + 1.5, `player did not advance on W (z ${z0.toFixed(1)} -> ${z1.toFixed(1)})`);
-
-      // --- spawn a wave and confirm enemies + draw calls
-      await js(`window.__rh4debug.scenario('wave')`);
-      await frames(3);
-      expect(await js(`window.__rh4.enemies.aliveCount() > 0`), "wave did not spawn enemies");
+      expect(await js(`window.__rh4.enemies.aliveCount() > 0`), "advancing did not spawn the gate wave");
       const calls = await js(`window.__rh4.stage.renderer.info.render.calls`);
       expect(calls > 0, "no draw calls (" + calls + ")");
-      await frames(20); // let enemies approach for a livelier shot
+      await frames(18); // let enemies close in
       await shot(win, "combat");
+
+      // --- attack animation mid-swing (a Cleave overhead)
+      await tap("KeyK"); await frames(9);
+      await shot(win, "attack");
+      await frames(14);
 
       // --- drive a CRESCENDO combo (Strike, Strike, Cleave = J, J, K)
       await tap("KeyJ"); await frames(11);
@@ -172,15 +175,26 @@ app.whenReady().then(async () => {
       const hpHealed = await js(`window.__rh4.player.hp`);
       expect(hpHealed > hpLow, `health shard did not heal (${hpLow} -> ${hpHealed})`);
 
-      // --- clear the field, jump to the boss
+      // --- clear the wave → the gate opens
       await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
-      await frames(8);
+      await frames(10);
+      expect(await js(`window.__rh4.level.gates[0].open === true`), "gate did not open after clearing the wave");
+      await shot(win, "gate-open");
+
+      // --- jump to the boss arena
       await js(`window.__rh4debug.scenario('boss')`);
       await frames(8);
       const bossHp = await js(`window.__rh4.boss ? window.__rh4.boss.hp : null`);
       expect(typeof bossHp === "number" && bossHp > 0, "boss did not spawn (" + bossHp + ")");
-      await frames(16);
+      await frames(20);
       await shot(win, "boss");
+
+      // --- drive the boss into phase 3 (collapse): break past 50% then 25%
+      await js(`window.__rh4.boss.takeDamage(window.__rh4.boss.maxHp*0.55, {})`);
+      await frames(3);
+      await js(`window.__rh4.boss.takeDamage(window.__rh4.boss.maxHp*0.22, {})`);
+      await frames(22);
+      await shot(win, "boss-phase3");
 
       // --- defeat the boss → victory flow (victoryQueued ~1.8s)
       await js(`if(window.__rh4.boss) window.__rh4.boss.takeDamage(99999,{})`);
@@ -188,13 +202,21 @@ app.whenReady().then(async () => {
       expect(await js(`window.__rh4state()==='victory'`), "victory state never reached");
       await shot(win, "victory", false);
 
-      // --- death flow
+      // --- death flow (god off so the lethal hit lands)
       await js(`window.__rh4debug.start()`);
+      await js(`window.__rh4debug.god(false)`);
       await frames(3);
       await js(`window.__rh4.combat.damagePlayer(99999, 0, 0)`);
       await frames(2);
       expect(await js(`window.__rh4state()==='dead'`), "death state never reached");
       await shot(win, "death", false);
+
+      // --- resized viewport (verify scaling holds)
+      win.setContentSize(1120, 640);
+      await sleep(200);
+      await js(`window.__rh4debug.start()`);
+      await frames(6);
+      await shot(win, "resized");
     } catch (e) {
       errors.push("EXCEPTION: " + (e && e.message ? e.message : String(e)));
     }

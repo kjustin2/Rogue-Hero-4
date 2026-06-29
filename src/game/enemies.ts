@@ -57,6 +57,8 @@ export class Enemy implements Hittable {
   private tele: TelegraphHandle | null = null;
   group = new THREE.Group();
   private coreMat: THREE.MeshStandardMaterial;
+  private core!: THREE.Mesh;
+  private vt = 0;
   dying = false;
   private deathT = 0;
 
@@ -75,33 +77,72 @@ export class Enemy implements Hittable {
   }
 
   private buildMesh(): void {
-    const shellMat = new THREE.MeshStandardMaterial({ color: 0x0b0d18, roughness: 0.6, metalness: 0.4, emissive: this.cfg.color, emissiveIntensity: 0.25 });
+    const c = this.cfg.color;
+    const shellMat = new THREE.MeshStandardMaterial({ color: 0x0b0d18, roughness: 0.55, metalness: 0.5, emissive: c, emissiveIntensity: 0.3 });
+    const edgeMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: c, emissiveIntensity: 1.5, roughness: 0.4 });
+
     if (this.kind === "husk") {
-      const body = new THREE.Mesh(new THREE.ConeGeometry(0.6, 2.0, 6), shellMat);
+      // armored shard-wraith: tapered body, radiating emissive fins, bright core, eye slit
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.72, 1.9, 6), shellMat);
       body.position.y = 1.0; body.castShadow = true;
-      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.34), this.coreMat);
-      core.position.y = 1.3;
-      this.group.add(body, core);
+      this.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.34), this.coreMat);
+      this.core.position.y = 1.35;
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.1), this.coreMat);
+      eye.position.set(0, 1.05, 0.46);
+      this.group.add(body, this.core, eye);
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        const fin = new THREE.Mesh(new THREE.ConeGeometry(0.12, 1.0, 4), edgeMat);
+        fin.position.set(Math.cos(a) * 0.5, 1.5, Math.sin(a) * 0.5);
+        fin.rotation.set(-Math.sin(a) * 0.6, 0, Math.cos(a) * 0.6);
+        this.group.add(fin);
+      }
     } else if (this.kind === "spitter") {
-      const body = new THREE.Mesh(new THREE.OctahedronGeometry(0.7), shellMat);
+      // floating eye: faceted shell + emissive iris + energy ring + orbiting shards
+      const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 1), shellMat);
       body.castShadow = true;
-      const core = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), this.coreMat);
-      this.group.add(body, core);
+      this.core = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), this.coreMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.06, 8, 28), edgeMat);
+      ring.rotation.x = Math.PI / 2;
+      this.group.add(body, this.core, ring);
+      for (let i = 0; i < 3; i++) {
+        const a = (i / 3) * Math.PI * 2;
+        const sh = new THREE.Mesh(new THREE.TetrahedronGeometry(0.18), edgeMat);
+        sh.position.set(Math.cos(a) * 1.0, 0, Math.sin(a) * 1.0);
+        this.group.add(sh);
+      }
     } else if (this.kind === "wraith") {
-      const body = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.7, 4), shellMat);
-      body.rotation.x = Math.PI / 2; // arrowhead points forward (group yaw faces the player)
-      body.castShadow = true;
-      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), this.coreMat);
-      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.5), this.coreMat);
-      this.group.add(body, core, fin);
+      // sleek dart: arrowhead + swept fins + bright trailing core
+      const body = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.8, 4), shellMat);
+      body.rotation.x = Math.PI / 2; body.castShadow = true; // points forward; group yaw aims it
+      this.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), this.coreMat);
+      this.core.position.z = -0.5;
+      const finL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.7), edgeMat);
+      finL.position.set(0.34, 0, 0.45); finL.rotation.z = 0.4;
+      const finR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.7), edgeMat);
+      finR.position.set(-0.34, 0, 0.45); finR.rotation.z = -0.4;
+      this.group.add(body, this.core, finL, finR);
     } else {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.9, 1.2), shellMat);
-      body.position.y = 1.0; body.castShadow = true;
-      const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5), this.coreMat);
-      core.position.y = 1.2;
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.18, 0.1), this.coreMat);
-      eye.position.set(0, 1.4, 0.6);
-      this.group.add(body, core, eye);
+      // brute: hulking armored construct — pauldrons, horns, glowing seams, big core
+      const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.0, 1.3), shellMat);
+      body.position.y = 1.1; body.castShadow = true;
+      this.core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5), this.coreMat);
+      this.core.position.set(0, 1.3, 0.55);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 0.8), shellMat);
+      head.position.y = 2.4; head.castShadow = true;
+      this.group.add(body, this.core, head);
+      for (const sx of [-1, 1]) {
+        const pauld = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 1.1), shellMat);
+        pauld.position.set(sx * 1.0, 1.9, 0); pauld.castShadow = true;
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.8, 4), edgeMat);
+        horn.position.set(sx * 0.28, 2.95, 0);
+        this.group.add(pauld, horn);
+      }
+      for (const sy of [0.7, 1.5]) {
+        const seam = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.08, 0.08), edgeMat);
+        seam.position.set(0, sy, 0.66);
+        this.group.add(seam);
+      }
     }
   }
 
@@ -126,8 +167,10 @@ export class Enemy implements Hittable {
   }
 
   tick(dt: number): void {
+    this.vt += dt;
     this.flash = Math.max(0, this.flash - dt * 4);
     this.coreMat.emissiveIntensity = 1.6 + this.flash * 4;
+    if (this.core) { this.core.rotation.y += dt * 2.2; this.core.rotation.x += dt * 1.4; }
 
     if (this.dying) {
       this.deathT += dt;
@@ -247,7 +290,8 @@ export class Enemy implements Hittable {
   }
 
   private sync(nx = 0, nz = 0): void {
-    this.group.position.set(this.pos.x, this.cfg.bodyY, this.pos.z);
+    const bob = Math.sin(this.vt * 2.5 + this.id) * 0.1;
+    this.group.position.set(this.pos.x, this.cfg.bodyY + bob, this.pos.z);
     if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
   }
 

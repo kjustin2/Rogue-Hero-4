@@ -12,6 +12,60 @@ const DASH_CD = 0.85;
 const COMBO_WINDOW = 1.4; // seconds allowed between glyphs to keep the chain
 const BUFFER_MAX = 6;
 
+// ---- weapon viewmodel poses: [px, py, pz, rx, ry, rz] ----
+type Pose = [number, number, number, number, number, number];
+const REST: Pose = [0.52, -0.58, -0.95, 0.12, -0.2, 0.08];
+
+interface SwingKey { t: number; pose: Pose; flash?: number; stretch?: number }
+
+/**
+ * Keyframed swings: anticipation → a fast snap through the impact key → settle.
+ * `flash`/`stretch` on the impact key drive a blade emissive pop + length stretch
+ * so the hit reads in first person.
+ */
+const SWINGS: Record<GlyphId, SwingKey[]> = {
+  strike: [
+    { t: 0, pose: REST },
+    { t: 0.2, pose: [0.72, -0.46, -0.82, -0.15, -0.8, 0.7] }, // wind up upper-right
+    { t: 0.42, pose: [0.26, -0.68, -1.32, 0.25, 1.05, -0.8], flash: 3.5, stretch: 1.6 }, // slash down-left
+    { t: 1, pose: REST },
+  ],
+  cleave: [
+    { t: 0, pose: REST },
+    { t: 0.34, pose: [0.42, -0.16, -0.78, -1.35, -0.1, 0.12] }, // raise overhead
+    { t: 0.56, pose: [0.42, -0.72, -1.28, 1.15, -0.05, 0.05], flash: 4.5, stretch: 1.5 }, // slam down
+    { t: 1, pose: REST },
+  ],
+  bolt: [
+    { t: 0, pose: REST },
+    { t: 0.4, pose: [0.58, -0.5, -0.68, -0.12, -0.28, 0.1] }, // draw back
+    { t: 0.6, pose: [0.5, -0.55, -1.5, 0.28, -0.18, 0.05], flash: 4 }, // thrust forward
+    { t: 1, pose: REST },
+  ],
+};
+
+function samplePose(keys: SwingKey[], p: number): { pose: Pose; flash: number; stretch: number } {
+  let a = keys[0];
+  let b = keys[keys.length - 1];
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (p >= keys[i].t && p <= keys[i + 1].t) { a = keys[i]; b = keys[i + 1]; break; }
+  }
+  const span = b.t - a.t || 1;
+  // accelerate INTO an impact key, decelerate out of it
+  const easeFn = b.flash ? ease.inCubic : a.flash ? ease.outCubic : ease.inOutCubic;
+  const k = easeFn(clamp((p - a.t) / span, 0, 1));
+  const pose = a.pose.map((v, j) => v + (b.pose[j] - v) * k) as unknown as Pose;
+  const imp = keys.find((kf) => kf.flash);
+  let flash = 0;
+  let stretch = 1;
+  if (imp) {
+    const bump = Math.max(0, 1 - Math.abs(p - imp.t) / 0.18);
+    flash = (imp.flash ?? 0) * bump;
+    stretch = 1 + ((imp.stretch ?? 1) - 1) * bump;
+  }
+  return { pose, flash, stretch };
+}
+
 /**
  * First-person player: camera-relative movement, the limited glyph moveset with a
  * rolling combo buffer, dash i-frames, and an animated weapon viewmodel parented to
@@ -24,6 +78,8 @@ export class Player {
   hp = 120;
   alive = true;
   iframes = 0;
+  /** Debug invulnerability (smoke/screenshot harness). */
+  god = false;
 
   /** Recent glyph casts (combo buffer) — HUD reads this for the chain readout. */
   buffer: GlyphId[] = [];
@@ -240,45 +296,33 @@ export class Player {
 
   // ----------------------------------------------------------------- viewmodel anim
   private animate(dt: number): void {
-    // resting pose + breathing/bob
     const t = performance.now() / 1000;
-    let rx = 0.12 + Math.sin(t * 1.3) * 0.02;
-    let ry = -0.2;
-    let rz = 0.08;
-    let pz = -0.95 + this.moveAmount * 0.04 * Math.sin(t * 11);
-    let px = 0.52 + this.moveAmount * 0.03 * Math.cos(t * 5.5);
-    let py = -0.58 - this.moveAmount * 0.03;
-
     const m = this.current;
+    let pose: Pose;
+    let flash = 0;
+    let stretch = 1;
     let trailActive = false;
-    if (m) {
+
+    if (!m) {
+      // rest + breathing / locomotion sway
+      pose = [...REST] as Pose;
+      pose[0] += this.moveAmount * 0.03 * Math.cos(t * 5.5);
+      pose[1] += -this.moveAmount * 0.03;
+      pose[2] += this.moveAmount * 0.04 * Math.sin(t * 11);
+      pose[3] += Math.sin(t * 1.3) * 0.02;
+    } else {
       const p = clamp(this.moveT / moveDuration(m), 0, 1);
-      if (m.id === "strike") {
-        // fast horizontal slash R->L
-        const s = ease.outCubic(clamp(p / 0.6, 0, 1));
-        ry = -0.2 + s * 1.0;
-        rz = 0.08 - s * 0.7;
-        pz = -0.95 - Math.sin(p * Math.PI) * 0.4;
-        trailActive = p > m.windup / moveDuration(m) && p < 0.7;
-      } else if (m.id === "cleave") {
-        // big overhead chop
-        const wind = clamp(p / 0.32, 0, 1);
-        const fall = ease.inCubic(clamp((p - 0.32) / 0.5, 0, 1));
-        rx = 0.12 - wind * 1.4 + fall * 2.2;
-        pz = -0.95 - Math.sin(p * Math.PI) * 0.3;
-        py = -0.58 + wind * 0.2 - fall * 0.25;
-        trailActive = p > 0.3 && p < 0.8;
-      } else {
-        // bolt: pull back then thrust
-        const wind = clamp(p / 0.4, 0, 1);
-        const thrust = ease.outQuart(clamp((p - 0.4) / 0.3, 0, 1));
-        pz = -0.95 + wind * 0.25 - thrust * 0.6;
-        rx = 0.12 - wind * 0.2 + thrust * 0.15;
-      }
+      const s = samplePose(SWINGS[m.id], p);
+      pose = s.pose;
+      flash = s.flash;
+      stretch = s.stretch;
+      trailActive = m.kind === "melee" && p > 0.18 && p < 0.62;
     }
 
-    this.weapon.position.set(px, py, pz);
-    this.weapon.rotation.set(rx, ry, rz);
+    this.weapon.position.set(pose[0], pose[1], pose[2]);
+    this.weapon.rotation.set(pose[3], pose[4], pose[5]);
+    this.blade.scale.z = stretch;
+    this.bladeMat.emissiveIntensity = 1.6 + flash;
 
     // feed the sword trail (world-space tip/base of the blade)
     this.tipMarker.getWorldPosition(this.tip);

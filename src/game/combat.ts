@@ -153,6 +153,7 @@ export class Combat {
   damagePlayer(dmg: number, srcX: number, srcZ: number): "hit" | "dodged" | "dead" {
     const p = this.ctx.player;
     if (!p.alive) return "dead";
+    if (p.god) return "dodged";
     if (p.iframes > 0) {
       // Perfect dodge: i-frames only come from a dash, so dashing through a hit
       // rewards you — impact freeze, glyph cooldowns refunded for an instant counter.
