@@ -74,8 +74,8 @@ export class Stage {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x07070f);
-    this.fog = new THREE.FogExp2(0x0a0a16, 0.016);
+    this.scene.background = new THREE.Color(0x06080f);
+    this.fog = new THREE.FogExp2(0x0a1430, 0.015);
     this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 220);

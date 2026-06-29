@@ -256,10 +256,11 @@ export class Player {
       this.ctx.combat.meleeSweep(this.pos.x, this.pos.z, fx, fz, m.arc, m.range, m.damage, m.knockback, m.id === "cleave");
       this.ctx.cam.kick(-fx, -fz, m.id === "cleave" ? 0.5 : 0.2);
     } else {
-      // bolt fires along the full 3D look direction from eye height
+      // bolt fires along the full 3D look direction from ~eye height, so it travels
+      // straight down the crosshair ray (aim up → bolt rises toward the boss core)
       this.ctx.sfx.boltCast();
       this.ctx.cam.forward(this.aim);
-      this.ctx.projectiles.spawn(this.pos.x, 1.35, this.pos.z, this.aim, 34, m.damage, true, m.color, m.knockback);
+      this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.aim, 34, m.damage, true, m.color, m.knockback);
       this.ctx.cam.kick(-fx, -fz, 0.15);
     }
 

@@ -130,9 +130,22 @@ app.whenReady().then(async () => {
       // --- start the run
       await js(`window.__rh4debug.start()`);
       await js(`window.__rh4debug.god(true)`); // survive the scripted demo (toggled off before the death beat)
+      // real play locks the pointer on start; reflect that so the "CLICK TO AIM" hint
+      // isn't plastered over every gameplay capture (the hidden window can't truly lock).
+      await js(`window.__rh4.input.pointerLocked = true`);
       await frames(3);
       expect(await js(`window.__rh4state()==='playing'`), "run did not enter playing");
       await shot(win, "path-start");
+
+      // --- mouse-look responds: injected locked-pointer delta rotates yaw + raises pitch
+      const yawA = await js(`window.__rh4.cam.yaw`);
+      await js(`window.__rh4.input.mouseDX = 200; window.__rh4.input.mouseDY = -120;`);
+      await frames(1);
+      const yawB = await js(`window.__rh4.cam.yaw`);
+      const pitchB = await js(`window.__rh4.cam.pitch`);
+      expect(Math.abs(yawB - yawA) > 0.1, `mouse dx did not rotate yaw (${yawA} -> ${yawB})`);
+      expect(pitchB > 0.1, `mouse dy did not raise pitch (got ${pitchB})`);
+      await js(`window.__rh4.cam.pitch = 0; window.__rh4.cam.yaw = Math.PI;`);
 
       // --- enemy lineup showcase (clean look at the upgraded models at distance)
       await js(`['husk','spitter','brute','wraith'].forEach((k,i)=>window.__rh4debug.spawn(k, -10 + i*6.5, window.__rh4.player.pos.z + 15))`);

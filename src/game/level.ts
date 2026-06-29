@@ -36,6 +36,10 @@ export class Level {
   private vt = 0;
   private flowTex?: THREE.Texture;
   private portalRings: THREE.Mesh[] = [];
+  private portalGlow?: THREE.Mesh;
+  private portalGlowMat?: THREE.MeshBasicMaterial;
+  private floorMats: THREE.MeshStandardMaterial[] = [];
+  private panes: THREE.MeshStandardMaterial[] = [];
   private motes?: THREE.Points;
   private moteVel?: Float32Array;
 
@@ -50,9 +54,10 @@ export class Level {
     const grid = this.makeGridTexture();
     grid.repeat.set((HALF_WIDTH * 2) / 6, pathLen / 6);
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x0a0e1a, roughness: 0.3, metalness: 0.82,
-      map: grid, emissive: 0x3370ff, emissiveMap: grid, emissiveIntensity: 0.6, envMapIntensity: 1.2,
+      color: 0x080c18, roughness: 0.18, metalness: 0.88,
+      map: grid, emissive: 0x3a86ff, emissiveMap: grid, emissiveIntensity: 1.05, envMapIntensity: 1.5,
     });
+    this.floorMats.push(floorMat);
     const floor = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2, 1, pathLen), floorMat);
     floor.position.set(0, -0.5, pathLen / 2 - 8);
     floor.receiveShadow = true;
@@ -64,16 +69,14 @@ export class Level {
     const arenaMat = floorMat.clone();
     arenaMat.map = agrid;
     arenaMat.emissiveMap = agrid;
+    this.floorMats.push(arenaMat);
     const arena = new THREE.Mesh(new THREE.CylinderGeometry(ARENA_RADIUS + 3, ARENA_RADIUS + 3, 1, 56), arenaMat);
     arena.position.set(ARENA_CENTER.x, -0.5, ARENA_CENTER.y);
     arena.receiveShadow = true;
     this.group.add(arena);
 
     // --- glowing center seam down the path (emissive strip) ---
-    const seam = new THREE.Mesh(
-      new THREE.BoxGeometry(0.5, 0.06, pathLen),
-      this.emissiveMat(0x2b6cff, 1.4),
-    );
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, pathLen), this.emissiveMat(0x3a86ff, 2.4));
     seam.position.set(0, 0.04, pathLen / 2 - 8);
     this.group.add(seam);
 
@@ -91,9 +94,13 @@ export class Level {
       wall.castShadow = true;
       wall.receiveShadow = true;
       this.group.add(wall);
-      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, pathLen), this.emissiveMat(0x2b6cff, 1.7));
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.45, pathLen), this.emissiveMat(0x4a9bff, 2.6));
       trim.position.set(sx * (HALF_WIDTH + 0.95), 11.9, pathLen / 2 - 8);
       this.group.add(trim);
+      // a second, lower accent line of light running the wall
+      const accent = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.18, pathLen), this.emissiveMat(0x2b6cff, 1.8));
+      accent.position.set(sx * (HALF_WIDTH + 0.95), 2.4, pathLen / 2 - 8);
+      this.group.add(accent);
       for (let z = 14; z < ARENA_BLEND_Z; z += 24) {
         const rib = new THREE.Mesh(new THREE.BoxGeometry(0.35, 9, 0.5), this.emissiveMat(NEON[((z / 24) | 0) % NEON.length], 1.1));
         rib.position.set(sx * (HALF_WIDTH + 0.72), 5.5, z);
@@ -195,15 +202,23 @@ export class Level {
 
     // --- horizon rift-glow behind the arena ---
     const glow = new THREE.Mesh(
-      new THREE.PlaneGeometry(160, 80),
-      new THREE.MeshBasicMaterial({ color: 0x2b59c8, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+      new THREE.PlaneGeometry(210, 100),
+      new THREE.MeshBasicMaterial({ color: 0x3a6cff, transparent: true, opacity: 0.26, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
     );
-    glow.position.set(ARENA_CENTER.x, 22, ARENA_CENTER.y + 48);
+    glow.position.set(ARENA_CENTER.x, 26, ARENA_CENTER.y + 48);
     this.group.add(glow);
 
+    // --- big soft nebula band high behind the arena (color + depth) ---
+    const nebula = new THREE.Mesh(
+      new THREE.PlaneGeometry(260, 120),
+      new THREE.MeshBasicMaterial({ map: this.makeNebulaTexture(), transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+    );
+    nebula.position.set(ARENA_CENTER.x, 36, ARENA_CENTER.y + 54);
+    this.group.add(nebula);
+
     // --- two starfield layers (fog-immune): bright tinted + faint dense ---
-    this.group.add(this.makeStars(300, 1.6, true));
-    this.group.add(this.makeStars(620, 0.7, false));
+    this.group.add(this.makeStars(340, 2.2, true));
+    this.group.add(this.makeStars(660, 1.0, false));
 
     // --- overhead arches spanning the causeway (grandeur + detail) ---
     const archDark = new THREE.MeshStandardMaterial({ color: 0x0c0e18, roughness: 0.5, metalness: 0.72, envMapIntensity: 1.0 });
@@ -234,14 +249,19 @@ export class Level {
 
     // --- giant rift portal behind the boss ---
     const portal = new THREE.Group();
-    for (let i = 0; i < 4; i++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(4 + i * 1.9, 0.32 - i * 0.05, 8, 40), this.emissiveMat(NEON[i % NEON.length], 1.9 - i * 0.25));
+    // soft additive glow disc behind the rings (pulses in update)
+    this.portalGlowMat = new THREE.MeshBasicMaterial({ map: this.makeGlowTexture(), color: 0x7a4cff, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    this.portalGlow = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), this.portalGlowMat);
+    this.portalGlow.position.z = -0.6;
+    portal.add(this.portalGlow);
+    const pcore = new THREE.Mesh(new THREE.CircleGeometry(5, 48), new THREE.MeshBasicMaterial({ color: 0x1a0b34, side: THREE.DoubleSide }));
+    portal.add(pcore);
+    for (let i = 0; i < 5; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(5 + i * 2.1, 0.38 - i * 0.045, 10, 48), this.emissiveMat(NEON[i % NEON.length], 2.5 - i * 0.28));
       this.portalRings.push(ring);
       portal.add(ring);
     }
-    const pcore = new THREE.Mesh(new THREE.CircleGeometry(4, 40), new THREE.MeshBasicMaterial({ color: 0x160b2e, side: THREE.DoubleSide }));
-    portal.add(pcore);
-    portal.position.set(ARENA_CENTER.x, 11, ARENA_CENTER.y + 22);
+    portal.position.set(ARENA_CENTER.x, 12, ARENA_CENTER.y + 22);
     this.group.add(portal);
 
     // --- wall buttresses + emissive window panels ---
@@ -249,8 +269,10 @@ export class Level {
       for (let z = 8; z < ARENA_BLEND_Z; z += 18) {
         const but = new THREE.Mesh(new THREE.BoxGeometry(0.8, 11, 1.6), archDark);
         but.position.set(sx * (HALF_WIDTH + 0.2), 5.5, z); but.castShadow = true;
-        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.2, 4, 1.0), this.emissiveMat(NEON[((z / 18) | 0) % NEON.length], 0.9));
-        pane.position.set(sx * (HALF_WIDTH - 0.4), 6, z + 9);
+        const paneMat = this.emissiveMat(NEON[((z / 18) | 0) % NEON.length], 1.3);
+        this.panes.push(paneMat);
+        const pane = new THREE.Mesh(new THREE.BoxGeometry(0.2, 5, 1.2), paneMat);
+        pane.position.set(sx * (HALF_WIDTH - 0.4), 6.2, z + 9);
         this.group.add(but, pane);
       }
     }
@@ -273,13 +295,23 @@ export class Level {
     scene.add(this.group);
   }
 
-  /** Animate the living environment — flowing floor energy, portal rings, motes. */
+  /** Animate the living environment — flowing floor energy, portal, panels, motes. */
   update(dt: number): void {
     this.vt += dt;
+    const t = this.vt;
     if (this.flowTex) this.flowTex.offset.y = (this.flowTex.offset.y - dt * 0.4) % 1;
     for (let i = 0; i < this.portalRings.length; i++) {
-      this.portalRings[i].rotation.z += dt * (0.2 + i * 0.1) * (i % 2 ? -1 : 1);
+      const r = this.portalRings[i];
+      r.rotation.z += dt * (0.2 + i * 0.1) * (i % 2 ? -1 : 1);
+      (r.material as THREE.MeshStandardMaterial).emissiveIntensity = (2.5 - i * 0.28) * (0.8 + 0.3 * Math.sin(t * 1.6 + i));
     }
+    if (this.portalGlow && this.portalGlowMat) {
+      this.portalGlow.scale.setScalar(1 + 0.07 * Math.sin(t * 1.3));
+      this.portalGlowMat.opacity = 0.7 + 0.25 * (0.5 + 0.5 * Math.sin(t * 1.3));
+    }
+    // subtle floor + wall-panel breathing so the whole map feels alive
+    for (let i = 0; i < this.floorMats.length; i++) this.floorMats[i].emissiveIntensity = 0.95 + 0.22 * Math.sin(t * 0.8);
+    for (let i = 0; i < this.panes.length; i++) this.panes[i].emissiveIntensity = 1.0 + 0.8 * (0.5 + 0.5 * Math.sin(t * 1.5 + i * 0.7));
     if (this.motes && this.moteVel) {
       const pos = this.motes.geometry.attributes.position as THREE.BufferAttribute;
       const arr = pos.array as Float32Array;
@@ -289,6 +321,45 @@ export class Level {
       }
       pos.needsUpdate = true;
     }
+  }
+
+  /** Soft white radial — tinted per-material for the portal glow disc. */
+  private makeGlowTexture(): THREE.CanvasTexture {
+    const s = 128;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = s;
+    const g = cv.getContext("2d")!;
+    const grad = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    grad.addColorStop(0, "rgba(255,255,255,0.95)");
+    grad.addColorStop(0.4, "rgba(255,255,255,0.32)");
+    grad.addColorStop(1, "rgba(255,255,255,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, s, s);
+    return new THREE.CanvasTexture(cv);
+  }
+
+  /** Painted nebula blotches (purple/blue/pink) — additive band behind the arena. */
+  private makeNebulaTexture(): THREE.CanvasTexture {
+    const w = 512, h = 256;
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const g = cv.getContext("2d")!;
+    g.fillStyle = "#000";
+    g.fillRect(0, 0, w, h);
+    const cols = ["rgba(96,64,205,", "rgba(44,92,210,", "rgba(205,72,162,", "rgba(64,184,212,"];
+    for (let i = 0; i < 28; i++) {
+      const x = this.ctx.rng.range(0, w);
+      const y = this.ctx.rng.range(h * 0.08, h * 0.92);
+      const r = this.ctx.rng.range(42, 128);
+      const a = this.ctx.rng.range(0.05, 0.22);
+      const c = cols[this.ctx.rng.int(0, cols.length - 1)];
+      const grad = g.createRadialGradient(x, y, 0, x, y, r);
+      grad.addColorStop(0, c + a.toFixed(3) + ")");
+      grad.addColorStop(1, c + "0)");
+      g.fillStyle = grad;
+      g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+    return new THREE.CanvasTexture(cv);
   }
 
   private makeFlowTexture(): THREE.CanvasTexture {
