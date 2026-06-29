@@ -29,10 +29,6 @@ export interface Hittable {
   takeDamage(dmg: number, opts: HitOpts): boolean;
 }
 
-function cssHex(c: number): string {
-  return "#" + c.toString(16).padStart(6, "0");
-}
-
 /**
  * The one damage funnel. Every outgoing hit goes through dealDamage (which fires the
  * ENEMY_HIT/KILL events + sparks/floaters/shake), every melee swing through
@@ -139,8 +135,9 @@ export class Combat {
   /** The combo payoff: signature AoE + a big multi-channel fanfare. */
   resolveCombo(combo: ComboDef, x: number, z: number, dirX: number, dirZ: number, baseDmg: number): void {
     const dmg = baseDmg * combo.damageMult;
+    // the combo name shows once, in the HUD splash (events → Hud.showComboSplash);
+    // no in-world floater label here or it reads as a duplicate.
     this.ctx.events.emit("COMBO_RESOLVE", { name: combo.name, tier: combo.tier });
-    this.ctx.floaters.spawn(x, 2.6, z, combo.name, "label", cssHex(combo.color));
     this.ctx.stage.punch(0.35 + combo.tier * 0.12);
     this.ctx.cam.addTrauma(0.4 + combo.tier * 0.12);
     this.ctx.cam.pulseFov(0.35);

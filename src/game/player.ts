@@ -86,6 +86,8 @@ export class Player {
   iframes = 0;
   /** Debug invulnerability (smoke/screenshot harness). */
   god = false;
+  /** Frozen during cutscenes — no actions, no movement (camera takes over). */
+  frozen = false;
 
   /** Recent glyph casts (combo buffer) — HUD reads this for the chain readout. */
   buffer: GlyphId[] = [];
@@ -210,11 +212,12 @@ export class Player {
       if (this.bufferTimer > COMBO_WINDOW) this.buffer.length = 0;
     }
 
-    if (this.alive) {
+    if (this.alive && !this.frozen) {
       this.handleActions();
       this.advanceMove(dt);
     }
-    this.move(dt);
+    if (this.frozen) this.moveAmount = damp(this.moveAmount, 0, 8, dt);
+    else this.move(dt);
     this.animate(dt);
   }
 
@@ -287,16 +290,20 @@ export class Player {
     const mv = this.ctx.input.moveVector();
     this.ctx.cam.worldForward(this.fwd);
     this.ctx.cam.worldRight(this.right);
-    const fwdAmt = -mv.z;
     if (Math.hypot(mv.x, mv.z) > 0.1) {
+      // dodge in the direction you're MOVING (camera-relative WASD), not where you look —
+      // strafe-dodge left/right/back all roll off the input vector, the FPS standard.
+      const fwdAmt = -mv.z;
       this.dashDir.set(
         this.fwd.x * fwdAmt + this.right.x * mv.x,
         0,
         this.fwd.z * fwdAmt + this.right.z * mv.x,
       ).normalize();
     } else {
-      this.dashDir.copy(this.fwd);
+      // no input: a backstep away from the threat ahead, not a lunge toward your look
+      this.dashDir.copy(this.fwd).multiplyScalar(-1);
     }
+    this.ctx.cam.dodgeTilt(this.dashDir.x, this.dashDir.z); // lean the view into the dodge
     this.ctx.events.emit("DODGE", {});
     this.ctx.sfx.dashWhoosh();
     this.ctx.cam.pulseFov(0.4);

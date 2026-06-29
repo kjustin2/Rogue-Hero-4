@@ -147,6 +147,13 @@ app.whenReady().then(async () => {
       expect(pitchB > 0.1, `mouse dy did not raise pitch (got ${pitchB})`);
       await js(`window.__rh4.cam.pitch = 0; window.__rh4.cam.yaw = Math.PI;`);
 
+      // --- dodge: a no-input dodge backsteps (-Z) away from where you face, not toward it
+      const dz0 = await js(`window.__rh4.player.pos.z`);
+      await tap("Space");
+      await frames(10);
+      const dz1 = await js(`window.__rh4.player.pos.z`);
+      expect(dz1 < dz0 - 1, `no-input dodge should backstep (z ${dz0.toFixed(1)} -> ${dz1.toFixed(1)})`);
+
       // --- enemy lineup showcase (clean look at the upgraded models at distance)
       await js(`['husk','spitter','brute','wraith'].forEach((k,i)=>window.__rh4debug.spawn(k, -10 + i*6.5, window.__rh4.player.pos.z + 15))`);
       await frames(4);
@@ -201,12 +208,21 @@ app.whenReady().then(async () => {
       expect(await js(`window.__rh4.level.gates[0].open === true`), "gate did not open after clearing the wave");
       await shot(win, "gate-open");
 
-      // --- jump to the boss arena
+      // --- jump to the boss arena (spawning triggers the boss-intro cutscene)
       await js(`window.__rh4debug.scenario('boss')`);
       await frames(8);
       const bossHp = await js(`window.__rh4.boss ? window.__rh4.boss.hp : null`);
       expect(typeof bossHp === "number" && bossHp > 0, "boss did not spawn (" + bossHp + ")");
-      await frames(20);
+      expect(await js(`window.__rh4debug.cineActive()`), "boss-intro cutscene did not start");
+      expect(await js(`window.__rh4.player.frozen === true`), "player not frozen during cutscene");
+      await frames(16);
+      await shot(win, "boss-intro");
+      // skip back to player control
+      await js(`window.__rh4debug.skipCutscene()`);
+      await frames(2);
+      expect(await js(`!window.__rh4debug.cineActive()`), "cutscene did not end on skip");
+      expect(await js(`window.__rh4.player.frozen === false`), "player still frozen after cutscene");
+      await frames(18);
       await shot(win, "boss");
 
       // --- weak point: look up at the core → gold crosshair + a bolt lands on it

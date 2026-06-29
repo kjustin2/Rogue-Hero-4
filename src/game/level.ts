@@ -40,6 +40,7 @@ export class Level {
   private portalGlowMat?: THREE.MeshBasicMaterial;
   private floorMats: THREE.MeshStandardMaterial[] = [];
   private panes: THREE.MeshStandardMaterial[] = [];
+  private starMats: THREE.ShaderMaterial[] = [];
   private motes?: THREE.Points;
   private moteVel?: Float32Array;
 
@@ -81,15 +82,20 @@ export class Level {
     this.group.add(seam);
 
     // --- side rails (low emissive curbs) ---
+    // shared paneled-wall material: dark metal + a canvas-painted neon circuit/window
+    // texture as both map and emissiveMap, so the walls glow with detail (not flat dark).
+    const wallTex = this.makeWallTexture();
+    wallTex.repeat.set(3, pathLen / 16);
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0x06070f, roughness: 0.5, metalness: 0.62,
+      map: wallTex, emissive: 0x2a5cc8, emissiveMap: wallTex, emissiveIntensity: 0.85, envMapIntensity: 0.9,
+    });
     for (const sx of [-1, 1]) {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, pathLen), this.emissiveMat(0x1b4fd0, 1.1));
       rail.position.set(sx * HALF_WIDTH, 0.35, pathLen / 2 - 8);
       this.group.add(rail);
-      // tall paneled containment wall: dark metal (reflects env) + glowing top trim + ribs
-      const wall = new THREE.Mesh(
-        new THREE.BoxGeometry(1.4, 13, pathLen),
-        new THREE.MeshStandardMaterial({ color: 0x070912, roughness: 0.55, metalness: 0.6, envMapIntensity: 0.9 }),
-      );
+      // tall paneled containment wall: textured glow + glowing top trim + ribs
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(1.4, 13, pathLen), wallMat);
       wall.position.set(sx * (HALF_WIDTH + 1.4), 5.5, pathLen / 2 - 8);
       wall.castShadow = true;
       wall.receiveShadow = true;
@@ -312,6 +318,8 @@ export class Level {
     // subtle floor + wall-panel breathing so the whole map feels alive
     for (let i = 0; i < this.floorMats.length; i++) this.floorMats[i].emissiveIntensity = 0.95 + 0.22 * Math.sin(t * 0.8);
     for (let i = 0; i < this.panes.length; i++) this.panes[i].emissiveIntensity = 1.0 + 0.8 * (0.5 + 0.5 * Math.sin(t * 1.5 + i * 0.7));
+    // twinkling / drifting stars
+    for (let i = 0; i < this.starMats.length; i++) this.starMats[i].uniforms.uTime.value = t;
     if (this.motes && this.moteVel) {
       const pos = this.motes.geometry.attributes.position as THREE.BufferAttribute;
       const arr = pos.array as Float32Array;
@@ -321,6 +329,54 @@ export class Level {
       }
       pos.needsUpdate = true;
     }
+  }
+
+  /** Canvas-painted neon wall panel: glowing seams, vertical light strips, window cells. */
+  private makeWallTexture(): THREE.CanvasTexture {
+    const w = 256, h = 256;
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const g = cv.getContext("2d")!;
+    g.fillStyle = "#04050c";
+    g.fillRect(0, 0, w, h);
+    // horizontal panel seams (brighter) + vertical seams (dim)
+    g.strokeStyle = "rgba(60,120,235,0.55)"; g.lineWidth = 3;
+    for (let y = 0; y <= h; y += 64) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    g.strokeStyle = "rgba(40,80,180,0.3)"; g.lineWidth = 2;
+    for (let x = 0; x <= w; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
+    // bright vertical light strips
+    g.fillStyle = "rgba(95,175,255,0.85)";
+    g.fillRect(40, 8, 5, h - 16);
+    g.fillRect(w - 45, 8, 5, h - 16);
+    // window cells per panel
+    g.fillStyle = "rgba(120,200,255,0.9)";
+    for (let yy = 18; yy < h; yy += 64) for (let xx = 86; xx < w - 58; xx += 48) g.fillRect(xx, yy, 18, 28);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  /** Twinkling, drifting starfield material (per-star phase) — uTime advanced in update. */
+  private makeStarMaterial(size: number): THREE.ShaderMaterial {
+    const mat = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+      uniforms: { uTime: { value: 0 }, uSize: { value: size } },
+      vertexShader:
+        "attribute float aPhase; attribute vec3 color; uniform float uTime; uniform float uSize;" +
+        "varying vec3 vColor; varying float vTw;" +
+        "void main(){ vColor = color; float tw = 0.5 + 0.5 * sin(uTime * 1.8 + aPhase * 6.2831); vTw = tw;" +
+        "vec3 p = position; p.y += sin(uTime * 0.15 + aPhase * 6.2831) * 1.5;" +
+        "vec4 mv = modelViewMatrix * vec4(p, 1.0);" +
+        "gl_PointSize = max(1.0, uSize * (0.55 + 0.9 * tw) * (260.0 / -mv.z));" +
+        "gl_Position = projectionMatrix * mv; }",
+      fragmentShader:
+        "varying vec3 vColor; varying float vTw;" +
+        "void main(){ vec2 d = gl_PointCoord - 0.5; float r = length(d); if (r > 0.5) discard;" +
+        "float a = smoothstep(0.5, 0.0, r) * (0.3 + 0.7 * vTw); gl_FragColor = vec4(vColor, a); }",
+    });
+    this.starMats.push(mat);
+    return mat;
   }
 
   /** Soft white radial — tinted per-material for the portal glow disc. */
@@ -384,6 +440,7 @@ export class Level {
   private makeStars(count: number, size: number, tinted: boolean): THREE.Points {
     const pos = new Float32Array(count * 3);
     const col = new Float32Array(count * 3);
+    const phase = new Float32Array(count);
     const tints = [new THREE.Color(0xbfe0ff), new THREE.Color(0xc9a8ff), new THREE.Color(0xff9ec8), new THREE.Color(0xffffff)];
     const c = new THREE.Color();
     for (let i = 0; i < count; i++) {
@@ -395,11 +452,13 @@ export class Level {
       pos[i * 3 + 2] = 110 + Math.sin(ang) * r * Math.cos(elev);
       c.copy(tinted ? tints[this.ctx.rng.int(0, tints.length - 1)] : tints[0]).multiplyScalar(this.ctx.rng.range(0.55, 1));
       col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+      phase[i] = this.ctx.rng.next();
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
-    return new THREE.Points(geo, new THREE.PointsMaterial({ size, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.95, fog: false, depthWrite: false }));
+    geo.setAttribute("aPhase", new THREE.BufferAttribute(phase, 1));
+    return new THREE.Points(geo, this.makeStarMaterial(size));
   }
 
   private emissiveMat(color: number, intensity: number): THREE.MeshStandardMaterial {
@@ -424,16 +483,33 @@ export class Level {
     g.fillStyle = grad;
     g.fillRect(0, 0, s, s);
     // grid border + cross
-    g.strokeStyle = "#3a78f0";
-    g.lineWidth = 4;
+    g.strokeStyle = "#4a8bff";
+    g.lineWidth = 5;
     g.strokeRect(2, 2, s - 4, s - 4);
-    g.globalAlpha = 0.5;
+    g.globalAlpha = 0.55;
     g.beginPath();
     g.moveTo(s / 2, 0); g.lineTo(s / 2, s); g.moveTo(0, s / 2); g.lineTo(s, s / 2);
     g.stroke();
     g.globalAlpha = 1;
+    // finer violet subdivisions (cooler two-tone read)
+    g.strokeStyle = "rgba(150,110,240,0.22)";
+    g.lineWidth = 1;
+    for (const f of [0.25, 0.75]) {
+      g.beginPath();
+      g.moveTo(s * f, 0); g.lineTo(s * f, s); g.moveTo(0, s * f); g.lineTo(s, s * f);
+      g.stroke();
+    }
+    // clipped corner diagonals (tech chamfer)
+    g.strokeStyle = "rgba(90,190,255,0.55)";
+    g.lineWidth = 2;
+    const dd = 38;
+    for (const [cx, cy, dx, dy] of [[0, 0, 1, 1], [s, 0, -1, 1], [0, s, 1, -1], [s, s, -1, -1]] as const) {
+      g.beginPath();
+      g.moveTo(cx, cy + dy * dd); g.lineTo(cx + dx * dd, cy);
+      g.stroke();
+    }
     // corner nodes
-    g.fillStyle = "#6fb0ff";
+    g.fillStyle = "#8ac6ff";
     for (const [x, y] of [[2, 2], [s - 2, 2], [2, s - 2], [s - 2, s - 2]]) {
       g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
     }

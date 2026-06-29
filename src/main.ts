@@ -5,6 +5,7 @@ import "@fontsource/rajdhani/600.css";
 import "@fontsource/rajdhani/700.css";
 import "./style.css";
 
+import * as THREE from "three";
 import { EventBus } from "./core/events";
 import { Rng } from "./core/rng";
 import { Input } from "./core/input";
@@ -74,6 +75,8 @@ let streakTimer = 0;
 let bossSpawned = false;
 let triggered: boolean[] = ctx.level.gates.map(() => false);
 let victoryQueued = 0;
+let cineT = 0; // boss-intro cutscene timer (>0 = cutscene running)
+const cineTarget = new THREE.Vector3();
 
 ctx.events.on("KILL", (e) => {
   kills++;
@@ -135,6 +138,9 @@ function startRun(): void {
   triggered = ctx.level.gates.map(() => false);
   bossSpawned = false;
   victoryQueued = 0;
+  cineT = 0;
+  ctx.player.frozen = false;
+  ctx.cam.setCinematic(false);
   runTime = 0;
   kills = 0;
   streak = 0;
@@ -159,6 +165,9 @@ function updatePlaying(dt: number): void {
 
   // pause toggle
   if (ctx.input.actionPressed("pause") || ctx.input.pauseEdgeRaw()) { setState("paused"); return; }
+
+  // boss-intro cutscene takes over control while it runs
+  if (cineT > 0) { updateBossCutscene(dt); return; }
 
   ctx.player.update(dt);
   ctx.enemies.update(dt);
@@ -186,17 +195,52 @@ function updatePlaying(dt: number): void {
   if (!bossSpawned && ctx.level.gates.every((g) => g.open) && ctx.level.inArena(ctx.player.pos.z)) {
     ctx.boss = new Boss(ctx);
     bossSpawned = true;
-    ctx.events.emit("BOSS_INTRO", { name: "Rift Warden" });
-    ctx.sfx.bossRoar();
-    ctx.music.boss(1);
-    hud.showBanner("THE RIFT WARDEN", 0xff5ea0);
-    ctx.cam.addTrauma(0.5);
+    startBossCutscene("Rift Warden");
   }
 
   if (victoryQueued > 0) {
     victoryQueued -= dt;
     if (victoryQueued <= 0) setState("victory");
   }
+}
+
+// --------------------------------------------------------------------- boss cutscene
+// A short cinematic when a boss rises: freeze the player, swing the camera to frame the
+// boss as it rises (zoom-in FOV + shake), reveal its name, then hand control back.
+// Reusable for any boss; currently the Rift Warden is the only one.
+function startBossCutscene(name: string): void {
+  cineT = 3.2;
+  ctx.player.frozen = true;
+  ctx.cam.setCinematic(true);
+  ctx.events.emit("BOSS_INTRO", { name });
+  ctx.music.boss(1);
+  ctx.sfx.bossRoar();
+  ctx.cam.addTrauma(0.45);
+  hud.showBanner(name.toUpperCase(), 0xff5ea0);
+}
+
+function updateBossCutscene(dt: number): void {
+  cineT -= dt;
+  if (ctx.boss) {
+    ctx.boss.tick(dt); // keep rising
+    ctx.boss.coreWorld(cineTarget);
+    ctx.cam.setCinematic(true, cineTarget);
+  }
+  // rhythmic shake while it rises sells the weight
+  if (cineT > 1.2 && ctx.rng.next() < 0.10) ctx.cam.addTrauma(0.18);
+  // skippable with any attack/dodge input
+  if (ctx.input.actionPressed("dash") || ctx.input.actionPressed("light")
+    || ctx.input.actionPressed("heavy") || ctx.input.actionPressed("bolt")) cineT = 0;
+  if (cineT <= 0) endBossCutscene();
+}
+
+function endBossCutscene(): void {
+  cineT = 0;
+  ctx.player.frozen = false;
+  ctx.cam.setCinematic(false);
+  ctx.cam.addTrauma(0.5);
+  ctx.stage.punch(0.4);
+  ctx.sfx.bossRoar();
 }
 
 // --------------------------------------------------------------------- loop
@@ -257,6 +301,8 @@ w.__rh4debug = {
   tick: (dt = 0.033) => frame(dt),
   frames: (n: number, dt = 0.033) => { for (let i = 0; i < n; i++) frame(dt); },
   god: (on: boolean) => { ctx.player.god = on; },
+  cineActive: () => cineT > 0,
+  skipCutscene: () => { if (cineT > 0) endBossCutscene(); },
 };
 
 // --------------------------------------------------------------------- finish boot

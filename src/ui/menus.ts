@@ -9,7 +9,7 @@ const CONTROLS = `
   <div class="legend">
     <div><b>WASD</b> Move</div><div><b>Mouse</b> Look</div>
     <div><b>LMB / J</b> Strike</div><div><b>RMB / K</b> Cleave</div>
-    <div><b>E</b> Bolt</div><div><b>Shift / Space</b> Dash</div>
+    <div><b>E</b> Bolt</div><div><b>Shift / Space</b> Dodge</div>
   </div>`;
 
 const COMBO_LIST = `<div class="combo-help">` + COMBOS.map((c) =>
