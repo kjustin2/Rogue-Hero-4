@@ -40,19 +40,26 @@ export class Level {
     const scene = this.ctx.stage.scene;
     this.group.clear();
 
-    // --- path floor (dark PBR slab with a faint emissive sheen) ---
-    const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x0a0c16, roughness: 0.55, metalness: 0.35,
-      emissive: 0x0a1830, emissiveIntensity: 0.35,
-    });
+    // --- path floor: glossy reflective slab with a glowing neon-grid texture ---
     const pathLen = ARENA_BLEND_Z + 14;
+    const grid = this.makeGridTexture();
+    grid.repeat.set((HALF_WIDTH * 2) / 6, pathLen / 6);
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0x0a0e1a, roughness: 0.3, metalness: 0.82,
+      map: grid, emissive: 0x3370ff, emissiveMap: grid, emissiveIntensity: 0.6, envMapIntensity: 1.2,
+    });
     const floor = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2, 1, pathLen), floorMat);
     floor.position.set(0, -0.5, pathLen / 2 - 8);
     floor.receiveShadow = true;
     this.group.add(floor);
 
-    // arena floor disc
-    const arena = new THREE.Mesh(new THREE.CylinderGeometry(ARENA_RADIUS + 3, ARENA_RADIUS + 3, 1, 56), floorMat);
+    // arena floor disc (its own grid scale so the cells stay square)
+    const agrid = this.makeGridTexture();
+    agrid.repeat.set(ARENA_RADIUS / 4, ARENA_RADIUS / 4);
+    const arenaMat = floorMat.clone();
+    arenaMat.map = agrid;
+    arenaMat.emissiveMap = agrid;
+    const arena = new THREE.Mesh(new THREE.CylinderGeometry(ARENA_RADIUS + 3, ARENA_RADIUS + 3, 1, 56), arenaMat);
     arena.position.set(ARENA_CENTER.x, -0.5, ARENA_CENTER.y);
     arena.receiveShadow = true;
     this.group.add(arena);
@@ -70,13 +77,23 @@ export class Level {
       const rail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, pathLen), this.emissiveMat(0x1b4fd0, 1.1));
       rail.position.set(sx * HALF_WIDTH, 0.35, pathLen / 2 - 8);
       this.group.add(rail);
-      // tall dark containment wall behind the rail (reads as the void edge)
+      // tall paneled containment wall: dark metal (reflects env) + glowing top trim + ribs
       const wall = new THREE.Mesh(
-        new THREE.BoxGeometry(1.2, 9, pathLen),
-        new THREE.MeshStandardMaterial({ color: 0x05060d, roughness: 1, metalness: 0 }),
+        new THREE.BoxGeometry(1.4, 13, pathLen),
+        new THREE.MeshStandardMaterial({ color: 0x070912, roughness: 0.55, metalness: 0.6, envMapIntensity: 0.9 }),
       );
-      wall.position.set(sx * (HALF_WIDTH + 1.2), 4, pathLen / 2 - 8);
+      wall.position.set(sx * (HALF_WIDTH + 1.4), 5.5, pathLen / 2 - 8);
+      wall.castShadow = true;
+      wall.receiveShadow = true;
       this.group.add(wall);
+      const trim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, pathLen), this.emissiveMat(0x2b6cff, 1.7));
+      trim.position.set(sx * (HALF_WIDTH + 0.95), 11.9, pathLen / 2 - 8);
+      this.group.add(trim);
+      for (let z = 14; z < ARENA_BLEND_Z; z += 24) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.35, 9, 0.5), this.emissiveMat(NEON[((z / 24) | 0) % NEON.length], 1.1));
+        rib.position.set(sx * (HALF_WIDTH + 0.72), 5.5, z);
+        this.group.add(rib);
+      }
     }
 
     // --- arch pillars along the path: emissive + co-located point light (light = glow) ---
@@ -149,30 +166,103 @@ export class Level {
       this.group.add(rung);
     }
 
-    // --- starfield backdrop (fog-immune so it reads behind the rift) ---
-    const N = 520;
-    const arr = new Float32Array(N * 3);
-    for (let i = 0; i < N; i++) {
-      const ang = this.ctx.rng.range(0, Math.PI * 2);
-      const elev = this.ctx.rng.range(0.05, 0.9);
-      const r = this.ctx.rng.range(130, 175);
-      arr[i * 3] = Math.cos(ang) * r * Math.cos(elev);
-      arr[i * 3 + 1] = Math.sin(elev) * r;
-      arr[i * 3 + 2] = ARENA_CENTER.y * 0.5 + Math.sin(ang) * r * Math.cos(elev);
-    }
-    const starGeo = new THREE.BufferGeometry();
-    starGeo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
-    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x9fc8ff, size: 1.1, sizeAttenuation: true, transparent: true, opacity: 0.9, fog: false }));
-    this.group.add(stars);
+    // --- gradient sky dome behind everything ---
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(190, 32, 16),
+      new THREE.ShaderMaterial({
+        side: THREE.BackSide, depthWrite: false, fog: false,
+        uniforms: {
+          top: { value: new THREE.Color(0x0b1838) },
+          mid: { value: new THREE.Color(0x090a1a) },
+          bot: { value: new THREE.Color(0x05060d) },
+          horizon: { value: new THREE.Color(0x1a3f7e) },
+        },
+        vertexShader: "varying vec3 vp; void main(){ vp = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
+        fragmentShader:
+          "varying vec3 vp; uniform vec3 top; uniform vec3 mid; uniform vec3 bot; uniform vec3 horizon;" +
+          "void main(){ float h = normalize(vp).y;" +
+          "vec3 c = h > 0.0 ? mix(mix(horizon, mid, clamp(h*3.0,0.0,1.0)), top, clamp(h,0.0,1.0)) : mix(horizon, bot, clamp(-h*2.0,0.0,1.0));" +
+          "gl_FragColor = vec4(c, 1.0); }",
+      }),
+    );
+    sky.position.set(ARENA_CENTER.x, 0, 110);
+    this.group.add(sky);
+
+    // --- horizon rift-glow behind the arena ---
+    const glow = new THREE.Mesh(
+      new THREE.PlaneGeometry(160, 80),
+      new THREE.MeshBasicMaterial({ color: 0x2b59c8, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+    );
+    glow.position.set(ARENA_CENTER.x, 22, ARENA_CENTER.y + 48);
+    this.group.add(glow);
+
+    // --- two starfield layers (fog-immune): bright tinted + faint dense ---
+    this.group.add(this.makeStars(300, 1.6, true));
+    this.group.add(this.makeStars(620, 0.7, false));
 
     scene.add(this.group);
+  }
+
+  private makeStars(count: number, size: number, tinted: boolean): THREE.Points {
+    const pos = new Float32Array(count * 3);
+    const col = new Float32Array(count * 3);
+    const tints = [new THREE.Color(0xbfe0ff), new THREE.Color(0xc9a8ff), new THREE.Color(0xff9ec8), new THREE.Color(0xffffff)];
+    const c = new THREE.Color();
+    for (let i = 0; i < count; i++) {
+      const ang = this.ctx.rng.range(0, Math.PI * 2);
+      const elev = this.ctx.rng.range(0.04, 0.95);
+      const r = this.ctx.rng.range(130, 180);
+      pos[i * 3] = Math.cos(ang) * r * Math.cos(elev);
+      pos[i * 3 + 1] = Math.sin(elev) * r;
+      pos[i * 3 + 2] = 110 + Math.sin(ang) * r * Math.cos(elev);
+      c.copy(tinted ? tints[this.ctx.rng.int(0, tints.length - 1)] : tints[0]).multiplyScalar(this.ctx.rng.range(0.55, 1));
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+    return new THREE.Points(geo, new THREE.PointsMaterial({ size, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.95, fog: false, depthWrite: false }));
   }
 
   private emissiveMat(color: number, intensity: number): THREE.MeshStandardMaterial {
     return new THREE.MeshStandardMaterial({
       color: 0x05060d, emissive: color, emissiveIntensity: intensity,
-      roughness: 0.4, metalness: 0.2,
+      roughness: 0.35, metalness: 0.45, envMapIntensity: 0.8,
     });
+  }
+
+  /** Canvas-painted neon grid — used as both map and emissiveMap so the lines glow. */
+  private makeGridTexture(): THREE.CanvasTexture {
+    const s = 256;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = s;
+    const g = cv.getContext("2d")!;
+    g.fillStyle = "#070a14";
+    g.fillRect(0, 0, s, s);
+    // soft inner glow
+    const grad = g.createRadialGradient(s / 2, s / 2, 10, s / 2, s / 2, s / 1.4);
+    grad.addColorStop(0, "rgba(40,90,200,0.10)");
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, s, s);
+    // grid border + cross
+    g.strokeStyle = "#3a78f0";
+    g.lineWidth = 4;
+    g.strokeRect(2, 2, s - 4, s - 4);
+    g.globalAlpha = 0.5;
+    g.beginPath();
+    g.moveTo(s / 2, 0); g.lineTo(s / 2, s); g.moveTo(0, s / 2); g.lineTo(s, s / 2);
+    g.stroke();
+    g.globalAlpha = 1;
+    // corner nodes
+    g.fillStyle = "#6fb0ff";
+    for (const [x, y] of [[2, 2], [s - 2, 2], [2, s - 2], [s - 2, s - 2]]) {
+      g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill();
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 8;
+    return tex;
   }
 
   /** Open a gate's barrier (wave cleared) — fade the plane, kill its light. */

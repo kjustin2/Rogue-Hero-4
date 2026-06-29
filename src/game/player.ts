@@ -100,7 +100,7 @@ export class Player {
   // viewmodel
   private vm = new THREE.Group();
   private weapon = new THREE.Group();
-  private blade!: THREE.Mesh;
+  private blade!: THREE.Group;
   private bladeMat!: THREE.MeshStandardMaterial;
   private tipMarker = new THREE.Object3D();
   private baseMarker = new THREE.Object3D();
@@ -134,28 +134,56 @@ export class Player {
 
   // ----------------------------------------------------------------- viewmodel
   private buildViewmodel(): void {
-    // dark gauntlet (fist) tucked into the lower-right corner
-    const gaunt = new THREE.Mesh(
-      new THREE.BoxGeometry(0.2, 0.2, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0x12131d, roughness: 0.5, metalness: 0.6, emissive: 0x163b7a, emissiveIntensity: 0.5 }),
-    );
-    gaunt.position.set(0, -0.04, 0.16);
-    this.weapon.add(gaunt);
+    const darkMetal = new THREE.MeshStandardMaterial({ color: 0x14161f, roughness: 0.38, metalness: 0.88, emissive: 0x14306a, emissiveIntensity: 0.3, envMapIntensity: 1.1 });
+    const gemMat = new THREE.MeshStandardMaterial({ color: 0x0a0c16, emissive: 0x9fe8ff, emissiveIntensity: 2.2, roughness: 0.2, metalness: 0.2 });
+    // emissive blade material — recolored per glyph in startMove(), drives the flash
+    this.bladeMat = new THREE.MeshStandardMaterial({ color: 0x0a0c16, emissive: 0x46e0ff, emissiveIntensity: 1.8, roughness: 0.3, metalness: 0.2 });
 
-    // blade of light angled across the view, pointing forward
-    this.bladeMat = new THREE.MeshStandardMaterial({ color: 0x0a0c16, emissive: 0x46e0ff, emissiveIntensity: 1.6, roughness: 0.3, metalness: 0.1 });
-    this.blade = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.08, 1.2), this.bladeMat);
-    this.blade.position.set(0, 0.03, -0.62);
+    // gauntlet / forearm with knuckle gem
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.5), darkMetal);
+    arm.position.set(0, -0.05, 0.3);
+    const knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.2), darkMetal);
+    knuckles.position.set(0, 0.0, 0.06);
+    const knuckleGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.06), gemMat);
+    knuckleGem.position.set(0, 0.07, 0.06);
+    this.weapon.add(arm, knuckles, knuckleGem);
+
+    // hilt + winged crossguard + central gem
+    const hilt = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.28, 8), darkMetal);
+    hilt.rotation.x = Math.PI / 2;
+    hilt.position.set(0, 0.02, -0.08);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.09, 0.13), darkMetal);
+    guard.position.set(0, 0.02, -0.22);
+    const guardGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.08), this.bladeMat);
+    guardGem.position.set(0, 0.02, -0.22);
+    this.weapon.add(hilt, guard, guardGem);
+    for (const sx of [-1, 1]) {
+      const wing = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.2, 4), this.bladeMat);
+      wing.position.set(sx * 0.18, 0.02, -0.22);
+      wing.rotation.z = sx * Math.PI / 2;
+      this.weapon.add(wing);
+    }
+
+    // blade: dark metal core + two bright emissive edges + a pointed tip (scalable group)
+    this.blade = new THREE.Group();
+    const core = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.12, 1.05), darkMetal);
+    core.position.set(0, 0.02, -0.78);
+    for (const sx of [-1, 1]) {
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.13, 1.05), this.bladeMat);
+      edge.position.set(sx * 0.03, 0.02, -0.78);
+      this.blade.add(edge);
+    }
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.085, 0.32, 4), this.bladeMat);
+    tip.rotation.x = -Math.PI / 2;
+    tip.position.set(0, 0.02, -1.36);
+    this.blade.add(core, tip);
     this.weapon.add(this.blade);
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.1), this.bladeMat);
-    guard.position.set(0, 0.03, 0.0);
-    this.weapon.add(guard);
 
-    this.tipMarker.position.set(0, 0.03, -1.2);
-    this.baseMarker.position.set(0, 0.03, 0.0);
+    this.tipMarker.position.set(0, 0.02, -1.4);
+    this.baseMarker.position.set(0, 0.02, -0.25);
     this.weapon.add(this.tipMarker, this.baseMarker);
 
-    this.weapon.position.set(0.52, -0.58, -0.95);
+    this.weapon.position.set(0.52, -0.56, -0.95);
     this.weapon.rotation.set(0.12, -0.2, 0.08);
     this.vm.add(this.weapon);
 
@@ -322,7 +350,7 @@ export class Player {
     this.weapon.position.set(pose[0], pose[1], pose[2]);
     this.weapon.rotation.set(pose[3], pose[4], pose[5]);
     this.blade.scale.z = stretch;
-    this.bladeMat.emissiveIntensity = 1.6 + flash;
+    this.bladeMat.emissiveIntensity = 1.8 + flash;
 
     // feed the sword trail (world-space tip/base of the blade)
     this.tipMarker.getWorldPosition(this.tip);

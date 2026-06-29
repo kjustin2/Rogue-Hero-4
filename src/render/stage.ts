@@ -98,8 +98,41 @@ export class Stage {
     this.scene.add(this.keyLight);
     this.scene.add(this.keyLight.target);
 
+    this.buildEnv();
     this.buildPost();
     window.addEventListener("resize", () => this.onResize());
+  }
+
+  /**
+   * Procedural PMREM environment — a dark cube with a few large neon emissive panels.
+   * Sets scene.environment so every PBR material picks up colored reflections (the
+   * cheap "instant AAA" lever). No HDR file needed; built once at boot.
+   */
+  private buildEnv(): void {
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      const env = new THREE.Scene();
+      env.background = new THREE.Color(0x04060e);
+      const panels: [number, [number, number, number]][] = [
+        [0x2b6cff, [0, 7, -22]],
+        [0x46e0ff, [0, 7, 22]],
+        [0xc28bff, [22, 5, 0]],
+        [0xff5ea0, [-22, 5, 0]],
+        [0x10306a, [0, 22, 0]],
+      ];
+      const tmp: THREE.Mesh[] = [];
+      for (const [c, p] of panels) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), new THREE.MeshBasicMaterial({ color: c }));
+        m.position.set(p[0], p[1], p[2]);
+        m.lookAt(0, 5, 0);
+        env.add(m);
+        tmp.push(m);
+      }
+      this.scene.environment = pmrem.fromScene(env, 0.04).texture;
+      this.scene.environmentIntensity = 0.6;
+      for (const m of tmp) { m.geometry.dispose(); (m.material as THREE.Material).dispose(); }
+      pmrem.dispose();
+    } catch { /* headless / lost ctx */ }
   }
 
   /** (Re)build both post chains for the current quality preset. */

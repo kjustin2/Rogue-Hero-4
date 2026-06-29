@@ -134,6 +134,13 @@ app.whenReady().then(async () => {
       expect(await js(`window.__rh4state()==='playing'`), "run did not enter playing");
       await shot(win, "path-start");
 
+      // --- enemy lineup showcase (clean look at the upgraded models at distance)
+      await js(`['husk','spitter','brute','wraith'].forEach((k,i)=>window.__rh4debug.spawn(k, -10 + i*6.5, window.__rh4.player.pos.z + 15))`);
+      await frames(4);
+      await shot(win, "enemies");
+      await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
+      await frames(10);
+
       // --- walk down the (wider) causeway; advancing past the trigger spawns gate 1's wave
       const z0 = await js(`window.__rh4.player.pos.z`);
       await key("KeyW", "keydown");

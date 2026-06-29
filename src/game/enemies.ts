@@ -78,70 +78,104 @@ export class Enemy implements Hittable {
 
   private buildMesh(): void {
     const c = this.cfg.color;
-    const shellMat = new THREE.MeshStandardMaterial({ color: 0x0b0d18, roughness: 0.55, metalness: 0.5, emissive: c, emissiveIntensity: 0.3 });
-    const edgeMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: c, emissiveIntensity: 1.5, roughness: 0.4 });
+    const shellMat = new THREE.MeshStandardMaterial({ color: 0x0b0d18, roughness: 0.45, metalness: 0.72, emissive: c, emissiveIntensity: 0.28, envMapIntensity: 1.1 });
+    const plateMat = new THREE.MeshStandardMaterial({ color: 0x141826, roughness: 0.5, metalness: 0.8, emissive: c, emissiveIntensity: 0.2, envMapIntensity: 1.1 });
+    const edgeMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: c, emissiveIntensity: 1.7, roughness: 0.35, metalness: 0.3 });
 
     if (this.kind === "husk") {
-      // armored shard-wraith: tapered body, radiating emissive fins, bright core, eye slit
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.72, 1.9, 6), shellMat);
-      body.position.y = 1.0; body.castShadow = true;
-      this.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.34), this.coreMat);
-      this.core.position.y = 1.35;
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.1), this.coreMat);
-      eye.position.set(0, 1.05, 0.46);
-      this.group.add(body, this.core, eye);
+      // hooded shard-wraith: tapered body, cowl, cracked core behind it, crown + fins + tatters
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.72, 1.7, 6), shellMat);
+      body.position.y = 0.95; body.castShadow = true;
+      const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.0, 6), plateMat);
+      cowl.position.y = 1.7; cowl.castShadow = true;
+      this.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.32), this.coreMat);
+      this.core.position.y = 1.3;
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.12), this.coreMat);
+      eye.position.set(0, 1.12, 0.46);
+      this.group.add(body, cowl, this.core, eye);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.5, 4), edgeMat);
+        spike.position.set(Math.cos(a) * 0.42, 2.15, Math.sin(a) * 0.42);
+        this.group.add(spike);
+      }
       for (let i = 0; i < 3; i++) {
-        const a = (i / 3) * Math.PI * 2;
-        const fin = new THREE.Mesh(new THREE.ConeGeometry(0.12, 1.0, 4), edgeMat);
-        fin.position.set(Math.cos(a) * 0.5, 1.5, Math.sin(a) * 0.5);
-        fin.rotation.set(-Math.sin(a) * 0.6, 0, Math.cos(a) * 0.6);
-        this.group.add(fin);
+        const a = (i / 3) * Math.PI * 2 + 0.5;
+        const fin = new THREE.Mesh(new THREE.ConeGeometry(0.1, 1.0, 4), edgeMat);
+        fin.position.set(Math.cos(a) * 0.55, 1.4, Math.sin(a) * 0.55);
+        fin.rotation.set(-Math.sin(a) * 0.7, 0, Math.cos(a) * 0.7);
+        const tatter = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.16), edgeMat);
+        tatter.position.set(Math.cos(a) * 0.5, 0.4, Math.sin(a) * 0.5);
+        this.group.add(fin, tatter);
       }
     } else if (this.kind === "spitter") {
-      // floating eye: faceted shell + emissive iris + energy ring + orbiting shards
-      const body = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 1), shellMat);
-      body.castShadow = true;
-      this.core = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), this.coreMat);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.85, 0.06, 8, 28), edgeMat);
+      // armored eye: split shell, glowing iris, energy ring, antennae, orbiting shards
+      const back = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62), plateMat);
+      back.rotation.x = -Math.PI / 2; back.castShadow = true;
+      const brow = new THREE.Mesh(new THREE.SphereGeometry(0.64, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.32), plateMat);
+      brow.rotation.x = Math.PI / 2; brow.position.z = 0.02;
+      this.core = new THREE.Mesh(new THREE.SphereGeometry(0.34, 16, 12), this.coreMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.05, 8, 30), edgeMat);
       ring.rotation.x = Math.PI / 2;
-      this.group.add(body, this.core, ring);
+      this.group.add(back, brow, this.core, ring);
+      for (const sx of [-1, 1]) {
+        const ant = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.6, 4), edgeMat);
+        ant.position.set(sx * 0.35, 0.55, -0.1); ant.rotation.z = sx * 0.4;
+        this.group.add(ant);
+      }
       for (let i = 0; i < 3; i++) {
         const a = (i / 3) * Math.PI * 2;
-        const sh = new THREE.Mesh(new THREE.TetrahedronGeometry(0.18), edgeMat);
-        sh.position.set(Math.cos(a) * 1.0, 0, Math.sin(a) * 1.0);
+        const sh = new THREE.Mesh(new THREE.TetrahedronGeometry(0.16), edgeMat);
+        sh.position.set(Math.cos(a) * 1.0, Math.sin(a * 1.7) * 0.2, Math.sin(a) * 1.0);
         this.group.add(sh);
       }
     } else if (this.kind === "wraith") {
-      // sleek dart: arrowhead + swept fins + bright trailing core
-      const body = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.8, 4), shellMat);
-      body.rotation.x = Math.PI / 2; body.castShadow = true; // points forward; group yaw aims it
-      this.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), this.coreMat);
-      this.core.position.z = -0.5;
-      const finL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.7), edgeMat);
-      finL.position.set(0.34, 0, 0.45); finL.rotation.z = 0.4;
-      const finR = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.7, 0.7), edgeMat);
-      finR.position.set(-0.34, 0, 0.45); finR.rotation.z = -0.4;
-      this.group.add(body, this.core, finL, finR);
-    } else {
-      // brute: hulking armored construct — pauldrons, horns, glowing seams, big core
-      const body = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.0, 1.3), shellMat);
-      body.position.y = 1.1; body.castShadow = true;
-      this.core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5), this.coreMat);
-      this.core.position.set(0, 1.3, 0.55);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.7, 0.8), shellMat);
-      head.position.y = 2.4; head.castShadow = true;
-      this.group.add(body, this.core, head);
+      // sleek delta: layered arrowhead, swept fins, elongated trailing core, edge lines
+      const head = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1.5, 4), shellMat);
+      head.rotation.x = Math.PI / 2; head.castShadow = true; // points forward; group yaw aims it
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.9, 4), plateMat);
+      tail.rotation.x = -Math.PI / 2; tail.position.z = -0.7;
+      this.core = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.9, 6), this.coreMat);
+      this.core.rotation.x = Math.PI / 2; this.core.position.z = -0.3;
+      this.group.add(head, tail, this.core);
       for (const sx of [-1, 1]) {
-        const pauld = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 1.1), shellMat);
-        pauld.position.set(sx * 1.0, 1.9, 0); pauld.castShadow = true;
-        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.8, 4), edgeMat);
-        horn.position.set(sx * 0.28, 2.95, 0);
-        this.group.add(pauld, horn);
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 0.8), shellMat);
+        fin.position.set(sx * 0.36, 0, 0.4); fin.rotation.z = sx * 0.45;
+        const edge = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.4), edgeMat);
+        edge.position.set(sx * 0.16, 0, 0);
+        this.group.add(fin, edge);
       }
-      for (const sy of [0.7, 1.5]) {
-        const seam = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.08, 0.08), edgeMat);
-        seam.position.set(0, sy, 0.66);
-        this.group.add(seam);
+    } else {
+      // brute: hulking golem — stacked torso plates, spiked pauldrons, grated chest core
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.3), shellMat);
+      lower.position.y = 0.65; lower.castShadow = true;
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.0, 1.4), plateMat);
+      upper.position.y = 1.7; upper.castShadow = true;
+      const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), plateMat);
+      head.position.y = 2.6; head.castShadow = true;
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.1), this.coreMat);
+      eye.position.set(0, 2.62, 0.45);
+      this.core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42), this.coreMat);
+      this.core.position.set(0, 1.55, 0.6);
+      this.group.add(lower, upper, head, eye, this.core);
+      for (let i = 0; i < 4; i++) { // chest grate bars over the core
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 0.08), shellMat);
+        bar.position.set(-0.3 + i * 0.2, 1.55, 0.72);
+        this.group.add(bar);
+      }
+      for (const sx of [-1, 1]) {
+        const pauld = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 1.3), plateMat);
+        pauld.position.set(sx * 1.15, 2.0, 0); pauld.castShadow = true;
+        for (let i = 0; i < 3; i++) {
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.5, 4), edgeMat);
+          spike.position.set(sx * 1.15, 2.45, -0.4 + i * 0.4); spike.rotation.x = -0.3;
+          this.group.add(spike);
+        }
+        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.3, 0.5), shellMat);
+        arm.position.set(sx * 1.15, 1.1, 0); arm.castShadow = true;
+        const fist = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.6), plateMat);
+        fist.position.set(sx * 1.15, 0.4, 0);
+        this.group.add(pauld, arm, fist);
       }
     }
   }
