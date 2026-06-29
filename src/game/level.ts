@@ -25,6 +25,8 @@ export interface Gate {
   open: boolean;
   barrier: THREE.Mesh;
   light: THREE.PointLight;
+  /** Iron portcullis grille — raised (hidden) when the gate opens. */
+  portcullis: THREE.Group;
 }
 
 // warm, flame-lit palette — torch orange, amber, ember-red, gold
@@ -105,6 +107,12 @@ export class Level {
       const cope = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, pathLen), ironMat);
       cope.position.set(sx * (HALF_WIDTH + 1.4), 12.1, pathLen / 2 - 8);
       this.group.add(cope);
+      // crenellated battlements: stone merlons with gaps between them (castle silhouette)
+      for (let z = 8; z < ARENA_BLEND_Z; z += 4.4) {
+        const merlon = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.3, 1.9), wallMat);
+        merlon.position.set(sx * (HALF_WIDTH + 1.4), 13.1, z);
+        this.group.add(merlon);
+      }
       const baseBand = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, pathLen), ironMat);
       baseBand.position.set(sx * (HALF_WIDTH + 1.3), 1.0, pathLen / 2 - 8);
       this.group.add(baseBand);
@@ -173,7 +181,28 @@ export class Level {
       const light = new THREE.PointLight(color, 26, 30, 2);
       light.position.set(0, 4, z);
       this.group.add(light);
-      this.gates.push({ z, triggerZ: z - 30, open: false, barrier, light });
+
+      // iron portcullis grille in front of the energy barrier — a real castle gate
+      const portcullis = new THREE.Group();
+      const nBars = 11;
+      for (let b = 0; b < nBars; b++) {
+        const bx = -HALF_WIDTH + (b / (nBars - 1)) * HALF_WIDTH * 2;
+        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 8, 6), ironMat);
+        bar.position.set(bx, 4, 0);
+        portcullis.add(bar);
+        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.6, 6), ironMat);
+        spike.position.set(bx, -0.1, 0); spike.rotation.x = Math.PI;
+        portcullis.add(spike);
+      }
+      for (const hy of [7.5, 4, 0.5]) {
+        const cross = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2, 0.24, 0.24), ironMat);
+        cross.position.set(0, hy, 0);
+        portcullis.add(cross);
+      }
+      portcullis.position.set(0, 0, z - 0.35);
+      this.group.add(portcullis);
+
+      this.gates.push({ z, triggerZ: z - 30, open: false, barrier, light, portcullis });
     }
 
     // --- arena ring of tall pillars + a central dais ---
@@ -193,6 +222,19 @@ export class Level {
     );
     dais.position.set(BOSS_ANCHOR.x, 0.3, BOSS_ANCHOR.z);
     this.group.add(dais);
+
+    // great stone braziers flanking the dais (emissive + bloom carry the light; no new PointLights)
+    for (const sx of [-1, 1]) {
+      const px = BOSS_ANCHOR.x + sx * 7;
+      const pz = BOSS_ANCHOR.z - 9;
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.1, 5.5, 8), stoneMat);
+      col.position.set(px, 2.75, pz); col.castShadow = true;
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 0.6, 0.9, 12), ironMat);
+      bowl.position.set(px, 5.7, pz);
+      const fl = this.makeFlame(1.8, false);
+      fl.position.set(px, 6.1, pz);
+      this.group.add(col, bowl, fl);
+    }
 
     // --- warm iron inlay strips across the flags (depth cue + wayfinding) ---
     for (let z = 6; z < ARENA_BLEND_Z; z += 10) {
@@ -256,6 +298,22 @@ export class Level {
       const key = new THREE.Mesh(new THREE.OctahedronGeometry(0.6), this.emissiveMat(color, 2.4));
       key.position.set(0, r, z);
       this.group.add(arch, archGlow, key);
+      // a hanging iron chandelier of flames under every other arch
+      const idx = Math.round((z - 30) / 36);
+      if (idx % 2 === 1) {
+        const cy = 10.5;
+        const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, r - cy, 4), archDark);
+        chain.position.set(0, (r + cy) / 2, z);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.7, 0.13, 6, 20), archDark);
+        ring.rotation.x = Math.PI / 2; ring.position.set(0, cy, z);
+        this.group.add(chain, ring);
+        for (let c = 0; c < 4; c++) {
+          const a = (c / 4) * Math.PI * 2;
+          const fl = this.makeFlame(0.7, false);
+          fl.position.set(Math.cos(a) * 1.7, cy + 0.05, z + Math.sin(a) * 1.7);
+          this.group.add(fl);
+        }
+      }
     }
 
     // --- flowing energy layer over the central seam (scrolls toward the boss) ---
@@ -585,6 +643,7 @@ export class Level {
     g.light.intensity = 0;
     (g.barrier.material as THREE.MeshBasicMaterial).opacity = 0;
     g.barrier.visible = false;
+    g.portcullis.visible = false; // grille raises out of sight
   }
 
   /** Reset all gates to sealed (retry). */
@@ -594,6 +653,7 @@ export class Level {
       g.open = false;
       g.light.intensity = 26;
       g.barrier.visible = true;
+      g.portcullis.visible = true;
       (g.barrier.material as THREE.MeshBasicMaterial).opacity = 0.5;
     }
   }

@@ -32,12 +32,12 @@ const SWINGS: Record<GlyphId, SwingKey[]> = {
     { t: 0.5, pose: [0.34, -0.66, -1.05, 0.2, 0.7, -0.5] },
     { t: 1, pose: REST },
   ],
-  // overhead chop: raise high (anticipation) → heavy slam → recoil → settle
+  // overhead chop: wind WAY back overhead (anticipation) → heavy two-hand slam → recoil → settle
   cleave: [
     { t: 0, pose: REST },
-    { t: 0.3, pose: [0.4, -0.04, -0.7, -1.6, -0.1, 0.15] },
-    { t: 0.5, pose: [0.42, -0.8, -1.38, 1.35, -0.05, 0.0], flash: 5, stretch: 1.6 },
-    { t: 0.66, pose: [0.46, -0.66, -1.0, 0.5, -0.1, 0.05] },
+    { t: 0.28, pose: [0.3, 0.22, -0.5, -2.1, -0.18, 0.22] },
+    { t: 0.46, pose: [0.42, -0.92, -1.55, 1.6, -0.04, 0.0], flash: 6.5, stretch: 1.95 },
+    { t: 0.62, pose: [0.46, -0.62, -1.0, 0.55, -0.1, 0.05] },
     { t: 1, pose: REST },
   ],
   // ranged thrust: draw back + up → punch forward (flash) → settle
@@ -262,8 +262,19 @@ export class Player {
       const reach = m.range * 0.55;
       const cleave = m.id === "cleave";
       this.ctx.fx.slash(this.pos.x + fx * reach, 1.3, this.pos.z + fz * reach, Math.atan2(fx, fz), {
-        color: m.color, radius: cleave ? 3.0 : 2.2, tilt: cleave ? -0.08 : -0.7, duration: 0.2, spin: cleave ? 1.5 : 4,
+        color: m.color, radius: cleave ? 3.6 : 2.2, tilt: cleave ? -0.08 : -0.7, duration: cleave ? 0.26 : 0.2, spin: cleave ? 1.5 : 4,
       });
+      if (cleave) {
+        // the heavy chop cracks the ground: a forward shockwave ring + ember plume + a real hit on the camera
+        const wx = this.pos.x + fx * m.range * 0.8;
+        const wz = this.pos.z + fz * m.range * 0.8;
+        this.ctx.fx.ring(wx, wz, { radius: m.range + 2.5, color: m.color, duration: 0.5, y: 0.12, startRadius: 0.6 });
+        this.ctx.fx.ring(wx, wz, { radius: m.range + 1, color: 0xffffff, duration: 0.32, y: 0.14, startRadius: 0.4 });
+        this.ctx.fx.burst({ x: wx, y: 0.5, z: wz, count: 28, color: [m.color, 0xffffff], speed: [5, 15], up: 0.9, size: [0.16, 0.42], life: [0.3, 0.7] });
+        this.ctx.cam.addTrauma(0.34);
+        this.ctx.cam.pulseFov(0.3);
+        this.ctx.stage.punch(0.3);
+      }
     } else {
       // bolt fires along the full 3D look direction from ~eye height, so it travels
       // straight down the crosshair ray (aim up → bolt rises toward the boss core)

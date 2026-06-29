@@ -5,8 +5,11 @@ import { ARENA_CENTER, ARENA_RADIUS, HALF_WIDTH } from "./level";
 interface Shot {
   group: THREE.Group;
   glow: THREE.Mesh;
+  head: THREE.Mesh;
+  runes: THREE.Group;
   glowMat: THREE.MeshBasicMaterial;
   tailMat: THREE.MeshBasicMaterial;
+  runeMat: THREE.MeshBasicMaterial;
   vel: THREE.Vector3;
   life: number;
   dmg: number;
@@ -20,17 +23,21 @@ interface Shot {
 const POOL = 56;
 const RADIUS = 0.35; // collision radius (gameplay) — visual size is independent
 const FWD = new THREE.Vector3(0, 0, 1);
+const TAU = Math.PI * 2;
 
 /**
- * One pooled set of energy tracers for the player's Bolt glyph (friendly) and all
- * enemy/boss fire (hostile). Each shot is a comet — a white-hot core, a colored glow,
- * and a tail cone streaking back along its velocity, with a throttled spark trail.
- * Friendly hits route through combat.dealDamage; hostile through combat.damagePlayer.
+ * One pooled set of animated energy bolts for the player's Bolt glyph (friendly) and
+ * all enemy/boss fire (hostile). Each shot is a living comet: a pulsing white-hot core,
+ * a colored glow + halo ring, three rune shards orbiting the travel axis, and a tail
+ * cone streaking back along velocity, plus a throttled spark trail. Friendly hits route
+ * through combat.dealDamage; hostile through combat.damagePlayer.
  */
 export class Projectiles {
   private pool: Shot[] = [];
-  private headGeo = new THREE.SphereGeometry(0.18, 10, 8);
+  private headGeo = new THREE.SphereGeometry(0.18, 12, 10);
   private glowGeo = new THREE.SphereGeometry(0.4, 12, 10);
+  private ringGeo = new THREE.TorusGeometry(0.34, 0.05, 6, 18);
+  private runeGeo = new THREE.TetrahedronGeometry(0.14);
   private tailGeo: THREE.ConeGeometry;
   private headMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
   private q = new THREE.Quaternion();
@@ -45,16 +52,25 @@ export class Projectiles {
     for (let i = 0; i < POOL; i++) {
       const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
       const tailMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+      const runeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
       const group = new THREE.Group();
       const glow = new THREE.Mesh(this.glowGeo, glowMat);
-      group.add(glow);
-      group.add(new THREE.Mesh(this.headGeo, this.headMat));
-      group.add(new THREE.Mesh(this.tailGeo, tailMat));
+      const head = new THREE.Mesh(this.headGeo, this.headMat);
+      const tail = new THREE.Mesh(this.tailGeo, tailMat);
+      const ring = new THREE.Mesh(this.ringGeo, glowMat); // halo encircling the travel axis (local +Z)
+      const runes = new THREE.Group(); // rune shards that orbit the head (spun in update)
+      for (let k = 0; k < 3; k++) {
+        const tet = new THREE.Mesh(this.runeGeo, runeMat);
+        const a = (k / 3) * TAU;
+        tet.position.set(Math.cos(a) * 0.44, Math.sin(a) * 0.44, 0);
+        runes.add(tet);
+      }
+      group.add(glow, head, tail, ring, runes);
       group.visible = false;
       group.frustumCulled = false;
       group.renderOrder = 5;
       this.ctx.stage.scene.add(group);
-      this.pool.push({ group, glow, glowMat, tailMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff });
+      this.pool.push({ group, glow, head, runes, glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff });
     }
   }
 
@@ -70,8 +86,10 @@ export class Projectiles {
     s.color = color;
     s.vel.copy(dir).normalize().multiplyScalar(speed);
     s.group.position.set(x, y, z);
+    s.runes.rotation.z = 0;
     s.glowMat.color.setHex(color);
     s.tailMat.color.setHex(color);
+    s.runeMat.color.setHex(color);
     s.group.visible = true;
     this.orient(s);
     // muzzle flash
@@ -98,8 +116,11 @@ export class Projectiles {
       p.addScaledVector(s.vel, dt);
       s.life -= dt;
       this.orient(s);
-      // gentle core flicker so the bolt feels alive
-      s.glow.scale.setScalar(0.85 + Math.sin((3.2 - s.life) * 32) * 0.15);
+      // living-bolt animation: pulsing glow + core, rune shards orbiting the travel axis
+      const age = 3.2 - s.life;
+      s.glow.scale.setScalar(0.85 + Math.sin(age * 30) * 0.15);
+      s.head.scale.setScalar(0.9 + Math.sin(age * 46) * 0.22);
+      s.runes.rotation.z += dt * 9;
       // throttled trailing sparks
       s.trailT -= dt;
       if (s.trailT <= 0) {
@@ -139,6 +160,6 @@ export class Projectiles {
   }
 
   private impact(p: THREE.Vector3, color: number): void {
-    this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: 16, color: [color, 0xffffff], speed: [3, 10], size: [0.12, 0.34], life: [0.2, 0.5] });
+    this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: 18, color: [color, 0xffffff], speed: [3, 11], size: [0.12, 0.36], life: [0.2, 0.5] });
   }
 }

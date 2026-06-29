@@ -44,8 +44,11 @@ export class Boss implements Hittable {
   private dying = false;
   private deathT = 0;
   private t = 0;
+  private risen = false;
 
   group = new THREE.Group();
+  private orbit = new THREE.Group(); // rune shards circling the core (animated)
+  private light!: THREE.PointLight;
   private coreMat: THREE.MeshStandardMaterial;
 
   constructor(private ctx: Ctx) {
@@ -65,17 +68,50 @@ export class Boss implements Hittable {
     const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.0), this.coreMat);
     core.position.y = 4.6;
     this.group.add(body, head, core);
-    // crown of shards
+
+    // ragged cloak/skirt flaring from the body — a looming warlord silhouette
+    const cloak = new THREE.Mesh(new THREE.ConeGeometry(3.2, 5.8, 10, 1, true), shell);
+    cloak.position.y = 2.9; cloak.castShadow = true;
+    this.group.add(cloak);
+
+    // pauldron spikes off the shoulders
+    for (const sx of [-1, 1]) {
+      const pauldron = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.2, 5), this.coreMat);
+      pauldron.position.set(sx * 2.0, 6.0, 0);
+      pauldron.rotation.z = sx * 0.9;
+      this.group.add(pauldron);
+    }
+
+    // glowing slit eyes on the head
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.2), this.coreMat);
+      eye.position.set(sx * 0.5, 7.5, 1.05);
+      this.group.add(eye);
+    }
+
+    // tall jagged crown of shards (two tiers)
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
-      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.6, 4), this.coreMat);
-      shard.position.set(Math.cos(a) * 1.3, 8.2, Math.sin(a) * 1.3);
-      shard.rotation.x = Math.PI;
+      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.34, 2.6, 4), this.coreMat);
+      shard.position.set(Math.cos(a) * 1.4, 8.7, Math.sin(a) * 1.4);
       this.group.add(shard);
+      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.5, 4), this.coreMat);
+      inner.position.set(Math.cos(a + 0.39) * 0.8, 9.1, Math.sin(a + 0.39) * 0.8);
+      this.group.add(inner);
     }
-    const light = new THREE.PointLight(this.hitColor, 30, 40, 2);
-    light.position.y = 5;
-    this.group.add(light);
+
+    // rune shards orbiting the core (spun in tick) — menace + motion
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.5), this.coreMat);
+      shard.position.set(Math.cos(a) * 3.6, 4.6 + Math.sin(a * 2) * 0.7, Math.sin(a) * 3.6);
+      this.orbit.add(shard);
+    }
+    this.group.add(this.orbit);
+
+    this.light = new THREE.PointLight(this.hitColor, 30, 40, 2);
+    this.light.position.y = 5;
+    this.group.add(this.light);
   }
 
   /** World position of the weak-point core (drives crosshair + crit aim). */
@@ -105,11 +141,26 @@ export class Boss implements Hittable {
     return false;
   }
 
+  /** Boss fully risen on spawn — a roar + ground shockwave + summoning beams. */
+  private onRisen(): void {
+    this.ctx.stage.punch(0.6);
+    this.ctx.cam.addTrauma(0.7);
+    this.ctx.sfx.bossRoar();
+    this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 15, color: this.hitColor, duration: 0.7, y: 0.2, startRadius: 1 });
+    this.ctx.fx.burst({ x: this.pos.x, y: 3, z: this.pos.z, count: 80, color: [this.hitColor, 0xffffff], speed: [8, 22], life: [0.5, 1.1], up: 0.6 });
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      this.ctx.fx.beam(this.pos.x + Math.cos(a) * 5, this.pos.z + Math.sin(a) * 5, this.hitColor);
+    }
+  }
+
   private enterPhase2(): void {
     this.phase = 2;
     this.ctx.stage.punch(0.6);
     this.ctx.cam.addTrauma(0.6);
     this.ctx.sfx.bossRoar();
+    this.light.intensity = 42;
+    this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 16, color: this.hitColor, duration: 0.6, y: 0.2, startRadius: 1 });
     this.ctx.fx.burst({ x: this.pos.x, y: 4.6, z: this.pos.z, count: 60, color: this.hitColor, speed: [6, 16], life: [0.4, 0.9] });
     if (!this.summoned) {
       this.summoned = true;
@@ -120,10 +171,14 @@ export class Boss implements Hittable {
 
   private enterPhase3(): void {
     this.phase = 3;
-    this.ctx.stage.punch(0.8);
-    this.ctx.cam.addTrauma(0.8);
+    this.ctx.stage.punch(0.9);
+    this.ctx.cam.addTrauma(0.85);
     this.ctx.sfx.bossRoar();
-    this.ctx.fx.burst({ x: this.pos.x, y: 5, z: this.pos.z, count: 90, color: this.hitColor, speed: [8, 20], life: [0.5, 1.1] });
+    this.light.intensity = 55;
+    this.light.color.setHex(0xff7a3c); // the Warden ignites for the final phase
+    this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 20, color: 0xffffff, duration: 0.7, y: 0.2, startRadius: 1 });
+    this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 26, color: this.hitColor, duration: 0.9, y: 0.15, startRadius: 2 });
+    this.ctx.fx.burst({ x: this.pos.x, y: 5, z: this.pos.z, count: 90, color: [this.hitColor, 0xffffff], speed: [8, 20], life: [0.5, 1.1] });
   }
 
   tick(dt: number): void {
@@ -131,12 +186,15 @@ export class Boss implements Hittable {
     this.flash = Math.max(0, this.flash - dt * 3);
     const base = this.phase === 3 ? 3.2 : 2.0;
     this.coreMat.emissiveIntensity = base + this.flash * 4 + Math.sin(this.t * (this.phase === 3 ? 6 : 3)) * 0.4;
+    // the shard halo wheels around the core, faster as the fight escalates
+    this.orbit.rotation.y += dt * (this.phase >= 3 ? 1.7 : this.phase === 2 ? 1.1 : 0.7);
 
     // rising entrance: scale up from nothing; no attacks until fully risen
     if (this.rise < 1 && !this.dying) {
       this.rise = Math.min(1, this.rise + dt * 0.8);
       this.group.scale.setScalar((1 - (1 - this.rise) ** 3) * 1.3);
       this.group.position.y = Math.sin(this.t * 1.2) * 0.2;
+      if (this.rise >= 1 && !this.risen) { this.risen = true; this.onRisen(); }
     } else if (!this.dying) {
       // attack body animation: inflate + rise on wind-up, squash + drop on the strike
       this.charge = this.attack ? 1 - this.windup / this.windupMax : damp(this.charge, 0, 6, dt);
