@@ -55,6 +55,7 @@ export class Combat {
     });
     if (heavy) this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.4, color: t.hitColor, duration: 0.32, y: 1 });
     this.ctx.cam.addTrauma(heavy ? 0.22 : 0.08);
+    if (heavy) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.05);
     if (killed) {
       this.ctx.events.emit("KILL", { x: t.pos.x, z: t.pos.z, kind: t.kind });
       this.ctx.fx.burst({
@@ -100,6 +101,7 @@ export class Combat {
     this.ctx.stage.punch(0.35 + combo.tier * 0.12);
     this.ctx.cam.addTrauma(0.4 + combo.tier * 0.12);
     this.ctx.cam.pulseFov(0.35);
+    this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.1);
     this.ctx.sfx.critical();
     if (combo.tier >= 3) this.ctx.sfx.bossRoar();
 

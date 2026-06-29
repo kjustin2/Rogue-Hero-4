@@ -28,12 +28,16 @@ export class Hud {
   private bannerT = 0;
   private streakCount = 0;
   private streakT = 0;
+  private dmgFlash!: HTMLElement;
+  private danger!: HTMLElement;
+  private dmgT = 0;
+  private t = 0;
 
   constructor(private ctx: Ctx) {
     this.build();
     ctx.events.on("COMBO_RESOLVE", (e) => this.showBanner(e.name, COMBOS.find((c) => c.name === e.name)?.color ?? 0xffffff));
     ctx.events.on("KILL_STREAK", (e) => { this.streakCount = e.count; this.streakT = 2; });
-    ctx.events.on("PLAYER_HIT", () => { this.streakCount = 0; });
+    ctx.events.on("PLAYER_HIT", () => { this.streakCount = 0; this.dmgT = 0.4; });
   }
 
   private build(): void {
@@ -51,6 +55,8 @@ export class Hud {
     ).join("");
 
     this.hud.innerHTML = `
+      <div id="danger"></div>
+      <div id="dmgflash"></div>
       <div id="crosshair"><span></span><span></span><span></span><span></span></div>
 
       <div id="boss-bar"><div class="boss-name">RIFT WARDEN</div><div class="boss-track"><div class="boss-fill"></div></div></div>
@@ -80,6 +86,8 @@ export class Hud {
     this.objText = this.hud.querySelector(".obj-text")!;
     this.objFill = this.hud.querySelector(".obj-fill")!;
     this.streak = this.hud.querySelector("#streak")!;
+    this.dmgFlash = this.hud.querySelector("#dmgflash")!;
+    this.danger = this.hud.querySelector("#danger")!;
     for (const g of GLYPH_ORDER) {
       const cell = this.hud.querySelector(`.glyph[data-g="${g}"]`)!;
       this.slot[g] = { ready: cell as HTMLElement, cd: cell.querySelector(".glyph-cd") as HTMLElement };
@@ -100,9 +108,20 @@ export class Hud {
 
   update(dt: number): void {
     const p = this.ctx.player;
+    this.t += dt;
 
     // health
     const frac = Math.max(0, p.hp / p.maxHp);
+
+    // damage flash + low-HP danger vignette
+    if (this.dmgT > 0) { this.dmgT -= dt; this.dmgFlash.style.opacity = Math.max(0, this.dmgT / 0.4).toFixed(2); }
+    else this.dmgFlash.style.opacity = "0";
+    if (frac < 0.35 && p.alive) {
+      const sev = (0.35 - frac) / 0.35;
+      this.danger.style.opacity = (sev * (0.55 + 0.45 * Math.sin(this.t * 6))).toFixed(2);
+    } else {
+      this.danger.style.opacity = "0";
+    }
     this.hpFill.style.width = (frac * 100).toFixed(1) + "%";
     this.hpFill.style.background = frac > 0.3 ? "linear-gradient(90deg,#2bd4ff,#8affd0)" : "linear-gradient(90deg,#ff4252,#ff8a3d)";
     this.hpText.textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;

@@ -522,6 +522,22 @@ export class Sfx {
     notes.forEach((f, i) => this.tone({ f, dur: 0.25, type: "triangle", gain: 0.09, delay: i * 0.1 }));
   }
 
+  /** Player melee whoosh — heavier, lower for a Cleave. */
+  meleeSwing(heavy: boolean): void {
+    this.noise({ dur: heavy ? 0.22 : 0.12, freq: heavy ? 320 : 640, freq2: heavy ? 1700 : 2600, q: 1.6, gain: heavy ? 0.12 : 0.08 });
+  }
+
+  /** Bolt cast — a quick arcane zap. */
+  boltCast(): void {
+    this.tone({ f: 620, f2: 1500, dur: 0.16, type: "sawtooth", gain: 0.09 });
+    this.noise({ dur: 0.12, freq: 1200, freq2: 400, q: 2, gain: 0.05 });
+  }
+
+  /** Dash whoosh. */
+  dashWhoosh(): void {
+    this.noise({ dur: 0.18, freq: 420, freq2: 1700, q: 1.2, gain: 0.1 });
+  }
+
   bossIntroSting(): void {
     // Cinematic riser → low impact. A slow swell of two low sines a fifth apart,
     // a filtered noise rise, then a sub drop — tense, not the old buzzy detune.

@@ -53,6 +53,9 @@ html, body {
 }
 
 /* ============================== HUD ============================== */
+#danger { position: absolute; inset: 0; opacity: 0; background: radial-gradient(120% 100% at 50% 50%, transparent 42%, rgba(255, 40, 60, 0.6) 100%); }
+#dmgflash { position: absolute; inset: 0; opacity: 0; background: radial-gradient(130% 100% at 50% 50%, rgba(255, 40, 60, 0.45), rgba(255, 40, 60, 0.16) 55%, transparent 78%); }
+
 #crosshair { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%); opacity: 0.85; }
 #crosshair span { position: absolute; background: rgba(220, 245, 255, 0.85); box-shadow: 0 0 6px rgba(95, 224, 255, 0.7); }
 #crosshair span:nth-child(1) { left: 50%; top: 0; width: 2px; height: 8px; transform: translateX(-50%); }

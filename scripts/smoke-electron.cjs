@@ -162,6 +162,16 @@ app.whenReady().then(async () => {
       await tap("KeyE"); await frames(4);
       await shot(win, "bolt");
 
+      // --- fairness: low-HP danger vignette + health-shard heal
+      await js(`window.__rh4.player.hp = 28`);
+      await frames(2);
+      await shot(win, "low-hp");
+      const hpLow = await js(`window.__rh4.player.hp`);
+      await js(`window.__rh4.pickups.drop(window.__rh4.player.pos.x, window.__rh4.player.pos.z + 1.5, 30)`);
+      await frames(28);
+      const hpHealed = await js(`window.__rh4.player.hp`);
+      expect(hpHealed > hpLow, `health shard did not heal (${hpLow} -> ${hpHealed})`);
+
       // --- clear the field, jump to the boss
       await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
       await frames(8);

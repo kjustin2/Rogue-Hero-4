@@ -162,10 +162,12 @@ export class Player {
     const fx = this.fwd.x, fz = this.fwd.z;
 
     if (m.kind === "melee") {
+      this.ctx.sfx.meleeSwing(m.id === "cleave");
       this.ctx.combat.meleeSweep(this.pos.x, this.pos.z, fx, fz, m.arc, m.range, m.damage, m.knockback, m.id === "cleave");
       this.ctx.cam.kick(-fx, -fz, m.id === "cleave" ? 0.5 : 0.2);
     } else {
       // bolt fires along the full 3D look direction from eye height
+      this.ctx.sfx.boltCast();
       this.ctx.cam.forward(this.aim);
       this.ctx.projectiles.spawn(this.pos.x, 1.35, this.pos.z, this.aim, 34, m.damage, true, m.color, m.knockback);
       this.ctx.cam.kick(-fx, -fz, 0.15);
@@ -205,6 +207,7 @@ export class Player {
       this.dashDir.copy(this.fwd);
     }
     this.ctx.events.emit("DODGE", {});
+    this.ctx.sfx.dashWhoosh();
     this.ctx.cam.pulseFov(0.4);
     this.ctx.fx.burst({ x: this.pos.x, y: 0.6, z: this.pos.z, count: 14, color: 0x9fe8ff, speed: [4, 9], vertical: 0.3, life: [0.2, 0.5] });
   }

@@ -21,6 +21,7 @@ import { Player } from "./game/player";
 import { Combat } from "./game/combat";
 import { EnemyManager, type EnemyKind } from "./game/enemies";
 import { Projectiles } from "./game/projectiles";
+import { Pickups } from "./game/pickups";
 import { Boss } from "./game/boss";
 import { comboSelfCheck } from "./game/combos";
 import { Hud } from "./ui/hud";
@@ -50,9 +51,11 @@ ctx.level = new Level(ctx);
 ctx.combat = new Combat(ctx);
 ctx.enemies = new EnemyManager(ctx);
 ctx.projectiles = new Projectiles(ctx);
+ctx.pickups = new Pickups(ctx);
 ctx.player = new Player(ctx);
 ctx.boss = null;
 ctx.playing = false;
+ctx.hitstop = 0;
 
 // The weapon viewmodel is parented to the camera, so the camera must live in the
 // scene graph for its children to render.
@@ -72,11 +75,12 @@ let bossSpawned = false;
 let triggered: boolean[] = ctx.level.gates.map(() => false);
 let victoryQueued = 0;
 
-ctx.events.on("KILL", () => {
+ctx.events.on("KILL", (e) => {
   kills++;
   streak++;
   streakTimer = 3;
   ctx.events.emit("KILL_STREAK", { count: streak });
+  ctx.pickups.maybeDrop(e.x, e.z);
 });
 ctx.events.on("PLAYER_HIT", () => { streak = 0; });
 ctx.events.on("PLAYER_DIED", () => setState("dead"));
@@ -125,6 +129,8 @@ function startRun(): void {
   ctx.level.reset();
   ctx.enemies.clear();
   ctx.projectiles.clear();
+  ctx.pickups.clear();
+  ctx.hitstop = 0;
   if (ctx.boss) { ctx.boss.dispose(); ctx.boss = null; }
   triggered = ctx.level.gates.map(() => false);
   bossSpawned = false;
@@ -158,6 +164,7 @@ function updatePlaying(dt: number): void {
   ctx.enemies.update(dt);
   if (ctx.boss) ctx.boss.tick(dt);
   ctx.projectiles.update(dt);
+  ctx.pickups.update(dt);
 
   // wave gates: trigger the next sealed gate's wave, open it when cleared
   const idx = ctx.level.gates.findIndex((g) => !g.open);
@@ -194,6 +201,9 @@ function updatePlaying(dt: number): void {
 
 // --------------------------------------------------------------------- loop
 function frame(dt: number): void {
+  // hit-stop: briefly crunch the frame dt for impact (decremented in real time)
+  if (ctx.hitstop > 0) { ctx.hitstop = Math.max(0, ctx.hitstop - dt); dt *= 0.08; }
+
   ctx.input.pollGamepad();
   if (state === "playing") updatePlaying(dt);
 

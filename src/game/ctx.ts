@@ -19,6 +19,7 @@ import type { Player } from "./player";
 import type { Combat } from "./combat";
 import type { EnemyManager } from "./enemies";
 import type { Projectiles } from "./projectiles";
+import type { Pickups } from "./pickups";
 import type { Boss } from "./boss";
 
 export interface Ctx {
@@ -41,7 +42,10 @@ export interface Ctx {
   combat: Combat;
   enemies: EnemyManager;
   projectiles: Projectiles;
+  pickups: Pickups;
   boss: Boss | null;
   /** True during active first-person gameplay (not menu/pause/dead/victory). */
   playing: boolean;
+  /** Remaining hit-stop time (seconds). main scales the frame dt while > 0. */
+  hitstop: number;
 }
