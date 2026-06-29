@@ -274,9 +274,17 @@ export class Player {
       // a slash crescent sweeps ahead so the swing reads (cleave = overhead, strike = diagonal)
       const reach = m.range * 0.55;
       const cleave = m.id === "cleave";
-      this.ctx.fx.slash(this.pos.x + fx * reach, 1.3, this.pos.z + fz * reach, Math.atan2(fx, fz), {
+      const sx = this.pos.x + fx * reach, sz = this.pos.z + fz * reach;
+      this.ctx.fx.slash(sx, 1.3, sz, Math.atan2(fx, fz), {
         color: m.color, radius: cleave ? 3.6 : 2.2, tilt: cleave ? -0.08 : -0.7, duration: cleave ? 0.26 : 0.2, spin: cleave ? 1.5 : 4,
       });
+      // sparks fly off the arc on every swing so even a whiffed strike has snap
+      this.ctx.fx.burst({ x: sx, y: 1.3, z: sz, count: cleave ? 16 : 10, color: [m.color, 0xffffff], speed: [4, cleave ? 13 : 9], vertical: 0.5, size: [0.1, 0.32], life: [0.15, 0.4] });
+      if (!cleave) {
+        // a crossing second crescent + a low ground ring give the light strike its own pop
+        this.ctx.fx.slash(sx, 1.25, sz, Math.atan2(fx, fz), { color: 0xffffff, radius: 1.8, tilt: 0.55, duration: 0.18, spin: -5 });
+        this.ctx.fx.ring(sx, sz, { radius: m.range + 0.5, color: m.color, duration: 0.3, y: 0.1, startRadius: 0.3 });
+      }
       if (cleave) {
         // the heavy chop cracks the ground: a forward shockwave ring + ember plume + a real hit on the camera
         const wx = this.pos.x + fx * m.range * 0.8;
@@ -295,9 +303,11 @@ export class Player {
       this.ctx.cam.forward(this.aim);
       this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.aim, 34, m.damage, true, m.color, m.knockback);
       this.ctx.cam.kick(-fx, -fz, 0.15);
-      // muzzle flash at the blade tip
+      // muzzle flash at the blade tip — a bright burst + a quick spark ring punching forward
       this.tipMarker.getWorldPosition(this.tip);
-      this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: 10, color: [m.color, 0xffffff], speed: [2, 7], size: [0.1, 0.3], life: [0.12, 0.3] });
+      this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: 18, color: [m.color, 0xffffff], speed: [3, 10], size: [0.1, 0.34], life: [0.12, 0.34] });
+      this.ctx.fx.ring(this.tip.x, this.tip.z, { radius: 1.6, color: m.color, duration: 0.22, y: this.tip.y, startRadius: 0.2 });
+      this.ctx.cam.pulseFov(0.12);
     }
 
     // record glyph + test the chain

@@ -17,7 +17,7 @@ import { Floaters } from "./render/floaters";
 import { FpsCamera } from "./render/fpsCamera";
 import { Sfx } from "./audio/sfx";
 import { Music } from "./audio/music";
-import { Level, PLAYER_SPAWN, ARENA_BLEND_Z } from "./game/level";
+import { Level, PLAYER_SPAWN, ARENA_BLEND_Z, BOSS_ANCHOR } from "./game/level";
 import { Player } from "./game/player";
 import { Combat } from "./game/combat";
 import { EnemyManager, type EnemyKind } from "./game/enemies";
@@ -75,8 +75,11 @@ let streakTimer = 0;
 let bossSpawned = false;
 let triggered: boolean[] = ctx.level.gates.map(() => false);
 let victoryQueued = 0;
+const CINE_LEN = 3.4; // boss-intro cutscene length
 let cineT = 0; // boss-intro cutscene timer (>0 = cutscene running)
+let cineBeatT = 0; // ticks down to fire the next scripted ripple/beam beat
 const cineTarget = new THREE.Vector3();
+const BOSS_TEAL = 0x4fe0d0; // matches Boss.hitColor
 
 ctx.events.on("KILL", (e) => {
   kills++;
@@ -209,25 +212,44 @@ function updatePlaying(dt: number): void {
 // boss as it rises (zoom-in FOV + shake), reveal its name, then hand control back.
 // Reusable for any boss; currently the Rift Warden is the only one.
 function startBossCutscene(name: string): void {
-  cineT = 3.2;
+  cineT = CINE_LEN;
+  cineBeatT = 0;
   ctx.player.frozen = true;
   ctx.cam.setCinematic(true);
   ctx.events.emit("BOSS_INTRO", { name });
   ctx.music.boss(1);
   ctx.sfx.bossRoar();
   ctx.cam.addTrauma(0.45);
-  hud.showBanner(name.toUpperCase(), 0xff5ea0);
+  // an arena-wide shockwave the instant the rift tears open
+  ctx.fx.ring(BOSS_ANCHOR.x, BOSS_ANCHOR.z, { radius: 26, color: BOSS_TEAL, duration: 0.9, y: 0.2, startRadius: 1 });
+  hud.showBanner(name.toUpperCase(), 0x9ff0e4);
 }
 
 function updateBossCutscene(dt: number): void {
   cineT -= dt;
+  const k = Math.min(1, (CINE_LEN - cineT) / CINE_LEN); // 0→1 as the boss rises
   if (ctx.boss) {
     ctx.boss.tick(dt); // keep rising
     ctx.boss.coreWorld(cineTarget);
     ctx.cam.setCinematic(true, cineTarget);
   }
-  // rhythmic shake while it rises sells the weight
-  if (cineT > 1.2 && ctx.rng.next() < 0.10) ctx.cam.addTrauma(0.18);
+  // scripted beats: rings ripple outward + soul-fire pillars erupt around the dais,
+  // intensifying as the Warden rises — the cutscene now builds instead of just waiting.
+  cineBeatT -= dt;
+  if (cineBeatT <= 0) {
+    cineBeatT = 0.4;
+    const bx = BOSS_ANCHOR.x, bz = BOSS_ANCHOR.z;
+    ctx.fx.ring(bx, bz, { radius: 7 + k * 16, color: BOSS_TEAL, duration: 0.7, y: 0.2, startRadius: 1 });
+    const n = 2 + Math.round(k * 3);
+    for (let i = 0; i < n; i++) {
+      const a = ctx.rng.range(0, Math.PI * 2);
+      const r = 3.5 + ctx.rng.range(0, 6);
+      ctx.fx.beam(bx + Math.cos(a) * r, bz + Math.sin(a) * r, i % 2 ? BOSS_TEAL : 0xffffff);
+    }
+    ctx.fx.burst({ x: bx, y: 1, z: bz, count: 14 + Math.round(k * 16), color: [BOSS_TEAL, 0xffffff], speed: [4, 12], up: 1.4, vertical: 0.3, life: [0.4, 1.0] });
+  }
+  // rhythmic shake while it rises sells the weight, harder near the climax
+  if (ctx.rng.next() < 0.08 + k * 0.12) ctx.cam.addTrauma(0.12 + k * 0.16);
   // skippable with any attack/dodge input
   if (ctx.input.actionPressed("dash") || ctx.input.actionPressed("light")
     || ctx.input.actionPressed("heavy") || ctx.input.actionPressed("bolt")) cineT = 0;

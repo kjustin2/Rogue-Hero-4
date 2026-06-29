@@ -145,6 +145,17 @@ export class Combat {
     this.ctx.sfx.critical();
     if (combo.tier >= 3) this.ctx.sfx.bossRoar();
 
+    // Shared fanfare for EVERY combo so the payoff always pops: a ring of light
+    // pillars erupting from the impact, a white core flash-ring, and an ember column.
+    const pillars = 3 + combo.tier;
+    for (let i = 0; i < pillars; i++) {
+      const a = (i / pillars) * Math.PI * 2;
+      this.ctx.fx.beam(x + Math.cos(a) * combo.radius * 0.55, z + Math.sin(a) * combo.radius * 0.55, combo.color);
+    }
+    this.ctx.fx.beam(x, z, 0xffffff);
+    this.ctx.fx.ring(x, z, { radius: combo.radius * 1.2, color: 0xffffff, duration: 0.3, y: 0.18, startRadius: 0.3 });
+    this.ctx.fx.burst({ x, y: 0.6, z, count: 24 + combo.tier * 8, color: [combo.color, 0xffffff], speed: [3, 9], up: 3.2, vertical: 0.22, size: [0.14, 0.42], life: [0.5, 1.1] });
+
     switch (combo.effect) {
       case "slam": {
         this.ctx.fx.ring(x, z, { radius: combo.radius, color: combo.color, duration: 0.5, y: 0.4 });
@@ -176,6 +187,11 @@ export class Combat {
         for (let i = 0; i < 4; i++) {
           this.ctx.projectiles.spawn(x, 1.3, z, dir, 38, dmg * 0.5, true, combo.color, 6);
         }
+        // a piercing lance reads as a beam corridor: light pillars + a forward slash arc
+        for (let i = 1; i <= 5; i++) {
+          this.ctx.fx.beam(x + dirX * i * 4, z + dirZ * i * 4, i % 2 ? combo.color : 0xffffff);
+        }
+        this.ctx.fx.slash(x + dirX * 2, 1.4, z + dirZ * 2, Math.atan2(dirX, dirZ), { color: combo.color, radius: 4.2, tilt: -0.5, duration: 0.28, spin: 5 });
         // instant corridor damage ahead
         for (const t of this.targets()) {
           const tx = t.pos.x - x, tz = t.pos.z - z;

@@ -111,6 +111,19 @@ export class Enemy implements Hittable {
         tatter.position.set(Math.cos(a) * 0.5, 0.4, Math.sin(a) * 0.5);
         this.group.add(fin, tatter);
       }
+      // a notched rusted falchion gripped at its side — a risen footman, not just a wisp
+      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 6), plateMat);
+      const crossguard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.07, 0.1), plateMat);
+      crossguard.position.y = 0.2;
+      const swordBlade = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 0.05), shellMat);
+      swordBlade.position.y = 0.78;
+      const swordEdge = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.1, 0.06), edgeMat);
+      swordEdge.position.set(0.085, 0.78, 0);
+      const sword = new THREE.Group();
+      sword.add(grip, crossguard, swordBlade, swordEdge);
+      sword.position.set(0.62, 0.92, 0.32);
+      sword.rotation.set(0.55, 0, -0.32);
+      this.group.add(sword);
     } else if (this.kind === "spitter") {
       // hooded witchfire caster: a drooping robe, a cowl over a dark void, an orb it conjures
       const robe = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.7, 7, 1, true), shellMat);
@@ -135,6 +148,14 @@ export class Enemy implements Hittable {
         tatter.position.set(Math.cos(a) * 0.5, -0.85, Math.sin(a) * 0.5);
         this.group.add(tatter);
       }
+      // a gnarled bone staff crowned with a witchfire ring — the necromancer's focus
+      const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 1.9, 6), plateMat);
+      staff.position.set(0.46, 0.2, 0.06); staff.rotation.z = -0.12;
+      const finial = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 6, 10), edgeMat);
+      finial.position.set(0.34, 1.12, 0.06); finial.rotation.x = Math.PI / 2;
+      const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), this.coreMat);
+      ember.position.set(0.34, 1.12, 0.06);
+      this.group.add(staff, finial, ember);
     } else if (this.kind === "wraith") {
       // hooded banshee: a cowl over a baleful eye, a tapering spectral body, trailing tatters + reaching arms
       const body = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.6, 6, 1, true), shellMat);
@@ -155,6 +176,12 @@ export class Enemy implements Hittable {
         arm.position.set(sx * 0.5, 0.25, 0.2); arm.rotation.z = sx * 1.3;
         this.group.add(arm);
       }
+      // a spectral scythe — a long haft with a hooked, curved blade trailing the reaper
+      const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.8, 5), plateMat);
+      haft.position.set(0.5, 0.05, 0.12); haft.rotation.set(0.25, 0, 0.18);
+      const scytheBlade = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.045, 6, 12, Math.PI * 0.85), edgeMat);
+      scytheBlade.position.set(0.34, 0.86, 0.2); scytheBlade.rotation.set(Math.PI / 2, 0, 0.7);
+      this.group.add(haft, scytheBlade);
     } else {
       // brute: hulking golem — stacked torso plates, spiked pauldrons, grated chest core
       const lower = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.3), shellMat);
@@ -187,6 +214,20 @@ export class Enemy implements Hittable {
         fist.position.set(sx * 1.15, 0.4, 0);
         this.group.add(pauld, arm, fist);
       }
+      // jagged iron horns crowning the helm
+      for (const sx of [-1, 1]) {
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.7, 4), edgeMat);
+        horn.position.set(sx * 0.32, 3.05, 0); horn.rotation.z = sx * 0.7;
+        this.group.add(horn);
+      }
+      // a colossal notched cleaver hefted in the right fist — an executioner's blade
+      const cleaverHaft = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.5, 6), shellMat);
+      cleaverHaft.position.set(1.15, 1.1, 0.55); cleaverHaft.rotation.x = 0.55;
+      const cleaverHead = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.14), plateMat);
+      cleaverHead.position.set(1.15, 1.95, 1.05);
+      const cleaverEdge = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.1, 0.16), edgeMat);
+      cleaverEdge.position.set(1.5, 1.95, 1.05);
+      this.group.add(cleaverHaft, cleaverHead, cleaverEdge);
     }
   }
 
