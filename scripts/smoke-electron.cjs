@@ -188,8 +188,8 @@ app.whenReady().then(async () => {
       expect(lastCombo === "CRESCENDO", "CRESCENDO combo did not resolve (got '" + lastCombo + "')");
       await shot(win, "combat-combo");
 
-      // --- bolt fires a projectile
-      await tap("KeyE"); await frames(4);
+      // --- bolt fires a projectile (capture early so the comet-tracer reads near camera)
+      await tap("KeyE"); await frames(2);
       await shot(win, "bolt");
 
       // --- fairness: low-HP danger vignette + health-shard heal

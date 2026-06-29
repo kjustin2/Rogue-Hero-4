@@ -52,7 +52,9 @@ export class SwordTrail {
         uniform vec3 uColor;
         varying float vAlpha;
         void main() {
-          gl_FragColor = vec4(uColor * (1.0 + vAlpha), vAlpha * 0.55);
+          // brighter core toward the leading edge + a white-hot lift for a juicier ribbon
+          vec3 c = uColor * (1.3 + vAlpha * 1.7) + vec3(vAlpha * vAlpha * 0.6);
+          gl_FragColor = vec4(c, vAlpha * 0.8);
         }
       `,
     });

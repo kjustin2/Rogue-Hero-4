@@ -59,6 +59,8 @@ export class Enemy implements Hittable {
   private coreMat: THREE.MeshStandardMaterial;
   private core!: THREE.Mesh;
   private vt = 0;
+  private atkCharge = 0; // wind-up inflate (0→1 across the telegraph)
+  private atkLunge = 0;  // strike snap forward (set to 1, decays)
   dying = false;
   private deathT = 0;
 
@@ -203,7 +205,7 @@ export class Enemy implements Hittable {
   tick(dt: number): void {
     this.vt += dt;
     this.flash = Math.max(0, this.flash - dt * 4);
-    this.coreMat.emissiveIntensity = 1.6 + this.flash * 4;
+    this.coreMat.emissiveIntensity = 1.6 + this.flash * 4 + this.atkCharge * 3.5;
     if (this.core) { this.core.rotation.y += dt * 2.2; this.core.rotation.x += dt * 1.4; }
 
     if (this.dying) {
@@ -238,6 +240,12 @@ export class Enemy implements Hittable {
       case "wraith": this.tickLunge(dt, dist, nx, nz); break;
     }
     this.ctx.level.clampPosition(this.pos, this.radius);
+
+    // attack body language: inflate + glow through the wind-up, snap forward on the strike
+    const chargeTarget = this.state === "windup" ? 1 - Math.max(0, this.timer) / Math.max(0.001, this.cfg.windup) : 0;
+    this.atkCharge = damp(this.atkCharge, chargeTarget, 10, dt);
+    this.atkLunge = damp(this.atkLunge, 0, 7, dt);
+
     this.sync(nx, nz);
   }
 
@@ -257,9 +265,18 @@ export class Enemy implements Hittable {
     } else if (this.state === "windup") {
       this.timer -= dt;
       if (this.timer <= 0) {
-        // strike lands
+        // strike lands — snap forward + a slash arc + sparks so the swing reads even on a whiff
+        this.atkLunge = 1;
+        this.flash = 1;
+        const yaw = Math.atan2(nx, nz);
+        const heavy = this.kind === "brute";
+        const sy = this.cfg.bodyY + (heavy ? 1.8 : 1.2);
+        this.ctx.fx.slash(this.pos.x + nx * 0.9, sy, this.pos.z + nz * 0.9, yaw, {
+          color: cfg.color, radius: heavy ? 3.4 : 2.3, tilt: heavy ? -0.05 : -0.6, duration: 0.26,
+        });
+        this.ctx.fx.burst({ x: this.pos.x + nx * 1.4, y: sy, z: this.pos.z + nz * 1.4, count: heavy ? 16 : 11, color: cfg.color, speed: [3, heavy ? 11 : 8], life: [0.2, 0.45] });
         if (dist <= cfg.attackRange + 0.8) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
-        if (this.kind === "brute") this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: cfg.attackRange, color: cfg.color, duration: 0.3 });
+        if (heavy) this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: cfg.attackRange, color: cfg.color, duration: 0.3 });
         this.state = "recover";
         this.timer = this.kind === "brute" ? 0.9 : 0.4;
         this.tele = null;
@@ -278,10 +295,10 @@ export class Enemy implements Hittable {
     this.fireTimer -= dt;
     if (this.fireTimer <= 0 && dist < cfg.attackRange + 2) {
       this.fireTimer = 2.2;
+      this.flash = 0.9; // iris flares as it spits
       const p = this.ctx.player;
       const dir = new THREE.Vector3(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
       this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, dir, 17, cfg.contactDmg, false, cfg.color, 2);
-      this.ctx.fx.burst({ x: this.pos.x, y: this.cfg.bodyY + 0.2, z: this.pos.z, count: 6, color: cfg.color, speed: [2, 5], life: [0.2, 0.4] });
     }
   }
 
@@ -310,11 +327,15 @@ export class Enemy implements Hittable {
       }
     } else if (this.state === "lunge") {
       this.timer -= dt;
+      this.atkLunge = 1; // stay stretched through the dash
       this.pos.x += this.lungeDir.x * 26 * dt;
       this.pos.z += this.lungeDir.z * 26 * dt;
+      // streak trail behind the blur
+      this.ctx.fx.burst({ x: this.pos.x, y: 0.8, z: this.pos.z, count: 2, color: cfg.color, speed: [0.5, 2], size: [0.16, 0.36], life: [0.12, 0.28], gravity: 0, drag: 4 });
       if (!this.didHit && dist < this.radius + this.ctx.player.radius + 0.8) {
         this.didHit = true;
         this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
+        this.ctx.fx.slash(this.pos.x, 1.0, this.pos.z, Math.atan2(this.lungeDir.x, this.lungeDir.z), { color: cfg.color, radius: 2.4, tilt: -0.4, duration: 0.22 });
       }
       if (this.timer <= 0) { this.state = "recover"; this.timer = 0.6; }
     } else {
@@ -325,7 +346,9 @@ export class Enemy implements Hittable {
 
   private sync(nx = 0, nz = 0): void {
     const bob = Math.sin(this.vt * 2.5 + this.id) * 0.1;
-    this.group.position.set(this.pos.x, this.cfg.bodyY + bob, this.pos.z);
+    const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
+    this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + bob, this.pos.z + nz * fwd);
+    this.group.scale.setScalar(1 + this.atkCharge * 0.14 - this.atkLunge * 0.12);
     if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
   }
 

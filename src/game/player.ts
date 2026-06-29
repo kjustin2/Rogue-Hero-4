@@ -258,6 +258,12 @@ export class Player {
       this.ctx.sfx.meleeSwing(m.id === "cleave");
       this.ctx.combat.meleeSweep(this.pos.x, this.pos.z, fx, fz, m.arc, m.range, m.damage, m.knockback, m.id === "cleave");
       this.ctx.cam.kick(-fx, -fz, m.id === "cleave" ? 0.5 : 0.2);
+      // a slash crescent sweeps ahead so the swing reads (cleave = overhead, strike = diagonal)
+      const reach = m.range * 0.55;
+      const cleave = m.id === "cleave";
+      this.ctx.fx.slash(this.pos.x + fx * reach, 1.3, this.pos.z + fz * reach, Math.atan2(fx, fz), {
+        color: m.color, radius: cleave ? 3.0 : 2.2, tilt: cleave ? -0.08 : -0.7, duration: 0.2, spin: cleave ? 1.5 : 4,
+      });
     } else {
       // bolt fires along the full 3D look direction from ~eye height, so it travels
       // straight down the crosshair ray (aim up → bolt rises toward the boss core)
@@ -265,6 +271,9 @@ export class Player {
       this.ctx.cam.forward(this.aim);
       this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.aim, 34, m.damage, true, m.color, m.knockback);
       this.ctx.cam.kick(-fx, -fz, 0.15);
+      // muzzle flash at the blade tip
+      this.tipMarker.getWorldPosition(this.tip);
+      this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: 10, color: [m.color, 0xffffff], speed: [2, 7], size: [0.1, 0.3], life: [0.12, 0.3] });
     }
 
     // record glyph + test the chain

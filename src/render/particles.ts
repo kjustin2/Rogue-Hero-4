@@ -49,6 +49,7 @@ export class Particles {
 
   private rings: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; dur: number; from: number; to: number }[] = [];
   private beams: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number }[] = [];
+  private slashes: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; dur: number; radius: number; spin: number }[] = [];
 
   constructor(private scene: THREE.Scene) {
     this.positions = new Float32Array(MAX_PARTICLES * 3);
@@ -131,6 +132,22 @@ export class Particles {
       mesh.visible = false;
       this.scene.add(mesh);
       this.beams.push({ mesh, mat, t: -1 });
+    }
+
+    // Slash crescents — oriented arcs of light for melee swings (player + enemies).
+    // A thin partial torus, centered over the top so it reads as a curved blade-sweep.
+    const slashGeo = new THREE.TorusGeometry(1, 0.13, 8, 32, Math.PI * 1.25);
+    slashGeo.rotateZ(Math.PI / 2 - (Math.PI * 1.25) / 2);
+    for (let i = 0; i < 16; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(slashGeo, mat);
+      mesh.visible = false;
+      mesh.frustumCulled = false;
+      this.scene.add(mesh);
+      this.slashes.push({ mesh, mat, t: 0, dur: 0, radius: 1, spin: 0 });
     }
   }
 
@@ -215,6 +232,25 @@ export class Particles {
     slot.mesh.scale.setScalar(slot.from);
   }
 
+  /**
+   * Oriented crescent of light for a melee swing. `yaw` aims the arc (local +Z),
+   * `tilt` rolls it (vertical overhead vs diagonal slash). Snaps open then fades.
+   */
+  slash(x: number, y: number, z: number, yaw: number, opts: { color: number; radius?: number; tilt?: number; duration?: number; spin?: number }): void {
+    const s = this.slashes.find((s) => !s.mesh.visible);
+    if (!s) return;
+    s.mesh.visible = true;
+    s.mesh.position.set(x, y, z);
+    s.mesh.rotation.set(0, yaw, opts.tilt ?? -0.5);
+    s.mat.color.set(opts.color);
+    s.mat.opacity = 0.95;
+    s.t = 0;
+    s.dur = opts.duration ?? 0.24;
+    s.radius = opts.radius ?? 2;
+    s.spin = opts.spin ?? 3;
+    s.mesh.scale.setScalar(s.radius * 0.45);
+  }
+
   update(dt: number): void {
     // Ambient embers
     if (this.ambientRate > 0) {
@@ -292,6 +328,18 @@ export class Particles {
         b.t = -1;
         b.mesh.visible = false;
       }
+    }
+
+    for (const s of this.slashes) {
+      if (!s.mesh.visible) continue;
+      s.t += dt;
+      const k = Math.min(1, s.t / s.dur);
+      const eased = 1 - Math.pow(1 - k, 3);
+      // sweep open fast (wider than tall) then fade out quadratically
+      s.mesh.scale.set(s.radius * (0.45 + 0.95 * eased), s.radius * (0.45 + 0.7 * eased), s.radius);
+      s.mesh.rotation.z += s.spin * dt;
+      s.mat.opacity = 0.95 * (1 - k) * (1 - k);
+      if (k >= 1) s.mesh.visible = false;
     }
   }
 }
