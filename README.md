@@ -1,53 +1,45 @@
-# Rogue Hero 4
+# Rogue Hero 4 — Rift Causeway
 
-Neon-arcane 3rd-person roguelite built on [Needle Engine](https://needle.tools)
-(`@needle-tools/engine` on Three.js), written code-only in TypeScript.
+A first-person neon combo brawler. Walk down a long, wide arcane causeway, fight rift-born
+enemies at sealed gates, and bring down the **Rift Warden** at the far end. You wield a
+limited moveset of three glyphs and chain them into devastating combos.
 
-## Quickstart
+Built on **plain Three.js + Vite + strict TypeScript**, shipped as an Electron desktop app.
+No game engine, no UI framework, no test framework — the truth is screenshots + state asserts.
 
-```bash
+## Play
+| Input | Action |
+|-------|--------|
+| **WASD** | Move (camera-relative) |
+| **Mouse** | Look |
+| **LMB / J** | Strike — fast light slash |
+| **RMB / K** | Cleave — heavy arc, knockback |
+| **E** | Bolt — ranged arcane shot |
+| **Shift / Space** | Dash — quick lunge with i-frames |
+| **Esc** | Pause |
+
+Click to lock the mouse. Clear each gate's wave to open the way forward.
+
+## Combos
+Chain glyphs within ~1.4s to resolve a named combo (a big AoE payoff with its own VFX):
+
+| Combo | Recipe | Effect |
+|-------|--------|--------|
+| **CRESCENDO** | Strike · Strike · Cleave | overhead slam, AoE |
+| **ARC LANCE** | Bolt · Bolt · Strike | piercing forward lance |
+| **QUAKE** | Cleave · Cleave | shockwave + stun |
+| **VOID NOVA** | Strike · Cleave · Bolt | radial nova (highest tier) |
+
+## Develop
+```
 npm install
-npm run dev        # Vite dev server (http://127.0.0.1:3000)
+npm run dev        # vite dev server
+npm run typecheck  # tsc --noEmit (static gate)
+npm run build      # typecheck + vite build
+npm run smoke      # build + Electron playthrough → shots/electron-*.png (READ them)
+npm start          # standalone Electron window
+npm run package    # electron-builder portable .exe
 ```
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | Vite dev server with hot reload |
-| `npm run typecheck` | `tsc --noEmit` — the static gate |
-| `npm run build` | Typecheck + `vite build` → `dist/` |
-| `npm run app` | Build, then launch the standalone Electron desktop window |
-| `npm run serve` | Preview a production build on `127.0.0.1:8000` |
-
-## Test harness
-
-A real-browser (puppeteer-core, headless Chrome/Edge) gate — never a mock.
-Output lands in `shots/` (gitignored).
-
-| Command | Gate |
-|---|---|
-| `npm run smoke` | Boots the game, asserts a non-black frame, player moves, draw calls > 0, zero console errors |
-| `npm run e2e` | Drives the sim via `window.__rh4` and asserts the core loop (run starts, waves spawn, casting, aim/look) |
-| `npm run doctor` | Per-scenario luma / draw-call / triangle / enemy report |
-| `npm run beauty` | Full-FX screenshot for human review |
-| `npm run flow` | Title → select → play → look/cast walkthrough capture |
-
-## Structure
-
-```
-src/
-  main.ts        entry point: scene build, follow camera, the window.__rh4 test seam
-  sim/           pure game logic (world, weave, content, rng, bus, types) — Three.js-free
-  render/        read-only renderer + HUD (view.ts, hud.ts)
-  scripts/       Needle Behaviour components (Player movement, etc.)
-  styles/        style.css
-electron/        standalone desktop shell (main.cjs)
-scripts/         the puppeteer test harness
-assets/          glb / textures
-```
-
-Render reads, sim writes. See `CLAUDE.md` for the architecture and engine
-conventions in detail.
-
-## Stack
-
-Needle Engine 5.1.x · Three.js (`@needle-tools/three`) · Vite · TypeScript · Electron (desktop)
+The smoke boots the built game in real Chromium, drives title → path → combat → combo → boss →
+victory → death, and fails on a black frame, a console error, a broken combo, or a missing boss.

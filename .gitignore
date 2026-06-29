@@ -1,23 +1,8 @@
-**/node_modules
-
-# build / cache output
-dist
-.vite
-build.log
-*.log
-
-# Needle-generated runtime deps
-include/draco/
-include/ktx2/
-include/three/
-include/console/
-include/three-mesh-ui-assets/
-include/fonts/
-
-# generated harness output (screenshots + reports)
+node_modules/
+dist/
+release/
 shots/
-
-# editor / OS
-custom-elements.json
+artifacts/
+.tmp/
+*.log
 .DS_Store
-Thumbs.db

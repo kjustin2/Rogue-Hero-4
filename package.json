@@ -1,35 +1,51 @@
 {
   "name": "rogue-hero-4",
-  "version": "1.0.0",
   "private": true,
-  "description": "Rogue Hero 4 — neon-arcane 3rd-person roguelite (Needle Engine + Three.js)",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron-main.cjs",
   "scripts": {
-    "dev": "vite --host",
-    "start": "npm run dev",
-    "typecheck": "tsc --noEmit",
+    "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "build:production": "tsc --noEmit && vite build -- --production",
-    "build:dev": "vite build",
-    "smoke": "node scripts/smoke.mjs",
-    "beauty": "node scripts/beauty.mjs",
-    "e2e": "node scripts/e2e.mjs",
-    "doctor": "node scripts/doctor.mjs",
-    "flow": "node scripts/investigate.mjs",
-    "serve": "vite preview --port 8000 --host 127.0.0.1 --strictPort",
-    "app": "npm run build && electron electron/main.cjs",
-    "deploy": "npm run build && npx --yes needle-cloud deploy dist --token"
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "electron": "electron .",
+    "start": "npm run build && electron .",
+    "standalone": "npm run build && electron .",
+    "smoke": "npm run build && electron scripts/smoke-electron.cjs",
+    "beauty": "npm run build && electron scripts/smoke-electron.cjs",
+    "verify": "tsc --noEmit && vite build",
+    "package": "npm run build && electron-builder --win portable",
+    "dist": "npm run build && electron-builder --win nsis"
+  },
+  "author": "Justin Kramer",
+  "build": {
+    "appId": "com.roguehero.causeway",
+    "productName": "Rogue Hero 4",
+    "files": ["electron-main.cjs", "electron-ipc.cjs", "preload.cjs", "dist/**/*", "package.json"],
+    "directories": { "output": "release" },
+    "win": { "target": ["nsis"] },
+    "portable": { "artifactName": "Rogue-Hero-4-${version}-portable.exe" },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Rogue Hero 4"
+    }
   },
   "dependencies": {
-    "@needle-tools/engine": "5.1.2",
-    "three": "npm:@needle-tools/three@0.169.19"
+    "@fontsource/cinzel": "^5.2.8",
+    "@fontsource/rajdhani": "^5.2.7",
+    "postprocessing": "^6.36.0",
+    "three": "^0.170.0"
   },
   "devDependencies": {
-    "@needle-tools/helper": "^1.11.4",
-    "@types/three": "0.169.0",
-    "@vitejs/plugin-basic-ssl": "2",
-    "electron": "^42.5.0",
-    "puppeteer-core": "^23.11.1",
-    "typescript": "^5.0.4",
-    "vite": "8.0.3"
+    "@types/three": "^0.170.0",
+    "electron": "^42.4.0",
+    "electron-builder": "^25.1.8",
+    "playwright-core": "^1.60.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0"
   }
 }

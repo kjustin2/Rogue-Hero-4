@@ -1,54 +1,58 @@
-# Rogue Hero 4 — neon-arcane 3rd-person roguelite (Needle Engine)
+# Rogue Hero 4 — first-person neon combo brawler (plain Three.js)
 
-This is a **Needle Engine** project (`@needle-tools/engine` on Three.js). **Always use the
-needle-engine skill** (the MCP server provides it; a copy is bundled at
-`.agents/skills/needle-engine/`). Don't answer Needle questions from memory — load the skill.
+A first-person action game: you walk down a long, wide neon **causeway**, fight rift-born
+enemies at sealed **gates**, and bring down the **Rift Warden** boss at the far end. You have a
+**limited moveset** of three glyphs (Strike / Cleave / Bolt) plus a Dash; chaining glyphs within
+a time window resolves named **combos** (CRESCENDO, ARC LANCE, QUAKE, VOID NOVA) with big AoE
+payoffs and signature VFX.
 
-Scaffolded with `npm create needle` (Vite template, engine 5.1.2, three = `@needle-tools/three`).
-The game is a 3D third-person rebuild of the Rogue-Hero **Spell-Weaving** roguelite (the design
-identity: glyphs, weave resolves). The old vanilla 2D build it grew out of has been removed; this
-Needle project is now the repo root.
+Stack: **plain Three.js + Vite + strict TypeScript, shipped as Electron** — no game engine, no UI
+framework, no test framework. It was rebuilt from the Rogue-Hero-3 action-roguelike base: the proven
+infra (post stack, feel primitives, audio, Electron shell, harness) was kept; the card/tempo/relic/
+roguelite gameplay was replaced with this first-person combo loop.
 
-## Architecture
-- **`src/main.ts`** — the one entry point: `onStart` builds the scene (lights, arena, player,
-  post), drives the follow camera in `onUpdate`, and exposes the **`window.__rh4`** test seam.
-  This is where flow/state will live as it grows.
-- **`src/scripts/*.ts`** — components `extends Behaviour` (Unity-like lifecycle: `start`,
-  `update`, `onCollisionEnter`, …). `Player.ts` = camera-relative WASD movement.
-- Render reads, sim writes (keep gameplay logic out of render where practical).
-
-## The look (proven)
-`PostProcessingManager` on the scene: **Bloom** (threshold `1.0` so only emissive/neon blooms,
-surfaces stay crisp) → **ToneMapping `Neutral`** (neon renders true; AgX/ACES cream-shift picked
-colors) → **Antialiasing**. Dark `background-color`, a PMREM env map for PBR reflections,
-emissive materials + co-located lights = the neon glow. `index.html` sets `camera-controls="0"`
-(we drive the camera) and `tone-mapping="none"` (post does the tone-mapping).
+## Architecture (sim → render → HUD, one composition root)
+- **`src/main.ts`** — the one composition root: builds the Ctx, owns the single loop (`frame(dt)` +
+  `setAnimationLoop`), the state machine (`title → playing → paused → dead → victory`), the run flow
+  (gate waves → boss → victory/death), and the **`window.__rh4`** test seam (`__rh4debug.scenario`,
+  `frames(n,dt)`, `checkCombos`).
+- **`src/game/`** — Three-free-ish sim: `ctx.ts` (type-only hub), `moves.ts` (glyph catalog, data),
+  `combos.ts` (pure suffix matcher + `comboSelfCheck`), `player.ts` (FP controller + moveset +
+  combo buffer + weapon viewmodel), `combat.ts` (the one damage funnel: `dealDamage` / `meleeSweep`
+  / `resolveCombo` / `damagePlayer`), `enemies.ts` (3 archetypes + wave spawner), `boss.ts`,
+  `level.ts` (level-as-data: causeway geometry + bounds clamp + gate barriers), `projectiles.ts`.
+- **`src/render/`** — `stage.ts` (renderer + post chain), `fpsCamera.ts` (yaw/pitch mouse-look +
+  trauma/kick/FOV feel, parks the stage camera at the eyes), feel primitives `particles.ts`,
+  `trail.ts`, `telegraphs.ts`, `floaters.ts` (reused from RH3, untouched).
+- **`src/ui/`** — `hud.ts` (crosshair, health, glyph cooldowns, live combo chain, combo codex, boss
+  bar, distance) and `menus.ts` (title/pause/dead/victory).
+- **`src/core/`**, **`src/audio/`** — `events.ts` (typed bus, rewritten EventMap), `input.ts`
+  (repurposed actions + pointer-lock mouse-look), `math.ts`, `rng.ts`, `sfx.ts` (procedural),
+  `music.ts` (streamed).
 
 ## Conventions
-- **Camera-relative movement** (`cam.worldForward`/`worldRight`, ground-projected) — never
-  world-`-Z`. Model faces its heading.
-- **`?lowfx`** skips the post stack (it can stall headless under SwiftShader). `main.ts` reads it.
-- Emissive = light: pair an `emissive` material with a co-located `PointLight` for the cast.
-- Avoid per-frame allocation in `update`/`onUpdate` (reuse scratch vectors; use
-  `getTempVector()` for throwaways).
+- **Camera-relative movement** via `cam.worldForward`/`worldRight` (ground-projected) — never world -Z.
+- **One damage funnel** (`Combat`): all HP changes route through it. Combo bonus + AoE live in
+  `resolveCombo`, not callers.
+- **Typed event bus** (`core/events.ts`): emit-only from sim; sfx/HUD subscribe. A typo'd event is a
+  compile error.
+- **Emissive = light**: pair emissive materials with co-located PointLights (pillars, gates, boss).
+- The weapon viewmodel is parented to `stage.camera`, so `main` adds the camera to the scene.
+- Avoid per-frame allocation in update loops (reuse scratch vectors).
 
-## Harness (real browser, never a mock)
-- `npm run typecheck` — `tsc --noEmit`; the static gate, run after any TS change.
-- `npm run smoke` — boots Vite + headless Chrome/Edge (puppeteer-core, `?lowfx`), asserts a
-  **non-black** frame (via screenshot→canvas roundtrip, so no `preserveDrawingBuffer` needed),
-  player moves on input, draw calls > 0, **zero console errors** → `shots/smoke.png`.
-- `npm run beauty` — full-FX screenshot for human review → `shots/beauty.png`.
+## Harness (real renderer, never a mock)
+- `npm run typecheck` — `tsc --noEmit`; the static gate.
 - `npm run build` — typecheck + `vite build`.
-- Headless WebGL needs `--enable-unsafe-swiftshader` (Chrome 130+ renders black without it) —
-  baked into `scripts/harness.mjs`. Drive the dt-capped clock by polling on intervals, never rAF.
-- The **Needle Inspector Chrome extension** (+ MCP at `localhost:8424`) is the live look/feel/
-  animation loop: inspect the running scene tree, edit properties in real time, AI-debug via MCP.
+- `npm run smoke` — builds, boots the BUILT game in a (showInactive) Electron/Chromium window, drives
+  title → path → combat → **CRESCENDO combo** → boss → victory → death, asserts non-black frames +
+  zero console errors + `checkCombos()` clean + draw calls > 0, writes `shots/electron-*.png`. **Read
+  the screenshots** — a clean console over a black canvas is still a failure.
+- `npm start` — standalone Electron window (serves `dist/` over fixed loopback port 41730 so
+  origin-keyed localStorage survives).
+- A never-shown Electron window suspends rAF and won't recomposite the DOM overlay — the smoke drives
+  the sim via `__rh4debug.frames(n,dt)` and uses `showInactive()` for accurate captures.
 
-## Engine gotchas confirmed here
-- `ObjectUtils.createPrimitive` types: `Quad | Cube | Sphere | Cylinder | RoundedCube` (no
-  Capsule — use `THREE.CapsuleGeometry`). Input: `input.getKeyPressed("KeyW")` / `getKeyDown`.
-- tsconfig ships `useDefineForClassFields: true` (the official template default). The engine skill
-  warns this can break `@serializable` deserialization — if a serialized field reverts to its
-  default, flip it to `false`. We currently use no `@serializable` fields.
-- `@registerType` on hand-written components; import only from the package root
-  (`@needle-tools/engine`), never subpaths.
+## Gotchas confirmed here
+- `requestPointerLock()` returns a promise that rejects without a user gesture / in a hidden window —
+  `Input.lockPointer` swallows it (else it spams console errors and fails the smoke).
+- `tsc` flags unused **private** class methods (TS6133), not just locals — delete dead ones.
