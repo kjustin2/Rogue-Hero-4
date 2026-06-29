@@ -2,9 +2,9 @@ import * as THREE from "three";
 import type { Ctx } from "./ctx";
 import type { Hittable, HitOpts } from "./combat";
 import type { TelegraphHandle } from "../render/telegraphs";
-import { BOSS_ANCHOR } from "./level";
+import { BOSS_ANCHOR, ARENA_CENTER, ARENA_RADIUS } from "./level";
 
-type Attack = "slam" | "volley" | "sweep" | null;
+type Attack = "slam" | "volley" | "sweep" | "collapse" | null;
 
 /**
  * The Rift Warden — the boss waiting at the end of the causeway. Mostly holds the
@@ -23,6 +23,9 @@ export class Boss implements Hittable {
 
   private phase = 1;
   private summoned = false;
+  private rise = 0;
+  private spots: THREE.Vector3[] = [];
+  private teles: TelegraphHandle[] = [];
   private cd = 2.2;
   private attack: Attack = null;
   private windup = 0;
@@ -42,6 +45,7 @@ export class Boss implements Hittable {
     this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.hitColor, emissiveIntensity: 2.0, roughness: 0.35, metalness: 0.2 });
     this.buildMesh();
     this.group.position.copy(this.pos);
+    this.group.scale.setScalar(0.001); // rises in on spawn (see tick)
     this.ctx.stage.scene.add(this.group);
   }
 
@@ -73,6 +77,7 @@ export class Boss implements Hittable {
     this.flash = 1;
     this.ctx.events.emit("BOSS_HP", { hp: Math.max(0, this.hp), maxHp: this.maxHp });
     if (this.phase === 1 && this.hp <= this.maxHp * 0.5) this.enterPhase2();
+    else if (this.phase === 2 && this.hp <= this.maxHp * 0.25) this.enterPhase3();
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;
@@ -97,10 +102,25 @@ export class Boss implements Hittable {
     }
   }
 
+  private enterPhase3(): void {
+    this.phase = 3;
+    this.ctx.stage.punch(0.8);
+    this.ctx.cam.addTrauma(0.8);
+    this.ctx.sfx.bossRoar();
+    this.ctx.fx.burst({ x: this.pos.x, y: 5, z: this.pos.z, count: 90, color: this.hitColor, speed: [8, 20], life: [0.5, 1.1] });
+  }
+
   tick(dt: number): void {
     this.t += dt;
     this.flash = Math.max(0, this.flash - dt * 3);
-    this.coreMat.emissiveIntensity = 2.0 + this.flash * 4 + Math.sin(this.t * 3) * 0.3;
+    const base = this.phase === 3 ? 3.2 : 2.0;
+    this.coreMat.emissiveIntensity = base + this.flash * 4 + Math.sin(this.t * (this.phase === 3 ? 6 : 3)) * 0.4;
+
+    // rising entrance: scale up from nothing; no attacks until fully risen
+    if (this.rise < 1 && !this.dying) {
+      this.rise = Math.min(1, this.rise + dt * 0.8);
+      this.group.scale.setScalar((1 - (1 - this.rise) ** 3) * 1.3);
+    }
     this.group.position.y = Math.sin(this.t * 1.2) * 0.2;
 
     // face the player
@@ -111,13 +131,14 @@ export class Boss implements Hittable {
 
     if (this.dying) {
       this.deathT += dt;
-      this.group.scale.setScalar(Math.max(0.001, 1 - this.deathT * 0.8));
+      this.group.scale.setScalar(1.3 * Math.max(0.001, 1 - this.deathT * 0.8));
       if (this.deathT > 0.4 && Math.random() < 0.4) {
         this.ctx.fx.burst({ x: this.pos.x + (Math.random() - 0.5) * 4, y: 1 + Math.random() * 6, z: this.pos.z + (Math.random() - 0.5) * 4, count: 18, color: this.hitColor, speed: [4, 12], life: [0.3, 0.7] });
       }
       return;
     }
 
+    if (this.rise < 1) return; // still rising in
     if (this.attack) this.progressAttack(dt);
     else {
       this.cd -= dt;
@@ -126,10 +147,14 @@ export class Boss implements Hittable {
   }
 
   private chooseAttack(): void {
-    const pool: Attack[] = this.phase === 1 ? ["slam", "volley"] : ["slam", "volley", "sweep", "sweep"];
+    const pool: Attack[] =
+      this.phase === 1 ? ["slam", "volley"]
+        : this.phase === 2 ? ["slam", "volley", "sweep", "sweep"]
+          : ["collapse", "sweep", "volley", "collapse"];
     this.attack = this.ctx.rng.pick(pool);
-    this.windupMax = this.attack === "sweep" ? 1.2 : this.attack === "slam" ? 1.0 : 0.8;
+    this.windupMax = this.attack === "collapse" ? 1.4 : this.attack === "sweep" ? 1.2 : this.attack === "slam" ? 1.0 : 0.8;
     if (this.phase === 2) this.windupMax *= 0.8;
+    if (this.phase === 3) this.windupMax *= 0.65;
     this.windup = this.windupMax;
 
     const p = this.ctx.player;
@@ -138,6 +163,20 @@ export class Boss implements Hittable {
     const c = this.hitColor;
     if (this.attack === "slam") this.tele = this.ctx.tele.circle(this.aim.x, this.aim.z, 5, this.windupMax, c);
     else if (this.attack === "sweep") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 40, 5, this.windupMax, c);
+    else if (this.attack === "collapse") {
+      // rift collapse: several slam zones bloom across the arena at once — keep moving
+      for (const t of this.teles) t.cancel();
+      this.teles = [];
+      this.spots = [];
+      for (let i = 0; i < 5; i++) {
+        const ang = this.ctx.rng.range(0, Math.PI * 2);
+        const r = this.ctx.rng.range(0, ARENA_RADIUS - 6);
+        const sx = i === 0 ? p.pos.x : ARENA_CENTER.x + Math.cos(ang) * r;
+        const sz = i === 0 ? p.pos.z : ARENA_CENTER.y + Math.sin(ang) * r;
+        this.spots.push(new THREE.Vector3(sx, 0, sz));
+        this.teles.push(this.ctx.tele.circle(sx, sz, 4.5, this.windupMax, c));
+      }
+    }
     // volley has no ground telegraph; the wind-up glow on the core reads it
   }
 
@@ -147,7 +186,7 @@ export class Boss implements Hittable {
     const a = this.attack;
     this.attack = null;
     this.tele = null;
-    this.cd = this.phase === 2 ? 1.4 : 2.2;
+    this.cd = this.phase === 3 ? 1.0 : this.phase === 2 ? 1.4 : 2.2;
     const p = this.ctx.player;
 
     if (a === "slam") {
@@ -171,11 +210,25 @@ export class Boss implements Hittable {
       const perp = Math.abs(dx * Math.sin(this.aimAngle) - dz * Math.cos(this.aimAngle));
       this.ctx.fx.burst({ x: this.pos.x, y: 1, z: this.pos.z, count: 40, color: this.hitColor, speed: [8, 18], vertical: 0.3, life: [0.3, 0.6] });
       if (along > 0 && perp <= 3.0) this.ctx.combat.damagePlayer(32, this.pos.x, this.pos.z);
+    } else if (a === "collapse") {
+      for (const t of this.teles) t.cancel();
+      this.teles = [];
+      let hit = false;
+      for (const s of this.spots) {
+        this.ctx.fx.ring(s.x, s.z, { radius: 4.5, color: this.hitColor, duration: 0.4 });
+        this.ctx.fx.burst({ x: s.x, y: 0.5, z: s.z, count: 22, color: this.hitColor, speed: [5, 13], life: [0.3, 0.7], up: 1 });
+        if (Math.hypot(p.pos.x - s.x, p.pos.z - s.z) <= 4.5) hit = true;
+      }
+      this.ctx.cam.addTrauma(0.5);
+      this.ctx.stage.punch(0.4);
+      if (hit) this.ctx.combat.damagePlayer(30, this.pos.x, this.pos.z);
+      this.spots = [];
     }
   }
 
   dispose(): void {
     this.tele?.cancel();
+    for (const t of this.teles) t.cancel();
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();

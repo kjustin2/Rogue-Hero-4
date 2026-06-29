@@ -154,7 +154,16 @@ export class Combat {
     const p = this.ctx.player;
     if (!p.alive) return "dead";
     if (p.iframes > 0) {
+      // Perfect dodge: i-frames only come from a dash, so dashing through a hit
+      // rewards you — impact freeze, glyph cooldowns refunded for an instant counter.
       this.ctx.events.emit("DODGE", {});
+      this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.1);
+      this.ctx.cam.pulseFov(0.22);
+      this.ctx.floaters.spawn(p.pos.x, 1.9, p.pos.z, "PERFECT", "label", "#8affd0");
+      this.ctx.sfx.critical();
+      p.cooldowns.strike = 0;
+      p.cooldowns.cleave = 0;
+      p.cooldowns.bolt = 0;
       return "dodged";
     }
     dmg = Math.max(1, Math.round(dmg));

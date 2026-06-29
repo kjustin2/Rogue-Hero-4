@@ -5,7 +5,7 @@ import type { TelegraphHandle } from "../render/telegraphs";
 import { GATES_Z, HALF_WIDTH } from "./level";
 import { damp } from "../core/math";
 
-export type EnemyKind = "husk" | "spitter" | "brute";
+export type EnemyKind = "husk" | "spitter" | "brute" | "wraith";
 
 interface KindCfg {
   hp: number;
@@ -22,13 +22,15 @@ const KIND: Record<EnemyKind, KindCfg> = {
   husk: { hp: 30, radius: 0.6, speed: 5.0, contactDmg: 10, attackRange: 2.4, windup: 0.45, color: 0x46e0ff, bodyY: 0 },
   spitter: { hp: 22, radius: 0.6, speed: 3.2, contactDmg: 9, attackRange: 13, windup: 0.7, color: 0xc28bff, bodyY: 1.0 },
   brute: { hp: 90, radius: 1.05, speed: 2.6, contactDmg: 26, attackRange: 4.4, windup: 1.0, color: 0xff7a3c, bodyY: 0 },
+  wraith: { hp: 26, radius: 0.55, speed: 7.2, contactDmg: 15, attackRange: 9, windup: 0.5, color: 0xff5ea0, bodyY: 0.7 },
 };
 
-// Waves, one per gate (see level.ts GATES_Z). Cleared → the gate opens.
+// Waves, one per gate (see level.ts GATES_Z). Cleared → the gate opens. Escalating:
+// fodder → fodder + ranged + a lunger → an elite brute with support.
 const WAVES: { kind: EnemyKind; count: number }[][] = [
-  [{ kind: "husk", count: 3 }],
-  [{ kind: "husk", count: 3 }, { kind: "spitter", count: 2 }],
-  [{ kind: "brute", count: 1 }, { kind: "husk", count: 2 }, { kind: "spitter", count: 2 }],
+  [{ kind: "husk", count: 3 }, { kind: "wraith", count: 1 }],
+  [{ kind: "husk", count: 3 }, { kind: "spitter", count: 2 }, { kind: "wraith", count: 2 }],
+  [{ kind: "brute", count: 1 }, { kind: "wraith", count: 2 }, { kind: "spitter", count: 2 }, { kind: "husk", count: 2 }],
 ];
 
 let NEXT_ID = 1;
@@ -45,9 +47,11 @@ export class Enemy implements Hittable {
   hitColor: number;
   frozen = 0;
 
-  private state: "approach" | "windup" | "recover" = "approach";
+  private state: "approach" | "windup" | "recover" | "lunge" = "approach";
   private timer = 0;
   private fireTimer = 1.5;
+  private lungeDir = new THREE.Vector3();
+  private didHit = false;
   private flash = 0;
   private kb = new THREE.Vector3();
   private tele: TelegraphHandle | null = null;
@@ -83,6 +87,13 @@ export class Enemy implements Hittable {
       body.castShadow = true;
       const core = new THREE.Mesh(new THREE.SphereGeometry(0.3, 14, 10), this.coreMat);
       this.group.add(body, core);
+    } else if (this.kind === "wraith") {
+      const body = new THREE.Mesh(new THREE.ConeGeometry(0.45, 1.7, 4), shellMat);
+      body.rotation.x = Math.PI / 2; // arrowhead points forward (group yaw faces the player)
+      body.castShadow = true;
+      const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), this.coreMat);
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.0, 0.5), this.coreMat);
+      this.group.add(body, core, fin);
     } else {
       const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.9, 1.2), shellMat);
       body.position.y = 1.0; body.castShadow = true;
@@ -147,6 +158,7 @@ export class Enemy implements Hittable {
       case "husk": this.tickMelee(dt, dist, nx, nz); break;
       case "brute": this.tickMelee(dt, dist, nx, nz); break;
       case "spitter": this.tickRanged(dt, dist, nx, nz); break;
+      case "wraith": this.tickLunge(dt, dist, nx, nz); break;
     }
     this.ctx.level.clampPosition(this.pos, this.radius);
     this.sync(nx, nz);
@@ -193,6 +205,44 @@ export class Enemy implements Hittable {
       const dir = new THREE.Vector3(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
       this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, dir, 17, cfg.contactDmg, false, cfg.color, 2);
       this.ctx.fx.burst({ x: this.pos.x, y: this.cfg.bodyY + 0.2, z: this.pos.z, count: 6, color: cfg.color, speed: [2, 5], life: [0.2, 0.4] });
+    }
+  }
+
+  // Wraith: stalk → telegraph a long line → commit to a fast forward lunge that
+  // hits once if it passes through the player. Dodge it with a dash.
+  private tickLunge(dt: number, dist: number, nx: number, nz: number): void {
+    const cfg = this.cfg;
+    if (this.state === "approach") {
+      if (dist > cfg.attackRange) {
+        this.pos.x += nx * cfg.speed * 0.7 * dt;
+        this.pos.z += nz * cfg.speed * 0.7 * dt;
+      } else {
+        this.state = "windup";
+        this.timer = cfg.windup;
+        this.lungeDir.set(nx, 0, nz);
+        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), 12, 1.6, cfg.windup, cfg.color);
+      }
+    } else if (this.state === "windup") {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.state = "lunge";
+        this.timer = 0.34;
+        this.didHit = false;
+        this.tele = null;
+        this.ctx.fx.burst({ x: this.pos.x, y: 0.8, z: this.pos.z, count: 10, color: cfg.color, speed: [3, 7], life: [0.2, 0.4] });
+      }
+    } else if (this.state === "lunge") {
+      this.timer -= dt;
+      this.pos.x += this.lungeDir.x * 26 * dt;
+      this.pos.z += this.lungeDir.z * 26 * dt;
+      if (!this.didHit && dist < this.radius + this.ctx.player.radius + 0.8) {
+        this.didHit = true;
+        this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
+      }
+      if (this.timer <= 0) { this.state = "recover"; this.timer = 0.6; }
+    } else {
+      this.timer -= dt;
+      if (this.timer <= 0) this.state = "approach";
     }
   }
 

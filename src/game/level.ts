@@ -142,6 +142,29 @@ export class Level {
     dais.position.set(BOSS_ANCHOR.x, 0.3, BOSS_ANCHOR.z);
     this.group.add(dais);
 
+    // --- glowing floor rungs down the path (depth cue + circuit read) ---
+    for (let z = 6; z < ARENA_BLEND_Z; z += 10) {
+      const rung = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2 - 1, 0.05, 0.16), this.emissiveMat(0x1b4fd0, 0.7));
+      rung.position.set(0, 0.03, z);
+      this.group.add(rung);
+    }
+
+    // --- starfield backdrop (fog-immune so it reads behind the rift) ---
+    const N = 520;
+    const arr = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const ang = this.ctx.rng.range(0, Math.PI * 2);
+      const elev = this.ctx.rng.range(0.05, 0.9);
+      const r = this.ctx.rng.range(130, 175);
+      arr[i * 3] = Math.cos(ang) * r * Math.cos(elev);
+      arr[i * 3 + 1] = Math.sin(elev) * r;
+      arr[i * 3 + 2] = ARENA_CENTER.y * 0.5 + Math.sin(ang) * r * Math.cos(elev);
+    }
+    const starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute("position", new THREE.BufferAttribute(arr, 3));
+    const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x9fc8ff, size: 1.1, sizeAttenuation: true, transparent: true, opacity: 0.9, fog: false }));
+    this.group.add(stars);
+
     scene.add(this.group);
   }
 
