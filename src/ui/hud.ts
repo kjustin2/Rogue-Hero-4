@@ -33,7 +33,6 @@ export class Hud {
   private objFill!: HTMLElement;
   private streak!: HTMLElement;
   private lockHint!: HTMLElement;
-  private comboFlash!: HTMLElement;
   private comboSplash!: HTMLElement;
   private comboName!: HTMLElement;
   private comboRow!: HTMLElement;
@@ -64,7 +63,6 @@ export class Hud {
     this.hud.innerHTML = `
       <div id="danger"></div>
       <div id="dmgflash"></div>
-      <div id="combo-flash"></div>
       <div id="crosshair"><span></span><span></span><span></span><span></span></div>
 
       <div id="boss-bar"><div class="boss-name">RIFT WARDEN</div><div class="boss-track"><div class="boss-fill"></div></div></div>
@@ -104,7 +102,6 @@ export class Hud {
     this.objFill = this.hud.querySelector(".obj-fill")!;
     this.streak = this.hud.querySelector("#streak")!;
     this.lockHint = this.hud.querySelector("#lockhint")!;
-    this.comboFlash = this.hud.querySelector("#combo-flash")!;
     this.comboSplash = this.hud.querySelector("#combo-splash")!;
     this.comboName = this.hud.querySelector("#combo-splash .cs-name")!;
     this.comboRow = this.hud.querySelector("#combo-splash .cs-row")!;
@@ -146,7 +143,6 @@ export class Hud {
 
   showBanner(text: string, color: number): void {
     this.comboSplash.style.animation = "none";
-    this.comboFlash.style.animation = "none";
     this.comboSplash.style.opacity = "0";
     this.banner.textContent = text;
     this.banner.style.color = cssHex(color);
@@ -162,12 +158,9 @@ export class Hud {
     this.comboName.textContent = name;
     this.comboName.style.color = hex;
     this.comboRow.innerHTML = recipeChips(recipe);
-    this.comboFlash.style.setProperty("--cc", hex);
     this.comboSplash.style.animation = "none";
-    this.comboFlash.style.animation = "none";
     void this.comboSplash.offsetWidth;
     this.comboSplash.style.animation = "combo-pop 1.5s cubic-bezier(.2,.9,.2,1)";
-    this.comboFlash.style.animation = "combo-flash .6s ease-out";
   }
 
   update(dt: number): void {

@@ -18,8 +18,8 @@ type Attack = "slam" | "volley" | "sweep" | "collapse" | null;
 export class Boss implements Hittable {
   pos = new THREE.Vector3().copy(BOSS_ANCHOR);
   radius = 2.6;
-  maxHp = 520;
-  hp = 520;
+  maxHp = 820;
+  hp = 820;
   alive = true;
   kind = "boss";
   hitColor = 0x4fe0d0; // cold soul-fire — an undead warden, contrasting the firelit keep
@@ -33,7 +33,7 @@ export class Boss implements Hittable {
   private lunge = 0; // strike snap
   private spots: THREE.Vector3[] = [];
   private teles: TelegraphHandle[] = [];
-  private cd = 1.8;
+  private cd = 1.3;
   private attack: Attack = null;
   private windup = 0;
   private windupMax = 1;
@@ -234,7 +234,7 @@ export class Boss implements Hittable {
         : this.phase === 2 ? ["slam", "volley", "sweep", "sweep"]
           : ["collapse", "sweep", "volley", "collapse"];
     this.attack = this.ctx.rng.pick(pool);
-    this.windupMax = this.attack === "collapse" ? 1.2 : this.attack === "sweep" ? 1.0 : this.attack === "slam" ? 0.85 : 0.7;
+    this.windupMax = this.attack === "collapse" ? 0.95 : this.attack === "sweep" ? 0.8 : this.attack === "slam" ? 0.65 : 0.52;
     if (this.phase === 2) this.windupMax *= 0.8;
     if (this.phase === 3) this.windupMax *= 0.65;
     this.windup = this.windupMax;
@@ -270,7 +270,7 @@ export class Boss implements Hittable {
     this.tele = null;
     this.charge = 0;
     this.lunge = 1; // snap the body forward/down on the strike
-    this.cd = this.phase === 3 ? 0.85 : this.phase === 2 ? 1.1 : 1.7;
+    this.cd = this.phase === 3 ? 0.55 : this.phase === 2 ? 0.85 : 1.25;
     const p = this.ctx.player;
 
     if (a === "slam") {

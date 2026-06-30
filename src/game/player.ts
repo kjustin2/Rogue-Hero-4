@@ -337,53 +337,84 @@ export class Player {
         this.ctx.cam.pulseFov(0.3);
         this.ctx.stage.punch(0.3);
       }
+    } else if (a.mode === "laser") {
+      // instant hitscan beam down the look ray
+      this.ctx.sfx.boltCast();
+      this.ctx.combat.beam(this.pos.x, this.pos.z, fx, fz, a.beamRange, a.beamWidth, a.damage, a.knockback, color);
+      this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
+      this.muzzleFx(color, heavy);
+    } else if (a.mode === "airstrike") {
+      // call down strike(s) on the zone ahead
+      this.ctx.sfx.boltCast();
+      const cx = this.pos.x + fx * a.strikeRange, cz = this.pos.z + fz * a.strikeRange;
+      for (let i = 0; i < Math.max(1, a.strikeCount); i++) {
+        const ang = this.ctx.rng.range(0, Math.PI * 2);
+        const r = a.strikeCount > 1 ? this.ctx.rng.range(0, a.strikeRadius * 1.4) : 0;
+        this.ctx.combat.scheduleStrike(cx + Math.cos(ang) * r, cz + Math.sin(ang) * r, a.strikeRadius, a.damage, a.strikeDelay, color, a.knockback);
+      }
+      this.ctx.cam.kick(-fx, -fz, 0.15);
+      this.muzzleFx(color, heavy);
     } else {
-      // projectile: fire `pellets` along the look ray, fanned by `spread`
+      // bolt / rocket: fire `pellets` along the look ray, fanned by `spread`
       this.ctx.sfx.boltCast();
       this.ctx.cam.forward(this.aim);
       const n = Math.max(1, a.pellets);
-      const opts = a.big ? { scale: 1.9, pierce: a.pierce } : a.pierce ? { pierce: true } : undefined;
+      const opts: { scale?: number; pierce?: boolean; explode?: number } = {};
+      if (a.mode === "rocket") opts.explode = a.explodeRadius;
+      if (a.big) opts.scale = 1.9;
+      if (a.pierce) opts.pierce = true;
+      const hasOpts = a.mode === "rocket" || a.big || a.pierce;
       for (let i = 0; i < n; i++) {
         const off = (i - (n - 1) / 2) * a.spread;
         const ca = Math.cos(off), sa = Math.sin(off);
         this.dir.set(this.aim.x * ca - this.aim.z * sa, this.aim.y, this.aim.x * sa + this.aim.z * ca);
-        this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.dir, a.speed, a.damage, true, color, a.knockback, opts);
+        this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.dir, a.speed, a.damage, true, color, a.knockback, hasOpts ? opts : undefined);
       }
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
-      this.tipMarker.getWorldPosition(this.tip);
-      this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: heavy ? 22 : 14, color: [color, 0xffffff], speed: [3, 10], size: [0.1, 0.34], life: [0.12, 0.34] });
-      this.ctx.fx.ring(this.tip.x, this.tip.z, { radius: 1.6, color, duration: 0.22, y: this.tip.y, startRadius: 0.2 });
-      this.ctx.cam.pulseFov(0.12);
+      this.muzzleFx(color, heavy);
     }
 
-    // record the attack + test the combo for THIS weapon
+    // record the attack + test the combo for THIS weapon (fired forward from the player)
     this.buffer.push(c.slot);
     if (this.buffer.length > BUFFER_MAX) this.buffer.shift();
     this.bufferTimer = 0;
 
     const combo = matchWeaponCombo(this.buffer, this.weapon);
     if (combo) {
-      const ix = this.pos.x + fx * 2.6;
-      const iz = this.pos.z + fz * 2.6;
-      this.ctx.combat.resolveCombo(combo, ix, iz, fx, fz, a.damage);
+      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, fx, fz, a.damage);
       this.lastCombo = combo.name;
       this.lastComboT = 2.4;
       this.buffer.length = 0;
     }
   }
 
-  /** Collect a rift shard: bump the counter, heal overflow if hurt, unlock at thresholds. */
+  /** Muzzle flash at the blade tip for ranged casts. */
+  private muzzleFx(color: number, heavy: boolean): void {
+    this.tipMarker.getWorldPosition(this.tip);
+    this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: heavy ? 22 : 14, color: [color, 0xffffff], speed: [3, 10], size: [0.1, 0.34], life: [0.12, 0.34] });
+    this.ctx.fx.ring(this.tip.x, this.tip.z, { radius: 1.6, color, duration: 0.22, y: this.tip.y, startRadius: 0.2 });
+    this.ctx.cam.pulseFov(0.12);
+  }
+
+  /** Collect a rift shard: bump the counter + heal overflow if hurt (weapons come from pickups now). */
   addShard(heal: number): void {
     this.shards++;
     this.ctx.events.emit("SHARD", { total: this.shards });
     if (this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + heal);
-    for (const w of WEAPONS) {
-      if (w.unlockAt > 0 && this.shards >= w.unlockAt && !this.weapons.includes(w.id)) {
-        this.weapons.push(w.id);
-        this.ctx.events.emit("WEAPON_UNLOCK", { id: w.id, name: w.name });
-        this.ctx.sfx.unlockFanfare();
-      }
-    }
+  }
+
+  /** Claim a weapon found on the causeway: add it, equip it immediately, fanfare. */
+  unlockWeapon(id: string): void {
+    if (this.weapons.includes(id)) return;
+    this.weapons.push(id);
+    this.wi = this.weapons.length - 1;
+    this.cooldowns.light = this.cooldowns.heavy = 0;
+    this.buffer.length = 0;
+    this.cur = null;
+    this.applyWeaponLook();
+    this.ctx.sfx.unlockFanfare();
+    this.ctx.events.emit("WEAPON_UNLOCK", { id, name: this.weapon.name });
+    this.ctx.events.emit("WEAPON_SWITCH", { id, name: this.weapon.name });
   }
 
   private startDash(): void {

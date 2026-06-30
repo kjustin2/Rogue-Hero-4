@@ -22,6 +22,10 @@ interface Shot {
   pierce: boolean;
   /** Targets already hit by a piercing shot (so it damages each once). */
   hit: Set<object>;
+  /** >0 → an explosive shot: detonates an AoE (radius) on impact/expiry instead of a point hit. */
+  explodeRadius: number;
+  /** Downward accel (grenade arc); 0 = straight flight. */
+  grav: number;
 }
 
 const POOL = 56;
@@ -74,11 +78,11 @@ export class Projectiles {
       group.frustumCulled = false;
       group.renderOrder = 5;
       this.ctx.stage.scene.add(group);
-      this.pool.push({ group, glow, head, runes, glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set() });
+      this.pool.push({ group, glow, head, runes, glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
     }
   }
 
-  spawn(x: number, y: number, z: number, dir: THREE.Vector3, speed: number, dmg: number, friendly: boolean, color: number, knockback = 3, opts?: { scale?: number; pierce?: boolean }): void {
+  spawn(x: number, y: number, z: number, dir: THREE.Vector3, speed: number, dmg: number, friendly: boolean, color: number, knockback = 3, opts?: { scale?: number; pierce?: boolean; explode?: number; gravity?: number }): void {
     const s = this.pool.find((p) => !p.active);
     if (!s) return;
     s.active = true;
@@ -88,8 +92,10 @@ export class Projectiles {
     s.life = 3.2;
     s.trailT = 0;
     s.color = color;
-    s.scale = opts?.scale ?? 1;
+    s.scale = opts?.scale ?? (opts?.explode ? 1.5 : 1);
     s.pierce = opts?.pierce ?? false;
+    s.explodeRadius = opts?.explode ?? 0;
+    s.grav = opts?.gravity ?? 0;
     s.hit.clear();
     s.vel.copy(dir).normalize().multiplyScalar(speed);
     s.group.position.set(x, y, z);
@@ -121,9 +127,12 @@ export class Projectiles {
     for (const s of this.pool) {
       if (!s.active) continue;
       const p = s.group.position;
+      if (s.grav) s.vel.y -= s.grav * dt; // grenade arc
       p.addScaledVector(s.vel, dt);
       s.life -= dt;
       this.orient(s);
+      // grenades detonate when they hit the ground
+      if (s.grav && p.y <= 0.25) { this.detonate(s); continue; }
       // living-bolt animation: pulsing glow + core, rune shards orbiting the travel axis
       const age = 3.2 - s.life;
       s.glow.scale.setScalar(0.85 + Math.sin(age * 30) * 0.15);
@@ -139,18 +148,26 @@ export class Projectiles {
       // out of bounds / expired
       const outX = Math.abs(p.x) > HALF_WIDTH + 2 && p.z < ARENA_CENTER.y - ARENA_RADIUS;
       const inArenaOut = p.z >= ARENA_CENTER.y - ARENA_RADIUS && Math.hypot(p.x - ARENA_CENTER.x, p.z - ARENA_CENTER.y) > ARENA_RADIUS + 2;
-      if (s.life <= 0 || p.z < -4 || outX || inArenaOut) { this.kill(s); continue; }
+      if (s.life <= 0 || p.z < -4 || outX || inArenaOut) { if (s.explodeRadius > 0) this.detonate(s); else this.kill(s); continue; }
 
       const r = RADIUS * s.scale;
       if (s.friendly) {
-        for (const t of this.ctx.combat.targets()) {
-          const top = t.hitTop ?? 2.6;
-          if (Math.hypot(p.x - t.pos.x, p.z - t.pos.z) <= t.radius + r && p.y >= 0.2 && p.y <= top) {
-            if (s.pierce && s.hit.has(t)) continue; // a piercing shot hits each target once
-            const weak = t.isWeakHit ? t.isWeakHit(p.x, p.y, p.z) : false;
-            this.ctx.combat.dealDamage(t, s.dmg, { knockback: s.knockback, fromX: p.x - s.vel.x, fromZ: p.z - s.vel.z, weak });
-            this.impact(p, s.color);
-            if (s.pierce) { s.hit.add(t); } else { this.kill(s); break; }
+        if (s.explodeRadius > 0) {
+          // explosive: detonate on touching any target (splash handles the kill)
+          for (const t of this.ctx.combat.targets()) {
+            const top = t.hitTop ?? 2.6;
+            if (Math.hypot(p.x - t.pos.x, p.z - t.pos.z) <= t.radius + r && p.y >= 0.2 && p.y <= top) { this.detonate(s); break; }
+          }
+        } else {
+          for (const t of this.ctx.combat.targets()) {
+            const top = t.hitTop ?? 2.6;
+            if (Math.hypot(p.x - t.pos.x, p.z - t.pos.z) <= t.radius + r && p.y >= 0.2 && p.y <= top) {
+              if (s.pierce && s.hit.has(t)) continue; // a piercing shot hits each target once
+              const weak = t.isWeakHit ? t.isWeakHit(p.x, p.y, p.z) : false;
+              this.ctx.combat.dealDamage(t, s.dmg, { knockback: s.knockback, fromX: p.x - s.vel.x, fromZ: p.z - s.vel.z, weak });
+              this.impact(p, s.color);
+              if (s.pierce) { s.hit.add(t); } else { this.kill(s); break; }
+            }
           }
         }
       } else if (player.alive) {
@@ -166,6 +183,19 @@ export class Projectiles {
   private kill(s: Shot): void {
     s.active = false;
     s.group.visible = false;
+  }
+
+  /** Explosive shot detonation: an AoE blast (friendly only) + a punchy boom. */
+  private detonate(s: Shot): void {
+    const p = s.group.position;
+    const rad = s.explodeRadius;
+    if (s.friendly) this.ctx.combat.aoeDamage(p.x, p.z, rad, s.dmg, s.knockback, true);
+    this.ctx.fx.ring(p.x, p.z, { radius: rad, color: s.color, duration: 0.4, y: 0.3, startRadius: 0.4 });
+    this.ctx.fx.ring(p.x, p.z, { radius: rad * 0.55, color: 0xffffff, duration: 0.26, y: 0.35, startRadius: 0.3 });
+    this.ctx.fx.burst({ x: p.x, y: 0.6, z: p.z, count: 30, color: [s.color, 0xffffff], speed: [5, 16], up: 0.8, size: [0.16, 0.5], life: [0.3, 0.7] });
+    this.ctx.cam.addTrauma(0.18);
+    this.ctx.sfx.explosion();
+    this.kill(s);
   }
 
   private impact(p: THREE.Vector3, color: number): void {

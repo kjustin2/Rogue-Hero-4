@@ -20,10 +20,10 @@ interface KindCfg {
 
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
-  husk: { hp: 30, radius: 0.6, speed: 7.6, contactDmg: 10, attackRange: 2.4, windup: 0.3, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
-  spitter: { hp: 22, radius: 0.6, speed: 4.6, contactDmg: 9, attackRange: 13, windup: 0.5, color: 0x8ad26a, bodyY: 1.0 }, // witchfire caster
-  brute: { hp: 90, radius: 1.05, speed: 4.2, contactDmg: 26, attackRange: 4.4, windup: 0.7, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
-  wraith: { hp: 26, radius: 0.55, speed: 11.0, contactDmg: 15, attackRange: 9, windup: 0.34, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
+  husk: { hp: 30, radius: 0.6, speed: 7.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
+  spitter: { hp: 22, radius: 0.6, speed: 4.6, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0 }, // witchfire caster
+  brute: { hp: 90, radius: 1.05, speed: 4.2, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
+  wraith: { hp: 26, radius: 0.55, speed: 11.0, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
 };
 
 // Waves, one per gate (see level.ts GATES_Z). Cleared → the gate opens. Escalating:
@@ -343,7 +343,7 @@ export class Enemy implements Hittable {
     else if (dist > cfg.attackRange) { this.pos.x += nx * cfg.speed * dt; this.pos.z += nz * cfg.speed * dt; }
     this.fireTimer -= dt;
     if (this.fireTimer <= 0 && dist < cfg.attackRange + 2) {
-      this.fireTimer = 2.2;
+      this.fireTimer = 1.45;
       this.flash = 0.9; // iris flares as it spits
       const p = this.ctx.player;
       const dir = new THREE.Vector3(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);

@@ -132,82 +132,131 @@ export class Combat {
     }
   }
 
-  /** The combo payoff: signature AoE + a big multi-channel fanfare. */
+  /**
+   * Instant hitscan laser: damage every target in a thin corridor from (ox,oz) along
+   * (dirX,dirZ) out to `range`, plus the beam VFX. Crits the boss core when aiming weak.
+   */
+  beam(ox: number, oz: number, dirX: number, dirZ: number, range: number, width: number, dmg: number, kb: number, color: number): void {
+    const weakAim = this.isAimingWeak();
+    for (const t of this.targets()) {
+      const tx = t.pos.x - ox, tz = t.pos.z - oz;
+      const along = tx * dirX + tz * dirZ;
+      if (along < 0 || along > range) continue;
+      const perp = Math.abs(tx * dirZ - tz * dirX);
+      if (perp <= width + t.radius) {
+        const weak = t.kind === "boss" && weakAim;
+        this.dealDamage(t, dmg, { heavy: true, knockback: kb, fromX: ox, fromZ: oz, weak });
+      }
+    }
+    this.ctx.fx.laser(ox, 1.4, oz, dirX, dirZ, range, color, Math.max(0.2, width * 0.6));
+    this.ctx.fx.laser(ox, 1.4, oz, dirX, dirZ, range, 0xffffff, Math.max(0.08, width * 0.22));
+    this.ctx.cam.addTrauma(0.12);
+  }
+
+  /**
+   * Schedule a called-down air strike: telegraph a circle now, detonate an AoE after
+   * `delay`. Processed by update() so the wind-up reads before the blast lands.
+   */
+  scheduleStrike(x: number, z: number, radius: number, dmg: number, delay: number, color: number, kb = 6): void {
+    this.strikes.push({ x, z, radius, dmg, delay, color, kb });
+    this.ctx.tele.circle(x, z, radius, delay, color);
+  }
+
+  private strikes: { x: number; z: number; radius: number; dmg: number; delay: number; color: number; kb: number }[] = [];
+
+  /** Per-frame: fire any air strikes whose wind-up has elapsed. */
+  update(dt: number): void {
+    for (let i = this.strikes.length - 1; i >= 0; i--) {
+      const s = this.strikes[i];
+      s.delay -= dt;
+      if (s.delay > 0) continue;
+      this.strikes.splice(i, 1);
+      this.aoeDamage(s.x, s.z, s.radius, s.dmg, s.kb, true);
+      this.ctx.fx.beam(s.x, s.z, s.color);
+      this.ctx.fx.ring(s.x, s.z, { radius: s.radius, color: s.color, duration: 0.4, y: 0.2, startRadius: 0.4 });
+      this.ctx.fx.ring(s.x, s.z, { radius: s.radius * 0.55, color: 0xffffff, duration: 0.26, y: 0.25, startRadius: 0.3 });
+      this.ctx.fx.burst({ x: s.x, y: 0.5, z: s.z, count: 26, color: [s.color, 0xffffff], speed: [6, 16], up: 0.7, life: [0.3, 0.7] });
+      this.ctx.cam.addTrauma(0.14);
+      this.ctx.sfx.explosion();
+    }
+  }
+
+  /** Drop any pending strikes (run reset). */
+  reset(): void {
+    this.strikes.length = 0;
+  }
+
+  /**
+   * The combo payoff. Finishers fire FORWARD from the player (x,z) — a barrage comet,
+   * a bolt fan, a rocket volley, a mega-beam, or an air-strike cluster — so the payoff
+   * reads downrange, not as a flash in the player's face. Only the melee weapon's slam
+   * lands a ground shockwave just ahead. Camera/sfx feel kept; the screen flash removed.
+   */
   resolveCombo(combo: WeaponComboDef, x: number, z: number, dirX: number, dirZ: number, baseDmg: number): void {
     const dmg = baseDmg * combo.damageMult;
-    // the combo name shows once, in the HUD splash (events → Hud.showComboSplash);
-    // no in-world floater label here or it reads as a duplicate.
     this.ctx.events.emit("COMBO_RESOLVE", { name: combo.name, tier: combo.tier });
-    this.ctx.stage.punch(0.35 + combo.tier * 0.12);
-    this.ctx.cam.addTrauma(0.4 + combo.tier * 0.12);
-    this.ctx.cam.pulseFov(0.35);
-    this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.1);
+    this.ctx.stage.punch(0.3 + combo.tier * 0.1);
+    this.ctx.cam.addTrauma(0.32 + combo.tier * 0.1);
+    this.ctx.cam.pulseFov(0.3);
+    this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.09);
     this.ctx.sfx.critical();
     if (combo.tier >= 3) this.ctx.sfx.bossRoar();
-
-    // Shared fanfare for EVERY combo so the payoff always pops: a ring of light
-    // pillars erupting from the impact, a white core flash-ring, and an ember column.
-    const pillars = 3 + combo.tier;
-    for (let i = 0; i < pillars; i++) {
-      const a = (i / pillars) * Math.PI * 2;
-      this.ctx.fx.beam(x + Math.cos(a) * combo.radius * 0.55, z + Math.sin(a) * combo.radius * 0.55, combo.color);
-    }
-    this.ctx.fx.beam(x, z, 0xffffff);
-    this.ctx.fx.ring(x, z, { radius: combo.radius * 1.2, color: 0xffffff, duration: 0.3, y: 0.18, startRadius: 0.3 });
-    this.ctx.fx.burst({ x, y: 0.6, z, count: 24 + combo.tier * 8, color: [combo.color, 0xffffff], speed: [3, 9], up: 3.2, vertical: 0.22, size: [0.14, 0.42], life: [0.5, 1.1] });
+    const dir = new THREE.Vector3(dirX, 0, dirZ).normalize();
+    const muzzleX = x + dirX * 1.2, muzzleZ = z + dirZ * 1.2;
 
     switch (combo.effect) {
-      case "slam": {
-        this.ctx.fx.ring(x, z, { radius: combo.radius, color: combo.color, duration: 0.5, y: 0.4 });
-        this.ctx.fx.burst({ x, y: 1, z, count: 40, color: combo.color, speed: [6, 16], size: [0.16, 0.45], life: [0.3, 0.7], up: 1 });
-        this.aoeDamage(x, z, combo.radius, dmg, 12, true);
-        break;
-      }
-      case "quake": {
-        this.ctx.fx.ring(x, z, { radius: combo.radius, color: combo.color, duration: 0.7, y: 0.1, startRadius: 0.5 });
-        this.ctx.fx.burst({ x, y: 0.4, z, count: 48, color: combo.color, speed: [3, 9], vertical: 0.2, life: [0.4, 0.9] });
-        for (const t of this.targets()) {
-          if (Math.hypot(t.pos.x - x, t.pos.z - z) <= combo.radius + t.radius) {
-            this.dealDamage(t, dmg, { heavy: true, knockback: 6, fromX: x, fromZ: z });
-            // ponytail: stun via the optional `frozen` field enemies expose; boss has none.
-            const f = t as unknown as { frozen?: number };
-            if (typeof f.frozen === "number") f.frozen = 1.3;
-          }
-        }
-        break;
-      }
-      case "nova": {
-        this.ctx.fx.ring(x, z, { radius: combo.radius, color: combo.color, duration: 0.6, y: 1 });
-        this.ctx.fx.burst({ x, y: 1.2, z, count: 60, color: [combo.color, 0xffffff], speed: [8, 20], size: [0.14, 0.4], life: [0.3, 0.8] });
-        this.aoeDamage(x, z, combo.radius, dmg, 10, true);
-        break;
-      }
       case "barrage": {
-        // a single colossal piercing comet that ploughs straight down the lane
-        const dir = new THREE.Vector3(dirX, 0, dirZ).normalize();
-        this.ctx.projectiles.spawn(x, 1.4, z, dir, 30, dmg, true, combo.color, 14, { scale: 3.4, pierce: true });
-        this.ctx.fx.burst({ x, y: 1.4, z, count: 30, color: [combo.color, 0xffffff], speed: [4, 14], size: [0.16, 0.5], life: [0.3, 0.7] });
-        this.ctx.fx.ring(x, z, { radius: combo.radius, color: combo.color, duration: 0.4, y: 1.0, startRadius: 0.4 });
+        // a single colossal piercing comet straight down the lane
+        this.ctx.projectiles.spawn(muzzleX, 1.4, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 3.4, pierce: true });
+        this.ctx.fx.burst({ x: muzzleX, y: 1.4, z: muzzleZ, count: 18, color: [combo.color, 0xffffff], speed: [3, 10], size: [0.14, 0.4], life: [0.2, 0.5] });
         break;
       }
-      case "lance": {
-        const dir = new THREE.Vector3(dirX, 0, dirZ);
-        for (let i = 0; i < 4; i++) {
-          this.ctx.projectiles.spawn(x, 1.3, z, dir, 38, dmg * 0.5, true, combo.color, 6);
+      case "bolts": {
+        // a wide fan of fast bolts sprayed forward
+        const n = 9;
+        for (let i = 0; i < n; i++) {
+          const off = (i - (n - 1) / 2) * 0.12;
+          const ca = Math.cos(off), sa = Math.sin(off);
+          const d = new THREE.Vector3(dir.x * ca - dir.z * sa, 0, dir.x * sa + dir.z * ca);
+          this.ctx.projectiles.spawn(muzzleX, 1.45, muzzleZ, d, 46, dmg / 3, true, combo.color, 3);
         }
-        // a piercing lance reads as a beam corridor: light pillars + a forward slash arc
-        for (let i = 1; i <= 5; i++) {
-          this.ctx.fx.beam(x + dirX * i * 4, z + dirZ * i * 4, i % 2 ? combo.color : 0xffffff);
+        break;
+      }
+      case "rocketvolley": {
+        // a fan of explosive rockets that bloom downrange
+        const n = 5;
+        for (let i = 0; i < n; i++) {
+          const off = (i - (n - 1) / 2) * 0.16;
+          const ca = Math.cos(off), sa = Math.sin(off);
+          const d = new THREE.Vector3(dir.x * ca - dir.z * sa, 0, dir.x * sa + dir.z * ca);
+          this.ctx.projectiles.spawn(muzzleX, 1.4, muzzleZ, d, 26, dmg / 2, true, combo.color, 8, { explode: combo.radius });
         }
-        this.ctx.fx.slash(x + dirX * 2, 1.4, z + dirZ * 2, Math.atan2(dirX, dirZ), { color: combo.color, radius: 4.2, tilt: -0.5, duration: 0.28, spin: 5 });
-        // instant corridor damage ahead
-        for (const t of this.targets()) {
-          const tx = t.pos.x - x, tz = t.pos.z - z;
-          const along = tx * dirX + tz * dirZ;
-          if (along < 0 || along > 26) continue;
-          const perp = Math.abs(tx * dirZ - tz * dirX);
-          if (perp <= combo.radius + t.radius) this.dealDamage(t, dmg, { heavy: true, knockback: 5, fromX: x, fromZ: z });
+        break;
+      }
+      case "megabeam": {
+        // one huge instant hitscan corridor
+        this.beam(x, z, dirX, dirZ, 60, combo.radius, dmg, 8, combo.color);
+        this.ctx.fx.burst({ x: muzzleX, y: 1.4, z: muzzleZ, count: 20, color: [combo.color, 0xffffff], speed: [3, 9], size: [0.12, 0.34], life: [0.18, 0.4] });
+        break;
+      }
+      case "airstrike": {
+        // a cluster of strikes rains across a zone well ahead
+        const n = 6;
+        const cx = x + dirX * 16, cz = z + dirZ * 16;
+        for (let i = 0; i < n; i++) {
+          const ang = this.ctx.rng.range(0, Math.PI * 2);
+          const r = this.ctx.rng.range(0, combo.radius * 1.8);
+          this.scheduleStrike(cx + Math.cos(ang) * r, cz + Math.sin(ang) * r, combo.radius, dmg / 2.5, 0.35 + this.ctx.rng.range(0, 0.45), combo.color, 6);
         }
+        break;
+      }
+      case "slam": {
+        // melee: a ground shockwave just AHEAD of the player (not at the face)
+        const ax = x + dirX * combo.radius * 0.55, az = z + dirZ * combo.radius * 0.55;
+        this.ctx.fx.ring(ax, az, { radius: combo.radius, color: combo.color, duration: 0.5, y: 0.3, startRadius: 0.4 });
+        this.ctx.fx.ring(ax, az, { radius: combo.radius * 0.6, color: 0xffffff, duration: 0.3, y: 0.35, startRadius: 0.3 });
+        this.ctx.fx.burst({ x: ax, y: 0.8, z: az, count: 36, color: [combo.color, 0xffffff], speed: [6, 16], up: 0.9, size: [0.16, 0.45], life: [0.3, 0.7] });
+        this.aoeDamage(ax, az, combo.radius, dmg, 12, true);
         break;
       }
     }

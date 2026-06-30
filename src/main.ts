@@ -17,7 +17,7 @@ import { Floaters } from "./render/floaters";
 import { FpsCamera } from "./render/fpsCamera";
 import { Sfx } from "./audio/sfx";
 import { Music } from "./audio/music";
-import { Level, PLAYER_SPAWN, ARENA_BLEND_Z, BOSS_ANCHOR } from "./game/level";
+import { Level, PLAYER_SPAWN, ARENA_BLEND_Z, BOSS_ANCHOR, GATES_Z } from "./game/level";
 import { Player } from "./game/player";
 import { Combat } from "./game/combat";
 import { EnemyManager, type EnemyKind } from "./game/enemies";
@@ -75,6 +75,8 @@ let streakTimer = 0;
 let bossSpawned = false;
 let triggered: boolean[] = ctx.level.gates.map(() => false);
 let victoryQueued = 0;
+// weapons found on the ground: greatsword sits near spawn, the rest reward each gate clear
+const GATE_WEAPONS = ["rocketlance", "arclaser", "stormcaller"];
 const CINE_LEN = 3.4; // boss-intro cutscene length
 let cineT = 0; // boss-intro cutscene timer (>0 = cutscene running)
 let cineBeatT = 0; // ticks down to fire the next scripted ripple/beam beat
@@ -136,6 +138,7 @@ function startRun(): void {
   ctx.enemies.clear();
   ctx.projectiles.clear();
   ctx.pickups.clear();
+  ctx.combat.reset();
   ctx.hitstop = 0;
   if (ctx.boss) { ctx.boss.dispose(); ctx.boss = null; }
   triggered = ctx.level.gates.map(() => false);
@@ -147,6 +150,8 @@ function startRun(): void {
   runTime = 0;
   kills = 0;
   streak = 0;
+  // the melee greatsword waits on the ground just ahead — teaches the pickup mechanic early
+  ctx.pickups.dropWeapon("greatsword", 0, PLAYER_SPAWN.z + 16);
   ctx.music.combat(1, false);
   setState("playing");
 }
@@ -176,6 +181,7 @@ function updatePlaying(dt: number): void {
   ctx.enemies.update(dt);
   if (ctx.boss) ctx.boss.tick(dt);
   ctx.projectiles.update(dt);
+  ctx.combat.update(dt);
   ctx.pickups.update(dt);
 
   // wave gates: trigger the next sealed gate's wave, open it when cleared
@@ -191,6 +197,9 @@ function updatePlaying(dt: number): void {
       ctx.level.openGate(idx);
       hud.showBanner("WAY OPEN", 0x8affd0);
       ctx.sfx.critical();
+      // clearing a wave reveals a new weapon on the ground just past the gate
+      const reward = GATE_WEAPONS[idx];
+      if (reward) ctx.pickups.dropWeapon(reward, 0, GATES_Z[idx] + 4);
     }
   }
 

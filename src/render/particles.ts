@@ -50,6 +50,7 @@ export class Particles {
   private rings: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; dur: number; from: number; to: number }[] = [];
   private beams: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number }[] = [];
   private slashes: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; dur: number; radius: number; spin: number }[] = [];
+  private bolts: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; dur: number; w: number }[] = [];
 
   constructor(private scene: THREE.Scene) {
     this.positions = new Float32Array(MAX_PARTICLES * 3);
@@ -149,6 +150,36 @@ export class Particles {
       this.scene.add(mesh);
       this.slashes.push({ mesh, mat, t: 0, dur: 0, radius: 1, spin: 0 });
     }
+
+    // Laser beams — thin glowing boxes (unit cube scaled along local +Z) for hitscan shots.
+    const boltGeo = new THREE.BoxGeometry(1, 1, 1);
+    boltGeo.translate(0, 0, 0.5); // origin at the near end so it extends forward
+    for (let i = 0; i < 8; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(boltGeo, mat);
+      mesh.visible = false;
+      mesh.frustumCulled = false;
+      this.scene.add(mesh);
+      this.bolts.push({ mesh, mat, t: 0, dur: 0, w: 0.3 });
+    }
+  }
+
+  /** Instant hitscan beam: a thin glowing line from (x,y,z) along horizontal (dx,dz). */
+  laser(x: number, y: number, z: number, dx: number, dz: number, length: number, color: number, width = 0.3): void {
+    const b = this.bolts.find((b) => !b.mesh.visible);
+    if (!b) return;
+    b.mesh.visible = true;
+    b.t = 0;
+    b.dur = 0.16;
+    b.w = width;
+    b.mesh.position.set(x, y, z);
+    b.mesh.rotation.set(0, Math.atan2(dx, dz), 0);
+    b.mesh.scale.set(width, width, length);
+    b.mat.color.set(color);
+    b.mat.opacity = 0.92;
   }
 
   /** Vertical light pillar — used when something materializes. */
@@ -340,6 +371,17 @@ export class Particles {
       s.mesh.rotation.z += s.spin * dt;
       s.mat.opacity = 0.95 * (1 - k) * (1 - k);
       if (k >= 1) s.mesh.visible = false;
+    }
+
+    for (const b of this.bolts) {
+      if (!b.mesh.visible) continue;
+      b.t += dt;
+      const k = Math.min(1, b.t / b.dur);
+      // flash bright, then thin out as it fades
+      const w = b.w * (1 - k * 0.6);
+      b.mesh.scale.x = w; b.mesh.scale.y = w;
+      b.mat.opacity = 0.92 * (1 - k);
+      if (k >= 1) b.mesh.visible = false;
     }
   }
 }

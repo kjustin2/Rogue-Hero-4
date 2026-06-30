@@ -3,9 +3,11 @@
 A first-person action game: you walk down a long, wide neon **causeway**, fight rift-born
 enemies at sealed **gates**, and bring down the **Rift Warden** boss at the far end. You wield a
 **swappable arsenal** of weapons (most ranged, some melee), each with a fast LIGHT attack (LMB), a
-strong HEAVY attack (RMB), and its own light/heavy **combos** (e.g. firing light 3× → a BARRAGE
-big-shot). **E** swaps weapon, **Dash** dodges. Kills drop **rift shards** that both heal and
-unlock new weapons mid-run.
+strong HEAVY attack (RMB), and its own light/heavy **combos** that fire FORWARD (a barrage comet,
+rocket volley, mega-beam, or air-strike cluster). Weapons are mechanically distinct — fast bolts, a
+melee greatsword, explosive rockets, an instant hitscan laser, called-down air strikes. **E** swaps
+weapon, **Dash** dodges. New weapons are **found on the ground** along the causeway (dramatic claim);
+kills drop **rift shards** that heal.
 
 Stack: **plain Three.js + Vite + strict TypeScript, shipped as Electron** — no game engine, no UI
 framework, no test framework. It was rebuilt from the Rogue-Hero-3 action-roguelike base: the proven
@@ -18,12 +20,14 @@ roguelite gameplay was replaced with this first-person combo loop.
   (gate waves → boss → victory/death), and the **`window.__rh4`** test seam (`__rh4debug.scenario`,
   `frames(n,dt)`, `checkCombos`).
 - **`src/game/`** — Three-free-ish sim: `ctx.ts` (type-only hub), `weapons.ts` (arsenal catalog:
-  per-weapon light/heavy attack defs + light/heavy combos + `matchWeaponCombo`/`weaponComboSelfCheck`
-  + unlock thresholds), `player.ts` (FP controller + weapon switch/light/heavy + combo buffer +
-  rift-shard counter/unlocks + weapon viewmodel), `combat.ts` (the one damage funnel: `dealDamage` /
-  `meleeSweep` / `resolveCombo` incl. the `barrage` big-shot / `damagePlayer`), `enemies.ts`
-  (4 archetypes + wave spawner), `boss.ts`, `pickups.ts` (rift shards), `level.ts` (level-as-data:
-  causeway geometry + bounds clamp + gate barriers), `projectiles.ts` (pooled comets + big/pierce).
+  per-weapon light/heavy attack defs with distinct `mode` (bolt/rocket/laser/airstrike/melee) +
+  light/heavy combos + `matchWeaponCombo`/`weaponComboSelfCheck`), `player.ts` (FP controller +
+  weapon switch/light/heavy + per-mode fire + combo buffer + rift-shard counter + `unlockWeapon` +
+  viewmodel), `combat.ts` (the one damage funnel: `dealDamage` / `meleeSweep` / `aoeDamage` /
+  hitscan `beam` / scheduled-strike `update` / `resolveCombo` (forward finishers) / `damagePlayer`),
+  `enemies.ts` (4 archetypes + wave spawner), `boss.ts`, `pickups.ts` (rift shards + ground weapon
+  pickups), `level.ts` (level-as-data: causeway + bounds + gates), `projectiles.ts` (pooled comets +
+  big/pierce/explode/gravity).
 - **`src/render/`** — `stage.ts` (renderer + post chain), `fpsCamera.ts` (yaw/pitch mouse-look +
   trauma/kick/FOV feel, parks the stage camera at the eyes), feel primitives `particles.ts`,
   `trail.ts`, `telegraphs.ts`, `floaters.ts` (reused from RH3, untouched).

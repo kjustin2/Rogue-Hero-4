@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import type { Ctx } from "./ctx";
+import { weaponById } from "./weapons";
 
 interface Shard {
   mesh: THREE.Mesh;
@@ -9,9 +10,19 @@ interface Shard {
   alive: boolean;
 }
 
+interface WeaponDrop {
+  group: THREE.Group;
+  icon: THREE.Mesh;
+  pillarMat: THREE.MeshBasicMaterial;
+  id: string;
+  t: number;
+  alive: boolean;
+}
+
 const COLOR = 0x6affa0;
 const MAGNET_R = 6;
 const PICKUP_R = 1.4;
+const WEAPON_PICKUP_R = 2.4;
 
 /**
  * Health shards — dropped by slain enemies, magnet toward the player when close,
@@ -20,12 +31,34 @@ const PICKUP_R = 1.4;
  */
 export class Pickups {
   private list: Shard[] = [];
+  private drops: WeaponDrop[] = [];
   private geo = new THREE.OctahedronGeometry(0.38);
 
   constructor(private ctx: Ctx) {}
 
   maybeDrop(x: number, z: number, chance = 0.7, heal = 16): void {
     if (this.ctx.rng.chance(chance)) this.drop(x, z, heal);
+  }
+
+  /** Place an unclaimed weapon on the causeway: a hovering icon under a light pillar. */
+  dropWeapon(id: string, x: number, z: number): void {
+    const w = weaponById(id);
+    const group = new THREE.Group();
+    const iconMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: w.color, emissiveIntensity: 2.6, roughness: 0.3, metalness: 0.4 });
+    const icon = new THREE.Mesh(new THREE.OctahedronGeometry(0.6), iconMat);
+    icon.position.y = 1.5;
+    const pillarMat = new THREE.MeshBasicMaterial({ color: w.color, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.85, 9, 14, 1, true), pillarMat);
+    pillar.position.y = 4.5;
+    const ringMat = new THREE.MeshBasicMaterial({ color: w.color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const ringGeo = new THREE.RingGeometry(1.1, 1.4, 36); ringGeo.rotateX(-Math.PI / 2);
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.y = 0.06;
+    group.add(icon, pillar, ring);
+    group.position.set(x, 0, z);
+    this.ctx.stage.scene.add(group);
+    this.drops.push({ group, icon, pillarMat, id, t: 0, alive: true });
+    this.ctx.fx.beam(x, z, w.color);
   }
 
   drop(x: number, z: number, heal = 16): void {
@@ -39,6 +72,13 @@ export class Pickups {
   clear(): void {
     for (const s of this.list) this.ctx.stage.scene.remove(s.mesh);
     this.list.length = 0;
+    for (const d of this.drops) this.disposeDrop(d);
+    this.drops.length = 0;
+  }
+
+  private disposeDrop(d: WeaponDrop): void {
+    d.group.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry) m.geometry.dispose(); });
+    this.ctx.stage.scene.remove(d.group);
   }
 
   update(dt: number): void {
@@ -78,6 +118,29 @@ export class Pickups {
         this.ctx.stage.scene.remove(this.list[i].mesh);
         this.list.splice(i, 1);
       }
+    }
+
+    // weapon drops: hover/spin + a dramatic claim when the player walks into the light
+    for (const d of this.drops) {
+      if (!d.alive) continue;
+      d.t += dt;
+      d.icon.rotation.y += dt * 1.7;
+      d.icon.position.y = 1.5 + Math.sin(d.t * 2) * 0.2;
+      d.pillarMat.opacity = 0.24 + Math.sin(d.t * 3) * 0.1;
+      const gx = d.group.position.x, gz = d.group.position.z;
+      if (Math.hypot(p.pos.x - gx, p.pos.z - gz) < WEAPON_PICKUP_R && p.alive && !p.weapons.includes(d.id)) {
+        d.alive = false;
+        p.unlockWeapon(d.id);
+        const c = weaponById(d.id).color;
+        this.ctx.fx.beam(gx, gz, c);
+        this.ctx.fx.burst({ x: gx, y: 1.2, z: gz, count: 44, color: [c, 0xffffff], speed: [5, 17], up: 1, size: [0.16, 0.5], life: [0.4, 1.0] });
+        this.ctx.fx.ring(gx, gz, { radius: 5, color: c, duration: 0.6, y: 0.2, startRadius: 0.5 });
+        this.ctx.cam.addTrauma(0.3);
+        this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.12);
+      }
+    }
+    for (let i = this.drops.length - 1; i >= 0; i--) {
+      if (!this.drops[i].alive) { this.disposeDrop(this.drops[i]); this.drops.splice(i, 1); }
     }
   }
 }

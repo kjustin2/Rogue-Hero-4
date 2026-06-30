@@ -154,6 +154,15 @@ app.whenReady().then(async () => {
       const dz1 = await js(`window.__rh4.player.pos.z`);
       expect(dz1 < dz0 - 1, `no-input dodge should backstep (z ${dz0.toFixed(1)} -> ${dz1.toFixed(1)})`);
 
+      // --- weapon on the ground: a pickup sits under a light pillar; walking in claims it
+      await js(`window.__rh4.pickups.dropWeapon('arclaser', 0, window.__rh4.player.pos.z + 7)`);
+      await frames(3);
+      await shot(win, "weapon-ground");
+      await key("KeyW", "keydown"); await frames(24); await key("KeyW", "keyup");
+      expect(await js(`window.__rh4.player.weapons.includes('arclaser')`), "did not claim the ground weapon pickup");
+      await shot(win, "weapon-claimed");
+      await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the starter
+
       // --- enemy lineup showcase (clean look at the upgraded models at distance)
       await js(`['husk','spitter','brute','wraith'].forEach((k,i)=>window.__rh4debug.spawn(k, -10 + i*6.5, window.__rh4.player.pos.z + 15))`);
       await frames(4);
@@ -174,6 +183,9 @@ app.whenReady().then(async () => {
       expect(calls > 0, "no draw calls (" + calls + ")");
       await frames(18); // let enemies close in
       await shot(win, "combat");
+
+      // ensure the starter (bolt caster) is equipped for the deterministic combo/projectile tests
+      await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`);
 
       // --- heavy attack mid-swing (RMB / K)
       await tap("KeyK"); await frames(9);
@@ -208,19 +220,32 @@ app.whenReady().then(async () => {
       expect(await js(`window.__rh4.level.gates[0].open === true`), "gate did not open after clearing the wave");
       await shot(win, "gate-open");
 
-      // --- weapon swapping: grant the arsenal, swap to a melee weapon, show the rack + a swing
+      // --- arsenal: grant all weapons, then showcase each DISTINCT mechanic firing
       await js(`window.__rh4debug.unlockAll()`);
       const owned = await js(`window.__rh4.player.weapons.length`);
       expect(owned >= 5, "unlockAll did not grant the full arsenal (" + owned + ")");
-      await js(`window.__rh4debug.swapWeapon()`); // boltcaster -> ember greatsword (melee)
-      const swapped = await js(`window.__rh4.player.weapon.kind`);
-      expect(swapped === "melee", "swap did not move to the melee weapon (got '" + swapped + "')");
-      await js(`['husk','husk'].forEach((k,i)=>window.__rh4debug.spawn(k, -3 + i*6, window.__rh4.player.pos.z + 5))`);
-      await frames(6);
-      await tap("KeyJ"); await frames(5); // a melee light swing with the swapped weapon
-      await shot(win, "weapons");
-      await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
-      await js(`window.__rh4.player.wi = 0; window.__rh4.player.cycleWeapon(0)`); // back to the projectile starter
+      const equip = (id) => js(`{const p=window.__rh4.player; p.wi=p.weapons.indexOf('${id}'); p.cycleWeapon(0);}`);
+      const spawnPack = () => js(`[0,1,2].forEach(i=>window.__rh4debug.spawn('husk', -4 + i*4, window.__rh4.player.pos.z + 9))`);
+      const clearPack = () => js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
+
+      await equip("greatsword");
+      expect(await js(`window.__rh4.player.weapon.kind`) === "melee", "greatsword should be melee");
+      await spawnPack(); await frames(4); await tap("KeyJ"); await frames(5);
+      await shot(win, "wpn-greatsword"); await clearPack();
+
+      await equip("rocketlance");
+      await spawnPack(); await frames(3); await tap("KeyJ"); await frames(9); // rocket flies + explodes
+      await shot(win, "wpn-rocket"); await clearPack();
+
+      await equip("arclaser");
+      await spawnPack(); await frames(3); await tap("KeyJ"); await frames(1); // instant hitscan beam
+      await shot(win, "wpn-laser"); await clearPack();
+
+      await equip("stormcaller");
+      await spawnPack(); await frames(3); await tap("KeyJ"); await frames(22); // air strike lands after its wind-up
+      await shot(win, "wpn-airstrike"); await clearPack();
+
+      await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the projectile starter for the boss
       await frames(6);
 
       // --- jump to the boss arena (spawning triggers the boss-intro cutscene)
