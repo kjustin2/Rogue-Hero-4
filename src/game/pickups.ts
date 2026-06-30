@@ -24,7 +24,7 @@ export class Pickups {
 
   constructor(private ctx: Ctx) {}
 
-  maybeDrop(x: number, z: number, chance = 0.4, heal = 16): void {
+  maybeDrop(x: number, z: number, chance = 0.7, heal = 16): void {
     if (this.ctx.rng.chance(chance)) this.drop(x, z, heal);
   }
 
@@ -58,11 +58,17 @@ export class Pickups {
         m.x += (dx / d) * pull;
         m.z += (dz / d) * pull;
       }
-      if (d < PICKUP_R && p.alive && p.hp < p.maxHp) {
+      if (d < PICKUP_R && p.alive) {
+        // always collected — a rift shard counts toward weapon unlocks AND heals if hurt
         s.alive = false;
-        p.hp = Math.min(p.maxHp, p.hp + s.heal);
-        this.ctx.events.emit("HEAL", { amount: s.heal });
-        this.ctx.floaters.spawn(p.pos.x, 1.7, p.pos.z, "+" + s.heal, "heal");
+        const before = p.hp;
+        p.addShard(s.heal);
+        const healed = Math.round(p.hp - before);
+        this.ctx.sfx.relicPickup();
+        if (healed > 0) {
+          this.ctx.events.emit("HEAL", { amount: healed });
+          this.ctx.floaters.spawn(p.pos.x, 1.7, p.pos.z, "+" + healed, "heal");
+        }
         this.ctx.fx.burst({ x: m.x, y: 1, z: m.z, count: 16, color: COLOR, speed: [3, 8], life: [0.2, 0.5] });
       }
     }

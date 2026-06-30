@@ -20,10 +20,10 @@ interface KindCfg {
 
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
-  husk: { hp: 30, radius: 0.6, speed: 5.0, contactDmg: 10, attackRange: 2.4, windup: 0.45, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
-  spitter: { hp: 22, radius: 0.6, speed: 3.2, contactDmg: 9, attackRange: 13, windup: 0.7, color: 0x8ad26a, bodyY: 1.0 }, // witchfire caster
-  brute: { hp: 90, radius: 1.05, speed: 2.6, contactDmg: 26, attackRange: 4.4, windup: 1.0, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
-  wraith: { hp: 26, radius: 0.55, speed: 7.2, contactDmg: 15, attackRange: 9, windup: 0.5, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
+  husk: { hp: 30, radius: 0.6, speed: 7.6, contactDmg: 10, attackRange: 2.4, windup: 0.3, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
+  spitter: { hp: 22, radius: 0.6, speed: 4.6, contactDmg: 9, attackRange: 13, windup: 0.5, color: 0x8ad26a, bodyY: 1.0 }, // witchfire caster
+  brute: { hp: 90, radius: 1.05, speed: 4.2, contactDmg: 26, attackRange: 4.4, windup: 0.7, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
+  wraith: { hp: 26, radius: 0.55, speed: 11.0, contactDmg: 15, attackRange: 9, windup: 0.34, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
 };
 
 // Waves, one per gate (see level.ts GATES_Z). Cleared → the gate opens. Escalating:
@@ -377,8 +377,8 @@ export class Enemy implements Hittable {
     } else if (this.state === "lunge") {
       this.timer -= dt;
       this.atkLunge = 1; // stay stretched through the dash
-      this.pos.x += this.lungeDir.x * 26 * dt;
-      this.pos.z += this.lungeDir.z * 26 * dt;
+      this.pos.x += this.lungeDir.x * 36 * dt;
+      this.pos.z += this.lungeDir.z * 36 * dt;
       // streak trail behind the blur
       this.ctx.fx.burst({ x: this.pos.x, y: 0.8, z: this.pos.z, count: 2, color: cfg.color, speed: [0.5, 2], size: [0.16, 0.36], life: [0.12, 0.28], gravity: 0, drag: 4 });
       if (!this.didHit && dist < this.radius + this.ctx.player.radius + 0.8) {

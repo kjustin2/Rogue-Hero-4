@@ -1,25 +1,13 @@
 import type { Ctx } from "../game/ctx";
-import { COMBOS } from "../game/combos";
 
-function cssHex(c: number): string {
-  return "#" + c.toString(16).padStart(6, "0");
-}
-
-const CONTROLS = `
-  <div class="legend">
-    <div><b>WASD</b> Move</div><div><b>Mouse</b> Look</div>
-    <div><b>LMB / J</b> Strike</div><div><b>RMB / K</b> Cleave</div>
-    <div><b>E</b> Bolt</div><div><b>Shift / Space</b> Dodge</div>
-  </div>`;
-
-const COMBO_LIST = `<div class="combo-help">` + COMBOS.map((c) =>
-  `<div><span style="color:${cssHex(c.color)}">${c.name}</span> — ${c.blurb}</div>`,
-).join("") + `</div>`;
+/** A single compact controls line — not a wall of text (see /game-flow menu rule). */
+const CONTROLS = `<div class="legend-line"><b>WASD</b> Move · <b>Mouse</b> Look · <b>LMB/RMB</b> Attack · <b>E</b> Swap Weapon · <b>Shift</b> Dodge</div>`;
 
 /**
  * Full-screen DOM menus rendered into #overlay. Each takes the callbacks main wires
  * to the state machine (main owns pointer-lock + state transitions; menus just
- * collect the click).
+ * collect the click). The TITLE is deliberately just title + button — controls and
+ * combos are taught in-HUD and on the pause screen, not dumped on the front door.
  */
 export class Menus {
   private overlay = document.getElementById("overlay")!;
@@ -47,12 +35,8 @@ export class Menus {
     this.panel(`
       <div class="title">ROGUE HERO <b>IV</b></div>
       <div class="subtitle">RIFT CAUSEWAY</div>
-      <p class="blurb">Weave the three glyphs down the causeway. Chain them for devastating combos.
-      Cut through the rift-born and bring down the Warden at the end.</p>
-      ${CONTROLS}
-      ${COMBO_LIST}
       <button id="start" class="primary">DESCEND</button>
-      <div class="hint">Click to lock the mouse · Esc to pause</div>
+      <div class="hint">Click to lock the mouse</div>
     `);
     this.wire("start", onStart);
   }
@@ -61,7 +45,6 @@ export class Menus {
     this.panel(`
       <div class="title small">PAUSED</div>
       ${CONTROLS}
-      ${COMBO_LIST}
       <button id="resume" class="primary">RESUME</button>
       <button id="quit">ABANDON RUN</button>
     `);

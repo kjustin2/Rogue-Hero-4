@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import type { Ctx } from "./ctx";
-import type { ComboDef } from "./combos";
+import type { WeaponComboDef } from "./weapons";
 
 export interface HitOpts {
   knockback?: number;
@@ -133,7 +133,7 @@ export class Combat {
   }
 
   /** The combo payoff: signature AoE + a big multi-channel fanfare. */
-  resolveCombo(combo: ComboDef, x: number, z: number, dirX: number, dirZ: number, baseDmg: number): void {
+  resolveCombo(combo: WeaponComboDef, x: number, z: number, dirX: number, dirZ: number, baseDmg: number): void {
     const dmg = baseDmg * combo.damageMult;
     // the combo name shows once, in the HUD splash (events → Hud.showComboSplash);
     // no in-world floater label here or it reads as a duplicate.
@@ -182,6 +182,14 @@ export class Combat {
         this.aoeDamage(x, z, combo.radius, dmg, 10, true);
         break;
       }
+      case "barrage": {
+        // a single colossal piercing comet that ploughs straight down the lane
+        const dir = new THREE.Vector3(dirX, 0, dirZ).normalize();
+        this.ctx.projectiles.spawn(x, 1.4, z, dir, 30, dmg, true, combo.color, 14, { scale: 3.4, pierce: true });
+        this.ctx.fx.burst({ x, y: 1.4, z, count: 30, color: [combo.color, 0xffffff], speed: [4, 14], size: [0.16, 0.5], life: [0.3, 0.7] });
+        this.ctx.fx.ring(x, z, { radius: combo.radius, color: combo.color, duration: 0.4, y: 1.0, startRadius: 0.4 });
+        break;
+      }
       case "lance": {
         const dir = new THREE.Vector3(dirX, 0, dirZ);
         for (let i = 0; i < 4; i++) {
@@ -218,9 +226,8 @@ export class Combat {
       this.ctx.cam.pulseFov(0.22);
       this.ctx.floaters.spawn(p.pos.x, 1.9, p.pos.z, "PERFECT", "label", "#8affd0");
       this.ctx.sfx.critical();
-      p.cooldowns.strike = 0;
-      p.cooldowns.cleave = 0;
-      p.cooldowns.bolt = 0;
+      p.cooldowns.light = 0;
+      p.cooldowns.heavy = 0;
       return "dodged";
     }
     dmg = Math.max(1, Math.round(dmg));

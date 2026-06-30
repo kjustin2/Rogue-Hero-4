@@ -1,27 +1,29 @@
 import type { Ctx } from "../game/ctx";
-import { MOVES, GLYPH_ORDER, type GlyphId } from "../game/moves";
-import { COMBOS, matchCombo } from "../game/combos";
+import { WEAPONS, matchWeaponCombo, type Slot } from "../game/weapons";
 import { BOSS_ANCHOR } from "../game/level";
 
 function cssHex(c: number): string {
   return "#" + c.toString(16).padStart(6, "0");
 }
 
-/** Recipe as colored input-key chips (e.g. [LMB][LMB][RMB]) — "how to execute" at a glance. */
-function recipeChips(gl: readonly GlyphId[]): string {
-  return gl.map((g) => `<i class="rc" style="--gc:${cssHex(MOVES[g].color)}">${MOVES[g].key}</i>`).join("");
+/** Recipe as colored light/heavy chips (e.g. [L][L][H]) — "how to execute" at a glance. */
+function recipeChips(recipe: readonly Slot[]): string {
+  return recipe.map((s) => `<i class="rc rc-${s}">${s === "light" ? "L" : "H"}</i>`).join("");
 }
 
 /**
- * The in-world HUD: crosshair, health, the three glyph cooldowns, the live combo
- * chain + a static combo codex (so chains read as "clear"), the boss bar, and the
- * objective/distance readout. Built once, then refreshed by direct ref updates.
+ * The in-world HUD: crosshair, health, the rift-shard counter, the equipped weapon
+ * (name + its LMB/RMB attacks with cooldowns + the swap rack) and that weapon's
+ * combo codex, the live combo chain, the boss bar, and the distance readout.
  */
 export class Hud {
   private hud = document.getElementById("hud")!;
   private hpFill!: HTMLElement;
   private hpText!: HTMLElement;
-  private slot: Record<GlyphId, { ready: HTMLElement; cd: HTMLElement }> = {} as never;
+  private shardN!: HTMLElement;
+  private weaponEl!: HTMLElement;
+  private codexList!: HTMLElement;
+  private atkCd: Record<Slot, HTMLElement> = {} as never;
   private chain!: HTMLElement;
   private banner!: HTMLElement;
   private bossWrap!: HTMLElement;
@@ -48,27 +50,17 @@ export class Hud {
   constructor(private ctx: Ctx) {
     this.build();
     ctx.events.on("COMBO_RESOLVE", (e) => {
-      const def = COMBOS.find((c) => c.name === e.name);
+      const def = ctx.player.weapon.combos.find((c) => c.name === e.name);
       this.showComboSplash(e.name, def?.color ?? 0xffffff, def?.recipe ?? []);
     });
     ctx.events.on("KILL_STREAK", (e) => { this.streakCount = e.count; this.streakT = 2; });
     ctx.events.on("PLAYER_HIT", () => { this.streakCount = 0; this.dmgT = 0.4; });
+    ctx.events.on("SHARD", (e) => { this.shardN.textContent = String(e.total); });
+    ctx.events.on("WEAPON_SWITCH", () => this.rebuildWeapon());
+    ctx.events.on("WEAPON_UNLOCK", (e) => { this.rebuildWeapon(); this.showBanner("UNLOCKED · " + e.name, 0x9ff0e4); });
   }
 
   private build(): void {
-    const glyphCells = GLYPH_ORDER.map((g) => {
-      const m = MOVES[g];
-      return `<div class="glyph" data-g="${g}" style="--gc:${cssHex(m.color)}">
-        <div class="glyph-cd"></div>
-        <div class="glyph-key">${m.key}</div>
-        <div class="glyph-name">${m.name}</div>
-      </div>`;
-    }).join("");
-
-    const codex = COMBOS.map((c) =>
-      `<div class="cb"><span class="cb-name" style="color:${cssHex(c.color)}">${c.name}</span><span class="cb-rec">${recipeChips(c.recipe)}</span></div>`,
-    ).join("");
-
     this.hud.innerHTML = `
       <div id="danger"></div>
       <div id="dmgflash"></div>
@@ -81,7 +73,9 @@ export class Hud {
 
       <div id="streak"></div>
 
-      <div id="combo-codex"><div class="cb-head">COMBOS</div>${codex}</div>
+      <div id="shards"><span class="sh-ico">◆</span><span class="sh-n">0</span><span class="sh-lbl">RIFT SHARDS</span></div>
+
+      <div id="combo-codex"><div class="cb-head">COMBOS</div><div id="codex-list"></div></div>
 
       <div id="combo-splash"><div class="cs-name"></div><div class="cs-row"></div></div>
       <div id="lockhint">CLICK TO AIM</div>
@@ -90,7 +84,7 @@ export class Hud {
 
       <div id="bottom">
         <div id="chain"></div>
-        <div id="glyphs">${glyphCells}</div>
+        <div id="weapon"></div>
       </div>
 
       <div id="health"><div class="hp-track"><div class="hp-fill"></div></div><div class="hp-text"></div></div>
@@ -98,6 +92,9 @@ export class Hud {
 
     this.hpFill = this.hud.querySelector(".hp-fill")!;
     this.hpText = this.hud.querySelector(".hp-text")!;
+    this.shardN = this.hud.querySelector("#shards .sh-n")!;
+    this.weaponEl = this.hud.querySelector("#weapon")!;
+    this.codexList = this.hud.querySelector("#codex-list")!;
     this.chain = this.hud.querySelector("#chain")!;
     this.banner = this.hud.querySelector("#banner")!;
     this.bossWrap = this.hud.querySelector("#boss-bar")!;
@@ -114,10 +111,33 @@ export class Hud {
     this.dmgFlash = this.hud.querySelector("#dmgflash")!;
     this.danger = this.hud.querySelector("#danger")!;
     this.crosshair = this.hud.querySelector("#crosshair")!;
-    for (const g of GLYPH_ORDER) {
-      const cell = this.hud.querySelector(`.glyph[data-g="${g}"]`)!;
-      this.slot[g] = { ready: cell as HTMLElement, cd: cell.querySelector(".glyph-cd") as HTMLElement };
-    }
+    this.rebuildWeapon();
+  }
+
+  /** Re-render the equipped weapon panel + its combo codex (on switch / unlock). */
+  private rebuildWeapon(): void {
+    const p = this.ctx.player;
+    const w = p.weapon;
+    const hex = cssHex(w.color);
+    const dots = WEAPONS.map((def) => {
+      const owned = p.weapons.includes(def.id);
+      const cur = def.id === w.id;
+      return `<i class="wdot${owned ? " own" : ""}${cur ? " cur" : ""}" style="--gc:${cssHex(def.color)}"></i>`;
+    }).join("");
+    this.weaponEl.innerHTML = `
+      <div class="wp-top"><span class="wp-name" style="color:${hex}">${w.name}</span>
+        <span class="wp-kind">${w.kind === "projectile" ? "RANGED" : "MELEE"}</span></div>
+      <div class="wp-atks">
+        <div class="atk" data-slot="light" style="--gc:${hex}"><div class="atk-cd"></div><b>LMB</b><span>FAST</span></div>
+        <div class="atk" data-slot="heavy" style="--gc:${hex}"><div class="atk-cd"></div><b>RMB</b><span>STRONG</span></div>
+      </div>
+      <div class="wp-swap"><span class="wdots">${dots}</span><span class="wp-hint">E · SWAP ${p.weapons.length}/${WEAPONS.length}</span></div>
+    `;
+    this.atkCd.light = this.weaponEl.querySelector('.atk[data-slot="light"] .atk-cd')!;
+    this.atkCd.heavy = this.weaponEl.querySelector('.atk[data-slot="heavy"] .atk-cd')!;
+    this.codexList.innerHTML = w.combos.map((c) =>
+      `<div class="cb"><span class="cb-name" style="color:${cssHex(c.color)}">${c.name}</span><span class="cb-rec">${recipeChips(c.recipe)}</span></div>`,
+    ).join("");
   }
 
   setVisible(on: boolean): void {
@@ -125,7 +145,6 @@ export class Hud {
   }
 
   showBanner(text: string, color: number): void {
-    // a state banner (wave/gate/boss) clears any combo splash so the two never stack
     this.comboSplash.style.animation = "none";
     this.comboFlash.style.animation = "none";
     this.comboSplash.style.opacity = "0";
@@ -136,9 +155,7 @@ export class Hud {
     this.bannerT = 1.4;
   }
 
-  /** Big centered combo payoff: name + recipe chips + a color flash that snaps in. */
-  showComboSplash(name: string, color: number, recipe: readonly GlyphId[]): void {
-    // a combo splash clears any state banner so the two never overlap
+  showComboSplash(name: string, color: number, recipe: readonly Slot[]): void {
     this.banner.style.opacity = "0";
     this.bannerT = 0;
     const hex = cssHex(color);
@@ -146,7 +163,6 @@ export class Hud {
     this.comboName.style.color = hex;
     this.comboRow.innerHTML = recipeChips(recipe);
     this.comboFlash.style.setProperty("--cc", hex);
-    // restart the CSS animations (none → reflow → set) so each combo replays the pop
     this.comboSplash.style.animation = "none";
     this.comboFlash.style.animation = "none";
     void this.comboSplash.offsetWidth;
@@ -158,10 +174,8 @@ export class Hud {
     const p = this.ctx.player;
     this.t += dt;
 
-    // health
     const frac = Math.max(0, p.hp / p.maxHp);
 
-    // damage flash + low-HP danger vignette
     if (this.dmgT > 0) { this.dmgT -= dt; this.dmgFlash.style.opacity = Math.max(0, this.dmgT / 0.4).toFixed(2); }
     else this.dmgFlash.style.opacity = "0";
     if (frac < 0.35 && p.alive) {
@@ -174,27 +188,20 @@ export class Hud {
     this.hpFill.style.background = frac > 0.3 ? "linear-gradient(90deg,#ffb24a,#ffe2a0)" : "linear-gradient(90deg,#ff4252,#ff8a3d)";
     this.hpText.textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;
 
-    // glyph cooldowns
-    for (const g of GLYPH_ORDER) {
-      const cd = p.cooldowns[g];
-      const max = MOVES[g].cooldown;
-      this.slot[g].cd.style.height = (Math.max(0, cd / max) * 100).toFixed(0) + "%";
-      this.slot[g].ready.classList.toggle("on-cd", cd > 0.01);
-    }
+    // weapon attack cooldowns (light/heavy)
+    const w = p.weapon;
+    this.atkCd.light.style.height = (Math.max(0, p.cooldowns.light / w.light.cooldown) * 100).toFixed(0) + "%";
+    this.atkCd.heavy.style.height = (Math.max(0, p.cooldowns.heavy / w.heavy.cooldown) * 100).toFixed(0) + "%";
 
     // combo chain pips + "armed" glow when the current buffer already forms a combo
     const buf = p.buffer;
-    const armed = matchCombo(buf);
-    this.chain.innerHTML = buf.map((g) => `<span class="pip" style="background:${cssHex(MOVES[g].color)}"></span>`).join("")
+    const armed = matchWeaponCombo(buf, w);
+    this.chain.innerHTML = buf.map((s) => `<span class="pip pip-${s}"></span>`).join("")
       + (armed ? `<span class="pip-armed" style="color:${cssHex(armed.color)}">▶ ${armed.name}</span>` : "");
 
-    // crosshair turns gold when the aim ray is on the boss weak point
     this.crosshair.classList.toggle("weak", this.ctx.combat.isAimingWeak());
-
-    // "CLICK TO AIM" prompt whenever we're playing but the mouse isn't captured
     this.lockHint.style.opacity = this.ctx.playing && !this.ctx.input.pointerLocked && p.alive ? "1" : "0";
 
-    // boss bar
     const boss = this.ctx.boss;
     if (boss) {
       this.bossWrap.style.opacity = "1";
@@ -203,9 +210,6 @@ export class Hud {
       this.bossWrap.style.opacity = "0";
     }
 
-    // objective / distance — only the distance-to-boss tracker on the causeway.
-    // Hidden during the fight (the boss HP bar already labels the Warden) so the two
-    // bars don't read as a confusing double health bar.
     if (boss && boss.alive) {
       this.objWrap.style.opacity = "0";
     } else {
@@ -217,14 +221,12 @@ export class Hud {
       this.objFill.style.width = (done * 100).toFixed(0) + "%";
     }
 
-    // banner decay
     if (this.bannerT > 0) {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.banner.style.opacity = "0";
       else this.banner.style.transform = `translateX(-50%) scale(${(1 + this.bannerT * 0.12).toFixed(3)})`;
     }
 
-    // kill streak
     if (this.streakT > 0) {
       this.streakT -= dt;
       this.streak.style.opacity = this.streakCount >= 3 ? "1" : "0";

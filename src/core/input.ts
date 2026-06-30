@@ -15,15 +15,15 @@ import * as THREE from "three";
 
 export type Action =
   | "up" | "down" | "left" | "right"
-  | "light" | "heavy" | "bolt" | "dash" | "pause";
+  | "light" | "heavy" | "switch" | "dash" | "pause";
 
 export const ACTIONS: Action[] = [
-  "up", "down", "left", "right", "light", "heavy", "bolt", "dash", "pause",
+  "up", "down", "left", "right", "light", "heavy", "switch", "dash", "pause",
 ];
 
 export const ACTION_LABELS: Record<Action, string> = {
   up: "Forward", down: "Back", left: "Strafe Left", right: "Strafe Right",
-  light: "Strike (light)", heavy: "Cleave (heavy)", bolt: "Bolt (ranged)",
+  light: "Light Attack", heavy: "Heavy Attack", switch: "Swap Weapon",
   dash: "Dash", pause: "Pause",
 };
 
@@ -36,7 +36,7 @@ const DEFAULT_BINDINGS: Bindings = {
   right: ["KeyD", "ArrowRight"],
   light: ["Mouse0", "KeyJ"],
   heavy: ["Mouse2", "KeyK"],
-  bolt: ["KeyE", "KeyL"],
+  switch: ["KeyE", "KeyQ"],
   dash: ["Space", "ShiftLeft"],
   pause: ["Escape"],
 };
@@ -50,7 +50,7 @@ const DEFAULT_BINDINGS: Bindings = {
 const PAD_ACTION: Partial<Record<Action, number[]>> = {
   light: [7],      // RT
   heavy: [5],      // RB
-  bolt: [4],       // LB
+  switch: [4],     // LB
   dash: [0],       // A
   pause: [9],      // Start
 };

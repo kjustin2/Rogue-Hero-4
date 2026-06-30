@@ -33,7 +33,7 @@ export class Boss implements Hittable {
   private lunge = 0; // strike snap
   private spots: THREE.Vector3[] = [];
   private teles: TelegraphHandle[] = [];
-  private cd = 2.2;
+  private cd = 1.8;
   private attack: Attack = null;
   private windup = 0;
   private windupMax = 1;
@@ -196,11 +196,12 @@ export class Boss implements Hittable {
       this.group.position.y = Math.sin(this.t * 1.2) * 0.2;
       if (this.rise >= 1 && !this.risen) { this.risen = true; this.onRisen(); }
     } else if (!this.dying) {
-      // attack body animation: inflate + rise on wind-up, squash + drop on the strike
+      // attack tell via a steady hover that LIFTS on wind-up and DROPS on the strike —
+      // scale stays locked at 1.3 (the old scale pulsing read as a weird grow/shrink).
       this.charge = this.attack ? 1 - this.windup / this.windupMax : damp(this.charge, 0, 6, dt);
       this.lunge = damp(this.lunge, 0, 7, dt);
-      this.group.scale.setScalar(1.3 * (1 + this.charge * 0.08 - this.lunge * 0.14));
-      this.group.position.y = Math.sin(this.t * 1.2) * 0.2 + this.charge * 0.35 - this.lunge * 0.5;
+      this.group.scale.setScalar(1.3);
+      this.group.position.y = Math.sin(this.t * 1.2) * 0.15 + this.charge * 0.5 - this.lunge * 0.7;
       this.coreMat.emissiveIntensity += this.charge * 4;
     }
 
@@ -233,7 +234,7 @@ export class Boss implements Hittable {
         : this.phase === 2 ? ["slam", "volley", "sweep", "sweep"]
           : ["collapse", "sweep", "volley", "collapse"];
     this.attack = this.ctx.rng.pick(pool);
-    this.windupMax = this.attack === "collapse" ? 1.4 : this.attack === "sweep" ? 1.2 : this.attack === "slam" ? 1.0 : 0.8;
+    this.windupMax = this.attack === "collapse" ? 1.2 : this.attack === "sweep" ? 1.0 : this.attack === "slam" ? 0.85 : 0.7;
     if (this.phase === 2) this.windupMax *= 0.8;
     if (this.phase === 3) this.windupMax *= 0.65;
     this.windup = this.windupMax;
@@ -269,7 +270,7 @@ export class Boss implements Hittable {
     this.tele = null;
     this.charge = 0;
     this.lunge = 1; // snap the body forward/down on the strike
-    this.cd = this.phase === 3 ? 1.0 : this.phase === 2 ? 1.4 : 2.2;
+    this.cd = this.phase === 3 ? 0.85 : this.phase === 2 ? 1.1 : 1.7;
     const p = this.ctx.player;
 
     if (a === "slam") {
@@ -279,11 +280,14 @@ export class Boss implements Hittable {
       if (Math.hypot(p.pos.x - this.aim.x, p.pos.z - this.aim.z) <= 5) this.ctx.combat.damagePlayer(28, this.aim.x, this.aim.z);
     } else if (a === "volley") {
       const n = this.phase === 2 ? 7 : 5;
+      // aim DOWN to the player's torso so bolts arrive at chest height, not over the head
+      const sy = 4.4, ty = 1.3;
+      const horiz = Math.max(2, Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z));
       const base = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
       for (let i = 0; i < n; i++) {
         const ang = base + (i - (n - 1) / 2) * 0.18;
-        const dir = new THREE.Vector3(Math.sin(ang), -0.05, Math.cos(ang));
-        this.ctx.projectiles.spawn(this.pos.x, 4.4, this.pos.z, dir, 20, 14, false, this.hitColor, 3);
+        const dir = new THREE.Vector3(Math.sin(ang) * horiz, ty - sy, Math.cos(ang) * horiz);
+        this.ctx.projectiles.spawn(this.pos.x, sy, this.pos.z, dir, 24, 14, false, this.hitColor, 3);
       }
     } else if (a === "sweep") {
       // hit if player is within the swept band along aimAngle

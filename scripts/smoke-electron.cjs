@@ -175,22 +175,22 @@ app.whenReady().then(async () => {
       await frames(18); // let enemies close in
       await shot(win, "combat");
 
-      // --- attack animation mid-swing (a Cleave overhead)
+      // --- heavy attack mid-swing (RMB / K)
       await tap("KeyK"); await frames(9);
       await shot(win, "attack");
       await frames(14);
 
-      // --- drive a CRESCENDO combo (Strike, Strike, Cleave = J, J, K)
+      // --- drive a STARFALL combo on the starter (3× light = J, J, J → big barrage shot)
       await tap("KeyJ"); await frames(11);
       await tap("KeyJ"); await frames(11);
-      await tap("KeyK"); await frames(11);
+      await tap("KeyJ"); await frames(11);
       const lastCombo = await js(`window.__rh4.player.lastCombo`);
-      expect(lastCombo === "CRESCENDO", "CRESCENDO combo did not resolve (got '" + lastCombo + "')");
+      expect(lastCombo === "STARFALL", "STARFALL combo did not resolve (got '" + lastCombo + "')");
       await shot(win, "combat-combo");
 
-      // --- bolt fires a projectile (capture early so the comet-tracer reads near camera)
-      await tap("KeyE"); await frames(2);
-      await shot(win, "bolt");
+      // --- a single light attack fires a projectile (capture early so the comet reads near camera)
+      await tap("KeyJ"); await frames(2);
+      await shot(win, "projectile");
 
       // --- fairness: low-HP danger vignette + health-shard heal
       await js(`window.__rh4.player.hp = 28`);
@@ -207,6 +207,21 @@ app.whenReady().then(async () => {
       await frames(10);
       expect(await js(`window.__rh4.level.gates[0].open === true`), "gate did not open after clearing the wave");
       await shot(win, "gate-open");
+
+      // --- weapon swapping: grant the arsenal, swap to a melee weapon, show the rack + a swing
+      await js(`window.__rh4debug.unlockAll()`);
+      const owned = await js(`window.__rh4.player.weapons.length`);
+      expect(owned >= 5, "unlockAll did not grant the full arsenal (" + owned + ")");
+      await js(`window.__rh4debug.swapWeapon()`); // boltcaster -> ember greatsword (melee)
+      const swapped = await js(`window.__rh4.player.weapon.kind`);
+      expect(swapped === "melee", "swap did not move to the melee weapon (got '" + swapped + "')");
+      await js(`['husk','husk'].forEach((k,i)=>window.__rh4debug.spawn(k, -3 + i*6, window.__rh4.player.pos.z + 5))`);
+      await frames(6);
+      await tap("KeyJ"); await frames(5); // a melee light swing with the swapped weapon
+      await shot(win, "weapons");
+      await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
+      await js(`window.__rh4.player.wi = 0; window.__rh4.player.cycleWeapon(0)`); // back to the projectile starter
+      await frames(6);
 
       // --- jump to the boss arena (spawning triggers the boss-intro cutscene)
       await js(`window.__rh4debug.scenario('boss')`);
@@ -230,10 +245,10 @@ app.whenReady().then(async () => {
       await frames(2);
       expect(await js(`window.__rh4.combat.isAimingWeak()`), "aim ray not on the boss core when looking up");
       const bHp0 = await js(`window.__rh4.boss.hp`);
-      await tap("KeyE");
+      await tap("KeyJ"); // light projectile fired along the look ray
       await frames(36);
       const bHp1 = await js(`window.__rh4.boss.hp`);
-      expect(bHp1 < bHp0, "bolt aimed at the core did not hit the boss");
+      expect(bHp1 < bHp0, "projectile aimed at the core did not hit the boss");
       await shot(win, "weakpoint");
       await js(`window.__rh4.cam.pitch = 0`);
 

@@ -17,8 +17,14 @@ export interface EventMap {
   /** Player dash with i-frames. */
   DODGE: Record<string, never>;
   HEAL: { amount: number };
-  /** A named glyph-combo resolved (chained moves). `tier` 1..3 scales the fanfare. */
+  /** A named weapon combo resolved (chained light/heavy). `tier` 1..3 scales the fanfare. */
   COMBO_RESOLVE: { name: string; tier: number };
+  /** A rift shard was collected — drives the HUD shard counter. `total` is the running count. */
+  SHARD: { total: number };
+  /** A new weapon unlocked at a shard threshold. */
+  WEAPON_UNLOCK: { id: string; name: string };
+  /** The player switched the equipped weapon. */
+  WEAPON_SWITCH: { id: string; name: string };
   /** Boss health changed — drives the boss bar. */
   BOSS_HP: { hp: number; maxHp: number };
   BOSS_INTRO: { name: string };

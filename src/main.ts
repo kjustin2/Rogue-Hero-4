@@ -24,7 +24,7 @@ import { EnemyManager, type EnemyKind } from "./game/enemies";
 import { Projectiles } from "./game/projectiles";
 import { Pickups } from "./game/pickups";
 import { Boss } from "./game/boss";
-import { comboSelfCheck } from "./game/combos";
+import { weaponComboSelfCheck, WEAPONS } from "./game/weapons";
 import { Hud } from "./ui/hud";
 import { Menus } from "./ui/menus";
 import type { Ctx } from "./game/ctx";
@@ -252,7 +252,7 @@ function updateBossCutscene(dt: number): void {
   if (ctx.rng.next() < 0.08 + k * 0.12) ctx.cam.addTrauma(0.12 + k * 0.16);
   // skippable with any attack/dodge input
   if (ctx.input.actionPressed("dash") || ctx.input.actionPressed("light")
-    || ctx.input.actionPressed("heavy") || ctx.input.actionPressed("bolt")) cineT = 0;
+    || ctx.input.actionPressed("heavy") || ctx.input.actionPressed("switch")) cineT = 0;
   if (cineT <= 0) endBossCutscene();
 }
 
@@ -316,8 +316,11 @@ w.__rh4debug = {
   scenario,
   start: startRun,
   setState: (s: State) => setState(s),
-  checkCombos: comboSelfCheck,
+  checkCombos: weaponComboSelfCheck,
   spawn: (k: EnemyKind, x: number, z: number) => ctx.enemies.spawn(k, x, z),
+  // grant the full arsenal (screenshot/manual showcase of weapon swapping)
+  unlockAll: () => { for (const w of WEAPONS) if (!ctx.player.weapons.includes(w.id)) ctx.player.weapons.push(w.id); },
+  swapWeapon: () => ctx.player.cycleWeapon(1),
   stats: () => ({ time: runTime, kills, state, enemies: ctx.enemies.aliveCount(), bossHp: ctx.boss?.hp ?? null }),
   // deterministic stepping for headless tests (rAF is suspended in a hidden window)
   tick: (dt = 0.033) => frame(dt),
