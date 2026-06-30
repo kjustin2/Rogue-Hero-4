@@ -1,10 +1,11 @@
 # Rogue Hero 4 — first-person neon combo brawler (plain Three.js)
 
 A first-person action game: you walk down a long, wide neon **causeway**, fight rift-born
-enemies at sealed **gates**, and bring down the **Rift Warden** boss at the far end. You have a
-**limited moveset** of three glyphs (Strike / Cleave / Bolt) plus a Dash; chaining glyphs within
-a time window resolves named **combos** (CRESCENDO, ARC LANCE, QUAKE, VOID NOVA) with big AoE
-payoffs and signature VFX.
+enemies at sealed **gates**, and bring down the **Rift Warden** boss at the far end. You wield a
+**swappable arsenal** of weapons (most ranged, some melee), each with a fast LIGHT attack (LMB), a
+strong HEAVY attack (RMB), and its own light/heavy **combos** (e.g. firing light 3× → a BARRAGE
+big-shot). **E** swaps weapon, **Dash** dodges. Kills drop **rift shards** that both heal and
+unlock new weapons mid-run.
 
 Stack: **plain Three.js + Vite + strict TypeScript, shipped as Electron** — no game engine, no UI
 framework, no test framework. It was rebuilt from the Rogue-Hero-3 action-roguelike base: the proven
@@ -16,16 +17,19 @@ roguelite gameplay was replaced with this first-person combo loop.
   `setAnimationLoop`), the state machine (`title → playing → paused → dead → victory`), the run flow
   (gate waves → boss → victory/death), and the **`window.__rh4`** test seam (`__rh4debug.scenario`,
   `frames(n,dt)`, `checkCombos`).
-- **`src/game/`** — Three-free-ish sim: `ctx.ts` (type-only hub), `moves.ts` (glyph catalog, data),
-  `combos.ts` (pure suffix matcher + `comboSelfCheck`), `player.ts` (FP controller + moveset +
-  combo buffer + weapon viewmodel), `combat.ts` (the one damage funnel: `dealDamage` / `meleeSweep`
-  / `resolveCombo` / `damagePlayer`), `enemies.ts` (3 archetypes + wave spawner), `boss.ts`,
-  `level.ts` (level-as-data: causeway geometry + bounds clamp + gate barriers), `projectiles.ts`.
+- **`src/game/`** — Three-free-ish sim: `ctx.ts` (type-only hub), `weapons.ts` (arsenal catalog:
+  per-weapon light/heavy attack defs + light/heavy combos + `matchWeaponCombo`/`weaponComboSelfCheck`
+  + unlock thresholds), `player.ts` (FP controller + weapon switch/light/heavy + combo buffer +
+  rift-shard counter/unlocks + weapon viewmodel), `combat.ts` (the one damage funnel: `dealDamage` /
+  `meleeSweep` / `resolveCombo` incl. the `barrage` big-shot / `damagePlayer`), `enemies.ts`
+  (4 archetypes + wave spawner), `boss.ts`, `pickups.ts` (rift shards), `level.ts` (level-as-data:
+  causeway geometry + bounds clamp + gate barriers), `projectiles.ts` (pooled comets + big/pierce).
 - **`src/render/`** — `stage.ts` (renderer + post chain), `fpsCamera.ts` (yaw/pitch mouse-look +
   trauma/kick/FOV feel, parks the stage camera at the eyes), feel primitives `particles.ts`,
   `trail.ts`, `telegraphs.ts`, `floaters.ts` (reused from RH3, untouched).
-- **`src/ui/`** — `hud.ts` (crosshair, health, glyph cooldowns, live combo chain, combo codex, boss
-  bar, distance) and `menus.ts` (title/pause/dead/victory).
+- **`src/ui/`** — `hud.ts` (crosshair, health, rift-shard counter, equipped-weapon panel + swap rack,
+  per-weapon combo codex, live combo chain, boss bar, distance) and `menus.ts` (title/pause/dead/
+  victory; title is deliberately title + button only — no wall of text).
 - **`src/core/`**, **`src/audio/`** — `events.ts` (typed bus, rewritten EventMap), `input.ts`
   (repurposed actions + pointer-lock mouse-look), `math.ts`, `rng.ts`, `sfx.ts` (procedural),
   `music.ts` (streamed).
@@ -44,9 +48,9 @@ roguelite gameplay was replaced with this first-person combo loop.
 - `npm run typecheck` — `tsc --noEmit`; the static gate.
 - `npm run build` — typecheck + `vite build`.
 - `npm run smoke` — builds, boots the BUILT game in a (showInactive) Electron/Chromium window, drives
-  title → path → combat → **CRESCENDO combo** → boss → victory → death, asserts non-black frames +
-  zero console errors + `checkCombos()` clean + draw calls > 0, writes `shots/electron-*.png`. **Read
-  the screenshots** — a clean console over a black canvas is still a failure.
+  title → path → combat → **STARFALL barrage combo** → weapon-swap showcase → boss → victory → death,
+  asserts non-black frames + zero console errors + `checkCombos()` clean + draw calls > 0, writes
+  `shots/electron-*.png`. **Read the screenshots** — a clean console over a black canvas is still a failure.
 - `npm start` — standalone Electron window (serves `dist/` over fixed loopback port 41730 so
   origin-keyed localStorage survives).
 - A never-shown Electron window suspends rAF and won't recomposite the DOM overlay — the smoke drives
