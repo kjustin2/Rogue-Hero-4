@@ -122,8 +122,9 @@ export class Particles {
     }
 
     // Light-beam pool (spawn pillars, arrivals)
-    const beamGeo = new THREE.CylinderGeometry(0.4, 0.55, 9, 10, 1, true);
-    beamGeo.translate(0, 4.5, 0);
+    // ponytail: shorter/thinner than before (was 9 tall, r0.4) — a close airstrike pillar bloomed into a blinding screen-filling dome
+    const beamGeo = new THREE.CylinderGeometry(0.3, 0.42, 6, 10, 1, true);
+    beamGeo.translate(0, 3, 0);
     for (let i = 0; i < 12; i++) {
       const mat = new THREE.MeshBasicMaterial({
         color: 0xffffff, transparent: true, opacity: 0,
@@ -191,7 +192,7 @@ export class Particles {
     b.mesh.position.set(x, 0, z);
     b.mesh.scale.set(1, 1, 1);
     b.mat.color.set(color);
-    b.mat.opacity = 0.7;
+    b.mat.opacity = 0.42;
   }
 
   burst(opts: BurstOpts): void {
@@ -354,7 +355,7 @@ export class Particles {
       b.t += dt;
       const k = Math.min(1, b.t / 0.5);
       b.mesh.scale.set(1 - k * 0.75, 1 + k * 0.3, 1 - k * 0.75);
-      b.mat.opacity = 0.7 * (1 - k);
+      b.mat.opacity = 0.42 * (1 - k);
       if (k >= 1) {
         b.t = -1;
         b.mesh.visible = false;

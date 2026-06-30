@@ -549,7 +549,7 @@ export class Player {
   private muzzleFx(color: number, heavy: boolean): void {
     this.tipMarker.getWorldPosition(this.tip);
     this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: heavy ? 22 : 14, color: [color, 0xffffff], speed: [3, 10], size: [0.1, 0.34], life: [0.12, 0.34] });
-    this.ctx.fx.ring(this.tip.x, this.tip.z, { radius: 1.6, color, duration: 0.22, y: this.tip.y, startRadius: 0.2 });
+    this.ctx.fx.ring(this.tip.x, this.tip.z, { radius: 1.1, color, duration: 0.22, y: this.tip.y, startRadius: 0.2 });
     this.ctx.cam.pulseFov(0.12);
   }
 

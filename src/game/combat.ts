@@ -175,7 +175,7 @@ export class Combat {
       this.ctx.fx.beam(s.x, s.z, s.color);
       this.ctx.fx.ring(s.x, s.z, { radius: s.radius, color: s.color, duration: 0.4, y: 0.2, startRadius: 0.4 });
       // ponytail: colored core, no pure-white ring — overlapping strikes were stacking additive white into a full-frame washout
-      this.ctx.fx.burst({ x: s.x, y: 0.5, z: s.z, count: 16, color: s.color, speed: [6, 16], up: 0.7, life: [0.3, 0.7] });
+      this.ctx.fx.burst({ x: s.x, y: 0.5, z: s.z, count: 14, color: s.color, speed: [6, 16], up: 0.7, size: [0.16, 0.45], life: [0.3, 0.7] });
       this.ctx.cam.addTrauma(0.14);
       this.ctx.sfx.explosion();
     }

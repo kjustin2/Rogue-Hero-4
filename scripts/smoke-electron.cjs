@@ -256,7 +256,10 @@ app.whenReady().then(async () => {
       await shot(win, "wpn-laser"); await clearPack();
 
       await equip("stormcaller");
-      await spawnPack(); await frames(3); await tap("KeyJ"); await frames(22); // air strike lands after its wind-up
+      // spawn the pack downrange at the strike zone so the airstrike reads as raining on a distant group
+      // (not the point-blank husk-bloom you'd get letting them rush the camera) — HEAVY = 3 strikes, the worst case
+      await js(`[0,1,2].forEach(i=>window.__rh4debug.spawn('husk', -5 + i*5, window.__rh4.player.pos.z + 18))`);
+      await frames(3); await tap("KeyK"); await frames(22);
       await shot(win, "wpn-airstrike"); await clearPack();
 
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the projectile starter for the boss
