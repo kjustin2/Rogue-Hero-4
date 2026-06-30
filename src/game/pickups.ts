@@ -40,12 +40,24 @@ export class Pickups {
     if (this.ctx.rng.chance(chance)) this.drop(x, z, heal);
   }
 
+  /** A distinct floating silhouette per weapon type so a drop reads at a glance. */
+  private iconGeo(id: string): THREE.BufferGeometry {
+    switch (id) {
+      case "boltcaster": return new THREE.ConeGeometry(0.28, 1.0, 6);          // a bolt/dart
+      case "greatsword": return new THREE.BoxGeometry(0.18, 1.1, 0.06);        // a blade
+      case "rocketlance": return new THREE.SphereGeometry(0.42, 14, 12);       // a cannonball
+      case "arclaser": return new THREE.OctahedronGeometry(0.5);               // a crystal
+      case "stormcaller": return new THREE.IcosahedronGeometry(0.46, 0);       // a storm orb
+      default: return new THREE.OctahedronGeometry(0.5);
+    }
+  }
+
   /** Place an unclaimed weapon on the causeway: a hovering icon under a light pillar. */
   dropWeapon(id: string, x: number, z: number): void {
     const w = weaponById(id);
     const group = new THREE.Group();
     const iconMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: w.color, emissiveIntensity: 2.6, roughness: 0.3, metalness: 0.4 });
-    const icon = new THREE.Mesh(new THREE.OctahedronGeometry(0.6), iconMat);
+    const icon = new THREE.Mesh(this.iconGeo(id), iconMat);
     icon.position.y = 1.5;
     const pillarMat = new THREE.MeshBasicMaterial({ color: w.color, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.85, 9, 14, 1, true), pillarMat);

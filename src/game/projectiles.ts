@@ -2,11 +2,17 @@ import * as THREE from "three";
 import type { Ctx } from "./ctx";
 import { ARENA_CENTER, ARENA_RADIUS, HALF_WIDTH } from "./level";
 
+type Shape = "dart" | "cannonball" | "comet";
+
 interface Shot {
   group: THREE.Group;
   glow: THREE.Mesh;
   head: THREE.Mesh;
+  tail: THREE.Mesh;
+  ring: THREE.Mesh;
+  dart: THREE.Mesh;
   runes: THREE.Group;
+  shape: Shape;
   glowMat: THREE.MeshBasicMaterial;
   tailMat: THREE.MeshBasicMaterial;
   runeMat: THREE.MeshBasicMaterial;
@@ -47,6 +53,7 @@ export class Projectiles {
   private ringGeo = new THREE.TorusGeometry(0.34, 0.05, 6, 18);
   private runeGeo = new THREE.TetrahedronGeometry(0.14);
   private tailGeo: THREE.ConeGeometry;
+  private dartGeo: THREE.ConeGeometry;
   private headMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
   private q = new THREE.Quaternion();
   private vn = new THREE.Vector3();
@@ -56,6 +63,10 @@ export class Projectiles {
     this.tailGeo = new THREE.ConeGeometry(0.3, 1.8, 12, 1, true);
     this.tailGeo.rotateX(Math.PI / 2);
     this.tailGeo.translate(0, 0, -0.9);
+    // crossbow dart: a long thin spike, apex forward (+Z)
+    this.dartGeo = new THREE.ConeGeometry(0.09, 1.1, 6);
+    this.dartGeo.rotateX(Math.PI / 2);
+    this.dartGeo.translate(0, 0, 0.2);
 
     for (let i = 0; i < POOL; i++) {
       const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -66,6 +77,7 @@ export class Projectiles {
       const head = new THREE.Mesh(this.headGeo, this.headMat);
       const tail = new THREE.Mesh(this.tailGeo, tailMat);
       const ring = new THREE.Mesh(this.ringGeo, glowMat); // halo encircling the travel axis (local +Z)
+      const dart = new THREE.Mesh(this.dartGeo, tailMat); // solid spike for crossbow shots
       const runes = new THREE.Group(); // rune shards that orbit the head (spun in update)
       for (let k = 0; k < 3; k++) {
         const tet = new THREE.Mesh(this.runeGeo, runeMat);
@@ -73,16 +85,16 @@ export class Projectiles {
         tet.position.set(Math.cos(a) * 0.44, Math.sin(a) * 0.44, 0);
         runes.add(tet);
       }
-      group.add(glow, head, tail, ring, runes);
+      group.add(glow, head, tail, ring, dart, runes);
       group.visible = false;
       group.frustumCulled = false;
       group.renderOrder = 5;
       this.ctx.stage.scene.add(group);
-      this.pool.push({ group, glow, head, runes, glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
+      this.pool.push({ group, glow, head, tail, ring, dart, runes, shape: "comet", glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
     }
   }
 
-  spawn(x: number, y: number, z: number, dir: THREE.Vector3, speed: number, dmg: number, friendly: boolean, color: number, knockback = 3, opts?: { scale?: number; pierce?: boolean; explode?: number; gravity?: number }): void {
+  spawn(x: number, y: number, z: number, dir: THREE.Vector3, speed: number, dmg: number, friendly: boolean, color: number, knockback = 3, opts?: { scale?: number; pierce?: boolean; explode?: number; gravity?: number; shape?: Shape }): void {
     const s = this.pool.find((p) => !p.active);
     if (!s) return;
     s.active = true;
@@ -104,6 +116,14 @@ export class Projectiles {
     s.glowMat.color.setHex(color);
     s.tailMat.color.setHex(color);
     s.runeMat.color.setHex(color);
+    // shape: a thin crossbow dart, a heavy iron cannonball, or the full runed comet
+    s.shape = opts?.shape ?? "comet";
+    s.dart.visible = s.shape === "dart";
+    s.glow.visible = s.shape !== "dart";
+    s.head.visible = s.shape !== "dart";
+    s.ring.visible = s.shape === "comet";
+    s.runes.visible = s.shape === "comet";
+    s.tail.visible = true;
     s.group.visible = true;
     this.orient(s);
     // muzzle flash — fatter for a big shot
@@ -135,14 +155,15 @@ export class Projectiles {
       if (s.grav && p.y <= 0.25) { this.detonate(s); continue; }
       // living-bolt animation: pulsing glow + core, rune shards orbiting the travel axis
       const age = 3.2 - s.life;
-      s.glow.scale.setScalar(0.85 + Math.sin(age * 30) * 0.15);
-      s.head.scale.setScalar(0.9 + Math.sin(age * 46) * 0.22);
+      const ball = s.shape === "cannonball"; // heavy iron shot reads bigger + smokier
+      s.glow.scale.setScalar((ball ? 1.5 : 0.85) + Math.sin(age * 30) * 0.15);
+      s.head.scale.setScalar((ball ? 1.7 : 0.9) + Math.sin(age * 46) * 0.22);
       s.runes.rotation.z += dt * 9;
-      // throttled trailing sparks
+      // throttled trailing sparks (a thicker, sootier trail behind a cannonball)
       s.trailT -= dt;
       if (s.trailT <= 0) {
-        s.trailT = 0.035;
-        this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: 1, color: s.color, speed: [0.2, 1.2], size: [0.12, 0.26], life: [0.18, 0.36], gravity: 0, drag: 3 });
+        s.trailT = ball ? 0.022 : 0.035;
+        this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: ball ? 2 : 1, color: ball ? [s.color, 0x442018] : s.color, speed: [0.2, 1.2], size: ball ? [0.2, 0.42] : [0.12, 0.26], life: [0.18, 0.36], gravity: 0, drag: 3 });
       }
 
       // out of bounds / expired

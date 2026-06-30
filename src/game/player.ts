@@ -16,39 +16,111 @@ type Pose = [number, number, number, number, number, number];
 const REST: Pose = [0.52, -0.58, -0.95, 0.12, -0.2, 0.08];
 
 interface SwingKey { t: number; pose: Pose; flash?: number; stretch?: number }
-type PoseId = "light" | "heavy" | "cast";
+type PoseId =
+  | "slashLight" | "slashHeavy"
+  | "crossbowLight" | "crossbowHeavy"
+  | "cannonLight" | "cannonHeavy"
+  | "beamLight" | "beamHeavy"
+  | "summonLight" | "summonHeavy";
 
 /**
- * Keyframed swings: anticipation → a fast snap through the impact key → settle.
- * Three reusable motions — a quick light slash, a heavy overhead, and a ranged
- * cast-thrust — picked by attack type + slot (melee light/heavy vs projectile cast).
+ * Per-weapon keyframed motions, picked by weapon + slot so each weapon FEELS distinct:
+ * a greatsword slashes/chops, a crossbow draws + recoils, a bombard kicks hard, a prism
+ * rod thrusts (heavy charges then unleashes), a storm staff raises + slams down a call.
  */
 const SWINGS: Record<PoseId, SwingKey[]> = {
-  // fast diagonal slash
-  light: [
+  // greatsword — fast diagonal slash
+  slashLight: [
     { t: 0, pose: REST },
     { t: 0.16, pose: [0.74, -0.42, -0.8, -0.25, -0.9, 0.95] },
     { t: 0.42, pose: [0.2, -0.7, -1.42, 0.35, 1.15, -1.0], flash: 3.8, stretch: 1.7 },
     { t: 0.62, pose: [0.34, -0.66, -1.05, 0.2, 0.7, -0.5] },
     { t: 1, pose: REST },
   ],
-  // heavy overhead chop
-  heavy: [
+  // greatsword — heavy overhead chop
+  slashHeavy: [
     { t: 0, pose: REST },
     { t: 0.3, pose: [0.3, 0.22, -0.5, -2.1, -0.18, 0.22] },
     { t: 0.5, pose: [0.42, -0.92, -1.55, 1.6, -0.04, 0.0], flash: 6.5, stretch: 1.95 },
     { t: 0.66, pose: [0.46, -0.62, -1.0, 0.55, -0.1, 0.05] },
     { t: 1, pose: REST },
   ],
-  // ranged cast-thrust
-  cast: [
+  // crossbow — settle aim, then kick back + muzzle-up on the loose
+  crossbowLight: [
     { t: 0, pose: REST },
-    { t: 0.34, pose: [0.6, -0.48, -0.62, -0.2, -0.3, 0.12] },
-    { t: 0.56, pose: [0.5, -0.55, -1.45, 0.3, -0.16, 0.04], flash: 4.5 },
-    { t: 0.72, pose: [0.54, -0.55, -1.05, 0.1, -0.2, 0.06] },
+    { t: 0.18, pose: [0.52, -0.55, -1.0, 0.0, -0.2, 0.08] },
+    { t: 0.34, pose: [0.5, -0.5, -0.78, -0.24, -0.2, 0.08], flash: 3.6 },
+    { t: 0.55, pose: [0.52, -0.57, -0.95, 0.06, -0.2, 0.08] },
+    { t: 1, pose: REST },
+  ],
+  // crossbow — long draw (charge) then a big recoil
+  crossbowHeavy: [
+    { t: 0, pose: REST },
+    { t: 0.42, pose: [0.5, -0.5, -0.68, -0.1, -0.18, 0.08] },
+    { t: 0.64, pose: [0.52, -0.44, -0.9, -0.4, -0.2, 0.08], flash: 6.0 },
+    { t: 0.82, pose: [0.52, -0.56, -0.98, 0.05, -0.2, 0.08] },
+    { t: 1, pose: REST },
+  ],
+  // bombard — a sharp backward boom-kick
+  cannonLight: [
+    { t: 0, pose: REST },
+    { t: 0.16, pose: [0.52, -0.55, -0.98, -0.05, -0.2, 0.08] },
+    { t: 0.3, pose: [0.5, -0.42, -0.62, -0.55, -0.2, 0.12], flash: 5.5 },
+    { t: 0.6, pose: [0.52, -0.56, -0.96, 0.08, -0.2, 0.08] },
+    { t: 1, pose: REST },
+  ],
+  // bombard — raise the muzzle to lob the mortar, then a heavy kick
+  cannonHeavy: [
+    { t: 0, pose: REST },
+    { t: 0.34, pose: [0.5, -0.4, -0.85, -0.75, -0.2, 0.1] },
+    { t: 0.54, pose: [0.48, -0.32, -0.7, -1.0, -0.2, 0.12], flash: 7.5 },
+    { t: 0.78, pose: [0.52, -0.54, -0.95, 0.05, -0.2, 0.08] },
+    { t: 1, pose: REST },
+  ],
+  // prism rod — a quick forward thrust
+  beamLight: [
+    { t: 0, pose: REST },
+    { t: 0.22, pose: [0.52, -0.55, -1.18, 0.1, -0.2, 0.08], flash: 4.0 },
+    { t: 0.45, pose: [0.52, -0.57, -1.0, 0.12, -0.2, 0.08] },
+    { t: 1, pose: REST },
+  ],
+  // prism rod — wind back to charge, then unleash a sustained lance-beam
+  beamHeavy: [
+    { t: 0, pose: REST },
+    { t: 0.36, pose: [0.56, -0.5, -0.78, -0.18, -0.32, 0.1] },
+    { t: 0.52, pose: [0.52, -0.55, -1.22, 0.12, -0.2, 0.08], flash: 7.0 },
+    { t: 0.82, pose: [0.52, -0.56, -1.12, 0.12, -0.2, 0.08], flash: 3.0 },
+    { t: 1, pose: REST },
+  ],
+  // storm staff — raise the staff, then point down to call the strike
+  summonLight: [
+    { t: 0, pose: REST },
+    { t: 0.26, pose: [0.5, -0.3, -0.8, -0.85, -0.2, 0.05] },
+    { t: 0.46, pose: [0.5, -0.5, -1.02, 0.32, -0.2, 0.05], flash: 5.0 },
+    { t: 0.72, pose: [0.52, -0.56, -0.96, 0.1, -0.2, 0.08] },
+    { t: 1, pose: REST },
+  ],
+  // storm staff — raise high overhead, then slam down a cataclysm
+  summonHeavy: [
+    { t: 0, pose: REST },
+    { t: 0.34, pose: [0.46, -0.14, -0.7, -1.35, -0.18, 0.05] },
+    { t: 0.56, pose: [0.5, -0.5, -1.06, 0.55, -0.2, 0.05], flash: 8.0 },
+    { t: 0.78, pose: [0.52, -0.56, -0.96, 0.1, -0.2, 0.08] },
     { t: 1, pose: REST },
   ],
 };
+
+function poseFor(weaponId: string, slot: Slot, isMelee: boolean): PoseId {
+  if (isMelee) return slot === "light" ? "slashLight" : "slashHeavy";
+  const map: Record<string, [PoseId, PoseId]> = {
+    boltcaster: ["crossbowLight", "crossbowHeavy"],
+    rocketlance: ["cannonLight", "cannonHeavy"],
+    arclaser: ["beamLight", "beamHeavy"],
+    stormcaller: ["summonLight", "summonHeavy"],
+  };
+  const pair = map[weaponId] ?? ["beamLight", "beamHeavy"];
+  return slot === "light" ? pair[0] : pair[1];
+}
 
 function samplePose(keys: SwingKey[], p: number): { pose: Pose; flash: number; stretch: number } {
   let a = keys[0];
@@ -72,6 +144,17 @@ function samplePose(keys: SwingKey[], p: number): { pose: Pose; flash: number; s
 }
 
 interface ActiveAttack { a: AttackDef; slot: Slot; color: number; pose: PoseId }
+
+/** A built first-person weapon model: its group, the emissive/additive bits to pulse on
+ * attack, where its tip/base sit (trail + muzzle), and an optional stretch mesh (blade). */
+interface ModelEntry {
+  group: THREE.Group;
+  glow: THREE.MeshStandardMaterial[];
+  add: { mat: THREE.MeshBasicMaterial; mesh: THREE.Mesh }[];
+  tip: [number, number, number];
+  base: [number, number, number];
+  stretch?: THREE.Object3D;
+}
 
 /**
  * First-person player. Camera-relative movement; a swappable arsenal of weapons
@@ -110,14 +193,11 @@ export class Player {
   private dashCd = 0;
   private dashDir = new THREE.Vector3();
 
-  // viewmodel
+  // viewmodel — one distinct model per weapon, swapped on equip
   private vm = new THREE.Group();
   private weaponGrp = new THREE.Group();
-  private blade!: THREE.Group;
-  private bladeMat!: THREE.MeshStandardMaterial;
-  private castOrb!: THREE.Mesh;
-  private castOrbMat!: THREE.MeshBasicMaterial;
-  private gemMats: THREE.MeshStandardMaterial[] = [];
+  private models: Record<string, ModelEntry> = {};
+  private active!: ModelEntry;
   private tipMarker = new THREE.Object3D();
   private baseMarker = new THREE.Object3D();
   private tip = new THREE.Vector3();
@@ -163,87 +243,161 @@ export class Player {
 
   // ----------------------------------------------------------------- viewmodel
   private buildViewmodel(): void {
-    const iron = new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 0.5, metalness: 0.85, emissive: 0x1a0f06, emissiveIntensity: 0.25, envMapIntensity: 1.1 });
-    const steel = new THREE.MeshStandardMaterial({ color: 0xaab2c0, roughness: 0.28, metalness: 0.98, emissive: 0x10151f, emissiveIntensity: 0.2, envMapIntensity: 1.4 });
-    const leather = new THREE.MeshStandardMaterial({ color: 0x2c1a0e, roughness: 0.85, metalness: 0.1, envMapIntensity: 0.5 });
-    const gemMat = new THREE.MeshStandardMaterial({ color: 0x140a04, emissive: 0xffb24a, emissiveIntensity: 2.2, roughness: 0.25, metalness: 0.3 });
-    this.gemMats.push(gemMat);
-    // glowing rune metal on the blade — recolored per weapon, drives the attack flash
-    this.bladeMat = new THREE.MeshStandardMaterial({ color: 0x0a0c10, emissive: 0xff7a2c, emissiveIntensity: 1.7, roughness: 0.3, metalness: 0.4 });
-
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.5), iron);
-    arm.position.set(0, -0.06, 0.32);
-    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.17, 0.22, 8), iron);
-    cuff.rotation.x = Math.PI / 2; cuff.position.set(0, -0.04, 0.12);
-    const knuckles = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.16, 0.22), steel);
-    knuckles.position.set(0, 0.02, 0.04);
-    const knuckleGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.055), gemMat);
-    knuckleGem.position.set(0, 0.1, 0.04);
-    this.weaponGrp.add(arm, cuff, knuckles, knuckleGem);
-
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 8), leather);
-    grip.rotation.x = Math.PI / 2; grip.position.set(0, 0.02, -0.02);
-    const pommel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.07, 10), steel);
-    pommel.rotation.x = Math.PI / 2; pommel.position.set(0, 0.02, 0.14);
-    const pommelGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.055), gemMat);
-    pommelGem.position.set(0, 0.02, 0.14);
-    this.weaponGrp.add(grip, pommel, pommelGem);
-
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.16), steel);
-    guard.position.set(0, 0.02, -0.2);
-    this.weaponGrp.add(guard);
-    for (const sx of [-1, 1]) {
-      const quillon = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), steel);
-      quillon.position.set(sx * 0.27, 0.02, -0.2);
-      this.weaponGrp.add(quillon);
+    this.models.boltcaster = this.buildCrossbow();
+    this.models.greatsword = this.buildGreatsword();
+    this.models.rocketlance = this.buildBombard();
+    this.models.arclaser = this.buildPrismRod();
+    this.models.stormcaller = this.buildStormStaff();
+    for (const id in this.models) {
+      const e = this.models[id];
+      e.group.visible = false;
+      this.weaponGrp.add(e.group);
     }
-    const guardGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), this.bladeMat);
-    guardGem.position.set(0, 0.02, -0.2);
-    this.weaponGrp.add(guardGem);
-
-    // blade group: steel blade with glowing edges + a rune fuller (scalable for the swing stretch)
-    this.blade = new THREE.Group();
-    const flat = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 1.15), steel);
-    flat.position.set(0, 0.02, -0.82);
-    for (const sy of [-1, 1]) {
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.06, 1.15), this.bladeMat);
-      edge.position.set(0, 0.02 + sy * 0.1, -0.82);
-      this.blade.add(edge);
-    }
-    const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.0), this.bladeMat);
-    fuller.position.set(0, 0.02, -0.8);
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.42, 4), steel);
-    tip.rotation.x = -Math.PI / 2;
-    tip.position.set(0, 0.02, -1.46);
-    tip.scale.set(0.42, 1, 1);
-    this.blade.add(flat, fuller, tip);
-    this.weaponGrp.add(this.blade);
-
-    // a focusing orb that hovers at the blade tip for projectile weapons (hidden for melee)
-    this.castOrbMat = new THREE.MeshBasicMaterial({ color: 0xffc24a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
-    this.castOrb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 0), this.castOrbMat);
-    this.castOrb.position.set(0, 0.02, -1.62);
-    this.blade.add(this.castOrb);
-
-    this.tipMarker.position.set(0, 0.02, -1.5);
-    this.baseMarker.position.set(0, 0.02, -0.25);
     this.weaponGrp.add(this.tipMarker, this.baseMarker);
-
     this.weaponGrp.position.set(0.52, -0.56, -0.95);
     this.weaponGrp.rotation.set(0.12, -0.2, 0.08);
     this.vm.add(this.weaponGrp);
-
     this.vm.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
     this.vm.renderOrder = 10;
   }
 
-  /** Recolor the viewmodel to the equipped weapon + show the cast-orb on projectile weapons. */
+  // shared medieval materials (one set; models reuse them)
+  private mIron = new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 0.55, metalness: 0.8, emissive: 0x140c06, emissiveIntensity: 0.25, envMapIntensity: 1.1 });
+  private mDark = new THREE.MeshStandardMaterial({ color: 0x14151c, roughness: 0.6, metalness: 0.7, envMapIntensity: 1.0 });
+  private mSteel = new THREE.MeshStandardMaterial({ color: 0xaab2c0, roughness: 0.28, metalness: 0.98, emissive: 0x10151f, emissiveIntensity: 0.2, envMapIntensity: 1.4 });
+  private mWood = new THREE.MeshStandardMaterial({ color: 0x3a2412, roughness: 0.85, metalness: 0.06, envMapIntensity: 0.5 });
+  private mBrass = new THREE.MeshStandardMaterial({ color: 0x8a6a2a, roughness: 0.4, metalness: 0.85, emissive: 0x2a1c06, emissiveIntensity: 0.4, envMapIntensity: 1.2 });
+
+  private glowMat(color: number, int = 1.9): THREE.MeshStandardMaterial {
+    return new THREE.MeshStandardMaterial({ color: 0x0a0c10, emissive: color, emissiveIntensity: int, roughness: 0.3, metalness: 0.4 });
+  }
+  private addMat(color: number): THREE.MeshBasicMaterial {
+    return new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  }
+
+  /** boltcaster → a heavy crossbow: stock, recurved prod + string, a glowing loaded bolt. */
+  private buildCrossbow(): ModelEntry {
+    const g = new THREE.Group();
+    const C = 0xffc24a;
+    const glow = this.glowMat(C);
+    const orb = this.addMat(C);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.85), this.mWood); stock.position.set(0, -0.02, -0.05);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.7), this.mIron); rail.position.set(0, 0.07, -0.25);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.2, 0.12), this.mWood); grip.position.set(0, -0.13, 0.2); grip.rotation.x = 0.3;
+    const prod = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.05, 0.07), this.mSteel); prod.position.set(0, 0.08, -0.55);
+    g.add(stock, rail, grip, prod);
+    for (const sx of [-1, 1]) {
+      const limb = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.06), this.mSteel);
+      limb.position.set(sx * 0.5, 0.1, -0.52); limb.rotation.z = sx * 0.5; limb.rotation.y = sx * -0.3;
+      g.add(limb);
+    }
+    const string = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.02, 0.02), this.mDark); string.position.set(0, 0.09, -0.44);
+    const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.75, 6), glow); bolt.rotation.x = Math.PI / 2; bolt.position.set(0, 0.09, -0.78);
+    const boltTip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.16, 6), glow); boltTip.rotation.x = -Math.PI / 2; boltTip.position.set(0, 0.09, -1.18);
+    const sight = new THREE.Mesh(new THREE.IcosahedronGeometry(0.05, 0), orb); sight.position.set(0, 0.16, 0.05);
+    g.add(string, bolt, boltTip, sight);
+    return { group: g, glow: [glow], add: [{ mat: orb, mesh: sight }], tip: [0, 0.09, -1.25], base: [0, 0.05, -0.2] };
+  }
+
+  /** greatsword → the steel two-hander: gauntlet, crossguard + quillons, glowing rune blade. */
+  private buildGreatsword(): ModelEntry {
+    const g = new THREE.Group();
+    const blade = new THREE.Group();
+    const bladeMat = this.glowMat(0xff7a2c, 1.7);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.26, 0.5), this.mIron); arm.position.set(0, -0.06, 0.32);
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.17, 0.22, 8), this.mIron); cuff.rotation.x = Math.PI / 2; cuff.position.set(0, -0.04, 0.12);
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.3, 8), this.mWood); grip.rotation.x = Math.PI / 2; grip.position.set(0, 0.02, -0.02);
+    const pommel = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.07, 10), this.mSteel); pommel.rotation.x = Math.PI / 2; pommel.position.set(0, 0.02, 0.14);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.16), this.mSteel); guard.position.set(0, 0.02, -0.2);
+    g.add(arm, cuff, grip, pommel, guard);
+    for (const sx of [-1, 1]) {
+      const q = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), this.mSteel); q.position.set(sx * 0.27, 0.02, -0.2); g.add(q);
+    }
+    const guardGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), bladeMat); guardGem.position.set(0, 0.02, -0.2); g.add(guardGem);
+    const flat = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.2, 1.15), this.mSteel); flat.position.set(0, 0.02, -0.82);
+    for (const sy of [-1, 1]) { const edge = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.06, 1.15), bladeMat); edge.position.set(0, 0.02 + sy * 0.1, -0.82); blade.add(edge); }
+    const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1.0), bladeMat); fuller.position.set(0, 0.02, -0.8);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.42, 4), this.mSteel); tip.rotation.x = -Math.PI / 2; tip.position.set(0, 0.02, -1.46); tip.scale.set(0.42, 1, 1);
+    blade.add(flat, fuller, tip);
+    g.add(blade);
+    return { group: g, glow: [bladeMat], add: [], tip: [0, 0.02, -1.5], base: [0, 0.02, -0.25], stretch: blade };
+  }
+
+  /** rocketlance → a hand bombard: thick iron barrel, brass bands, flared muzzle, ember bore. */
+  private buildBombard(): ModelEntry {
+    const g = new THREE.Group();
+    const C = 0xff5530;
+    const glow = this.glowMat(C, 2.0);
+    const bore = this.addMat(C);
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 0.85, 14), this.mDark); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.05, -0.5);
+    const muzzle = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.14, 0.2, 14), this.mIron); muzzle.rotation.x = Math.PI / 2; muzzle.position.set(0, 0.05, -0.95);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.16, 0.5), this.mWood); stock.position.set(0, -0.04, 0.12);
+    const grip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.12), this.mWood); grip.position.set(0, -0.16, 0.04); grip.rotation.x = 0.3;
+    g.add(barrel, muzzle, stock, grip);
+    for (const z of [-0.3, -0.62]) { const band = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.03, 6, 16), this.mBrass); band.position.set(0, 0.05, z); g.add(band); }
+    const boreGlow = new THREE.Mesh(new THREE.CircleGeometry(0.12, 14), bore); boreGlow.position.set(0, 0.05, -1.04); boreGlow.rotation.y = Math.PI;
+    const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.07, 0), glow); ember.position.set(0, 0.05, -0.96);
+    g.add(boreGlow, ember);
+    return { group: g, glow: [glow], add: [{ mat: bore, mesh: boreGlow }], tip: [0, 0.05, -1.05], base: [0, 0, 0.05] };
+  }
+
+  /** arclaser → a prism rod: a slim haft tipped with a faceted glowing crystal in steel claws. */
+  private buildPrismRod(): ModelEntry {
+    const g = new THREE.Group();
+    const C = 0x49f0ff;
+    const glow = this.glowMat(C, 2.4);
+    const cr = this.addMat(C);
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.26, 8), this.mWood); grip.rotation.x = Math.PI / 2; grip.position.set(0, 0, 0.1);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 1.25, 10), this.mDark); rod.rotation.x = Math.PI / 2; rod.position.set(0, 0.03, -0.55);
+    const midGem = new THREE.Mesh(new THREE.OctahedronGeometry(0.07), glow); midGem.position.set(0, 0.03, -0.5);
+    g.add(grip, rod, midGem);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const claw = new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.26, 4), this.mSteel);
+      claw.position.set(Math.cos(a) * 0.1, 0.03 + Math.sin(a) * 0.1, -1.12); claw.rotation.x = -Math.PI / 2 - 0.3;
+      g.add(claw);
+    }
+    const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(0.16, 0), glow); crystal.position.set(0, 0.04, -1.28);
+    const crystalGlow = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 0), cr); crystalGlow.position.set(0, 0.04, -1.28);
+    g.add(crystal, crystalGlow);
+    return { group: g, glow: [glow], add: [{ mat: cr, mesh: crystalGlow }], tip: [0, 0.04, -1.4], base: [0, 0, 0.1] };
+  }
+
+  /** stormcaller → a storm staff: a long shaft, a clawed finial cupping a crackling orb. */
+  private buildStormStaff(): ModelEntry {
+    const g = new THREE.Group();
+    const C = 0xb46cff;
+    const glow = this.glowMat(C, 2.5);
+    const orb = this.addMat(C);
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 1.4, 8), this.mWood); shaft.rotation.x = Math.PI / 2; shaft.position.set(0, 0.02, -0.5);
+    const wrap = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.24, 8), this.mDark); wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.02, 0.06);
+    g.add(shaft, wrap);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const prong = new THREE.Mesh(new THREE.ConeGeometry(0.045, 0.4, 4), this.mSteel);
+      prong.position.set(Math.cos(a) * 0.14, 0.06 + Math.sin(a) * 0.14, -1.12); prong.rotation.set(Math.PI / 2 - 0.6, 0, a);
+      g.add(prong);
+    }
+    const orbCore = new THREE.Mesh(new THREE.IcosahedronGeometry(0.13, 0), glow); orbCore.position.set(0, 0.06, -1.22);
+    const orbGlow = new THREE.Mesh(new THREE.IcosahedronGeometry(0.2, 0), orb); orbGlow.position.set(0, 0.06, -1.22);
+    g.add(orbCore, orbGlow);
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2 + 0.5;
+      const shard = new THREE.Mesh(new THREE.TetrahedronGeometry(0.05), glow);
+      shard.position.set(Math.cos(a) * 0.26, 0.06 + Math.sin(a) * 0.26, -1.22);
+      g.add(shard);
+    }
+    return { group: g, glow: [glow], add: [{ mat: orb, mesh: orbGlow }], tip: [0, 0.06, -1.25], base: [0, 0, 0.06] };
+  }
+
+  /** Swap the visible weapon model + move the tip/base markers to it. */
   private applyWeaponLook(): void {
-    const w = this.weapon;
-    this.bladeMat.emissive.setHex(w.color);
-    for (const g of this.gemMats) g.emissive.setHex(w.color);
-    this.castOrbMat.color.setHex(w.color);
-    this.castOrb.visible = w.kind === "projectile";
+    const e = this.models[this.weapon.id] ?? this.models.boltcaster;
+    for (const id in this.models) this.models[id].group.visible = false;
+    e.group.visible = true;
+    this.active = e;
+    this.tipMarker.position.set(...e.tip);
+    this.baseMarker.position.set(...e.base);
   }
 
   // ----------------------------------------------------------------- update
@@ -289,12 +443,11 @@ export class Player {
 
   private startAttack(slot: Slot): void {
     const a = this.weapon[slot];
-    const pose: PoseId = a.type === "melee" ? slot : "cast";
+    const pose = poseFor(this.weapon.id, slot, a.type === "melee");
     this.cur = { a, slot, color: this.weapon.color, pose };
     this.moveT = 0;
     this.hitDone = false;
     this.cooldowns[slot] = a.cooldown;
-    this.bladeMat.emissive.setHex(this.weapon.color);
   }
 
   private advanceMove(dt: number): void {
@@ -349,7 +502,8 @@ export class Player {
       const cx = this.pos.x + fx * a.strikeRange, cz = this.pos.z + fz * a.strikeRange;
       for (let i = 0; i < Math.max(1, a.strikeCount); i++) {
         const ang = this.ctx.rng.range(0, Math.PI * 2);
-        const r = a.strikeCount > 1 ? this.ctx.rng.range(0, a.strikeRadius * 1.4) : 0;
+        // scatter multi-strikes on a wide ring so they pepper a zone instead of stacking on one spot
+        const r = a.strikeCount > 1 ? a.strikeRadius * (1.0 + this.ctx.rng.range(0, 0.8)) : 0;
         this.ctx.combat.scheduleStrike(cx + Math.cos(ang) * r, cz + Math.sin(ang) * r, a.strikeRadius, a.damage, a.strikeDelay, color, a.knockback);
       }
       this.ctx.cam.kick(-fx, -fz, 0.15);
@@ -359,16 +513,19 @@ export class Player {
       this.ctx.sfx.boltCast();
       this.ctx.cam.forward(this.aim);
       const n = Math.max(1, a.pellets);
-      const opts: { scale?: number; pierce?: boolean; explode?: number } = {};
-      if (a.mode === "rocket") opts.explode = a.explodeRadius;
-      if (a.big) opts.scale = 1.9;
-      if (a.pierce) opts.pierce = true;
-      const hasOpts = a.mode === "rocket" || a.big || a.pierce;
+      const opts = {
+        scale: a.big ? 1.9 : 1,
+        pierce: a.pierce,
+        explode: a.mode === "rocket" ? a.explodeRadius : 0,
+        gravity: a.gravity,
+        shape: a.shape,
+      };
       for (let i = 0; i < n; i++) {
         const off = (i - (n - 1) / 2) * a.spread;
         const ca = Math.cos(off), sa = Math.sin(off);
         this.dir.set(this.aim.x * ca - this.aim.z * sa, this.aim.y, this.aim.x * sa + this.aim.z * ca);
-        this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.dir, a.speed, a.damage, true, color, a.knockback, hasOpts ? opts : undefined);
+        if (a.gravity > 0) this.dir.y += 0.5; // mortar: launch upward, then arc down
+        this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.dir, a.speed, a.damage, true, color, a.knockback, opts);
       }
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
       this.muzzleFx(color, heavy);
@@ -493,13 +650,14 @@ export class Player {
 
     this.weaponGrp.position.set(pose[0], pose[1], pose[2]);
     this.weaponGrp.rotation.set(pose[3], pose[4], pose[5]);
-    this.blade.scale.z = stretch;
-    this.bladeMat.emissiveIntensity = 1.8 + flash;
-    // the cast orb breathes + flares when a projectile attack fires
-    if (this.castOrb.visible) {
-      const pulse = 0.85 + Math.sin(t * 6) * 0.15 + flash * 0.4;
-      this.castOrb.scale.setScalar(pulse);
-      this.castOrbMat.opacity = 0.6 + Math.min(0.4, flash * 0.4);
+
+    // pulse the active model's emissive metal + its additive glow bits on the attack flash
+    const e = this.active;
+    if (e.stretch) e.stretch.scale.z = stretch;
+    for (const m of e.glow) m.emissiveIntensity = 1.9 + flash;
+    for (const ad of e.add) {
+      ad.mat.opacity = 0.5 + Math.min(0.45, flash * 0.5) + Math.sin(t * 6) * 0.1;
+      ad.mesh.scale.setScalar(0.85 + Math.sin(t * 6) * 0.15 + flash * 0.35);
     }
 
     this.tipMarker.getWorldPosition(this.tip);

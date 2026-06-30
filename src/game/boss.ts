@@ -7,7 +7,7 @@ import { damp } from "../core/math";
 
 const CORE_Y = 6.0; // world height of the weak-point core
 
-type Attack = "slam" | "volley" | "sweep" | "collapse" | null;
+type Attack = "slam" | "volley" | "sweep" | "collapse" | "beam" | null;
 
 /**
  * The Rift Warden — the boss waiting at the end of the causeway. Mostly holds the
@@ -45,6 +45,8 @@ export class Boss implements Hittable {
   private deathT = 0;
   private t = 0;
   private risen = false;
+  /** Held during a phase-transition cutscene — animates but does not attack. */
+  paused = false;
 
   group = new THREE.Group();
   private orbit = new THREE.Group(); // rune shards circling the core (animated)
@@ -156,6 +158,7 @@ export class Boss implements Hittable {
 
   private enterPhase2(): void {
     this.phase = 2;
+    this.ctx.events.emit("BOSS_PHASE", { phase: 2 });
     this.ctx.stage.punch(0.6);
     this.ctx.cam.addTrauma(0.6);
     this.ctx.sfx.bossRoar();
@@ -171,6 +174,7 @@ export class Boss implements Hittable {
 
   private enterPhase3(): void {
     this.phase = 3;
+    this.ctx.events.emit("BOSS_PHASE", { phase: 3 });
     this.ctx.stage.punch(0.9);
     this.ctx.cam.addTrauma(0.85);
     this.ctx.sfx.bossRoar();
@@ -221,6 +225,7 @@ export class Boss implements Hittable {
     }
 
     if (this.rise < 1) return; // still rising in
+    if (this.paused) return;   // frozen for a phase-transition cutscene
     if (this.attack) this.progressAttack(dt);
     else {
       this.cd -= dt;
@@ -230,11 +235,11 @@ export class Boss implements Hittable {
 
   private chooseAttack(): void {
     const pool: Attack[] =
-      this.phase === 1 ? ["slam", "volley"]
-        : this.phase === 2 ? ["slam", "volley", "sweep", "sweep"]
-          : ["collapse", "sweep", "volley", "collapse"];
+      this.phase === 1 ? ["slam", "volley", "beam"]
+        : this.phase === 2 ? ["slam", "volley", "sweep", "beam", "sweep"]
+          : ["collapse", "sweep", "volley", "beam", "collapse"];
     this.attack = this.ctx.rng.pick(pool);
-    this.windupMax = this.attack === "collapse" ? 0.95 : this.attack === "sweep" ? 0.8 : this.attack === "slam" ? 0.65 : 0.52;
+    this.windupMax = this.attack === "collapse" ? 0.95 : this.attack === "beam" ? 0.85 : this.attack === "sweep" ? 0.8 : this.attack === "slam" ? 0.65 : 0.52;
     if (this.phase === 2) this.windupMax *= 0.8;
     if (this.phase === 3) this.windupMax *= 0.65;
     this.windup = this.windupMax;
@@ -245,6 +250,7 @@ export class Boss implements Hittable {
     const c = this.hitColor;
     if (this.attack === "slam") this.tele = this.ctx.tele.circle(this.aim.x, this.aim.z, 5, this.windupMax, c);
     else if (this.attack === "sweep") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 40, 5, this.windupMax, c);
+    else if (this.attack === "beam") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 60, 3, this.windupMax, c);
     else if (this.attack === "collapse") {
       // rift collapse: several slam zones bloom across the arena at once — keep moving
       for (const t of this.teles) t.cancel();
@@ -289,6 +295,25 @@ export class Boss implements Hittable {
         const dir = new THREE.Vector3(Math.sin(ang) * horiz, ty - sy, Math.cos(ang) * horiz);
         this.ctx.projectiles.spawn(this.pos.x, sy, this.pos.z, dir, 24, 14, false, this.hitColor, 3);
       }
+    } else if (a === "beam") {
+      // a fan of three searing laser beams lances down the lane toward the player
+      const dx = p.pos.x - this.pos.x, dz = p.pos.z - this.pos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const dirX = dx / d, dirZ = dz / d;
+      let hit = false;
+      for (const off of [-0.32, 0, 0.32]) {
+        const ca = Math.cos(off), sa = Math.sin(off);
+        const bx = dirX * ca - dirZ * sa, bz = dirX * sa + dirZ * ca;
+        this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, bz, 60, this.hitColor, 1.4);
+        this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, bz, 60, 0xffffff, 0.5);
+        const px = p.pos.x - this.pos.x, pz = p.pos.z - this.pos.z;
+        const along = px * bx + pz * bz;
+        const perp = Math.abs(px * bz - pz * bx);
+        if (along > 0 && perp <= 2.3) hit = true;
+      }
+      this.ctx.cam.addTrauma(0.32);
+      this.ctx.sfx.beamFire();
+      if (hit) this.ctx.combat.damagePlayer(30, this.pos.x, this.pos.z);
     } else if (a === "sweep") {
       // hit if player is within the swept band along aimAngle
       const dx = p.pos.x - this.pos.x;

@@ -65,6 +65,8 @@ ctx.stage.scene.add(ctx.stage.camera);
 ctx.level.build();
 const hud = new Hud(ctx);
 const menus = new Menus(ctx);
+menus.apply(); // push saved settings (audio/sensitivity/shake/quality/fov) into the live systems
+if (lowfx) ctx.stage.applyQuality("low"); // ?lowfx forces low for tests, overriding the saved quality
 
 // --------------------------------------------------------------------- state
 let state: State = "title";
@@ -92,6 +94,7 @@ ctx.events.on("KILL", (e) => {
 });
 ctx.events.on("PLAYER_HIT", () => { streak = 0; });
 ctx.events.on("PLAYER_DIED", () => setState("dead"));
+ctx.events.on("BOSS_PHASE", (e) => startPhaseCutscene(e.phase));
 ctx.events.on("BOSS_DEFEATED", () => {
   ctx.events.emit("RUN_VICTORY", {});
   ctx.sfx.bossDeath();
@@ -265,10 +268,24 @@ function updateBossCutscene(dt: number): void {
   if (cineT <= 0) endBossCutscene();
 }
 
+// A short cutscene when the boss breaks a phase threshold: freeze, frame the boss as
+// it surges with power (the rising-ripple beats), reveal the phase, then hand control back.
+function startPhaseCutscene(phase: number): void {
+  cineT = 1.6;
+  cineBeatT = 0;
+  ctx.player.frozen = true;
+  ctx.cam.setCinematic(true);
+  if (ctx.boss) ctx.boss.paused = true;
+  ctx.sfx.bossRoar();
+  ctx.cam.addTrauma(0.55);
+  hud.showBanner(phase >= 3 ? "FINAL PHASE" : "PHASE II", phase >= 3 ? 0xff5530 : 0x9ff0e4);
+}
+
 function endBossCutscene(): void {
   cineT = 0;
   ctx.player.frozen = false;
   ctx.cam.setCinematic(false);
+  if (ctx.boss) ctx.boss.paused = false;
   ctx.cam.addTrauma(0.5);
   ctx.stage.punch(0.4);
   ctx.sfx.bossRoar();

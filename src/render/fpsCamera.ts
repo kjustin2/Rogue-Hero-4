@@ -14,6 +14,8 @@ export class FpsCamera {
   yaw = Math.PI; // face down the path (+Z) at spawn
   pitch = 0;
   sensitivity = 0.0022;
+  /** Screen-shake multiplier (Settings → Screen Shake / Reduce Motion). */
+  shakeScale = 1;
 
   private baseFov = 80;
   private fovPulse = 0;
@@ -64,6 +66,10 @@ export class FpsCamera {
   pulseFov(amount: number): void {
     this.fovPulse = Math.min(0.7, this.fovPulse + amount);
   }
+  /** Base field of view (Settings). */
+  setBaseFov(fov: number): void {
+    this.baseFov = fov;
+  }
   /** Lean the view into a dodge: sideways component (vs facing) → a brief camera roll. */
   dodgeTilt(dirX: number, dirZ: number): void {
     this.worldRight(this.tmp);
@@ -112,7 +118,7 @@ export class FpsCamera {
     const sway = Math.cos(this.bobPhase * 0.5) * 0.03 * moveAmount;
 
     // --- trauma shake ---
-    const sh = this.trauma * this.trauma;
+    const sh = this.trauma * this.trauma * this.shakeScale;
     const rng = this.ctx.rng;
     const shYaw = rng.range(-1, 1) * sh * 0.05;
     const shPitch = rng.range(-1, 1) * sh * 0.05;

@@ -28,6 +28,8 @@ export interface EventMap {
   /** Boss health changed — drives the boss bar. */
   BOSS_HP: { hp: number; maxHp: number };
   BOSS_INTRO: { name: string };
+  /** Boss crossed a phase threshold — main plays a short transition cutscene. */
+  BOSS_PHASE: { phase: number };
   BOSS_DEFEATED: { x: number; z: number };
   RUN_VICTORY: Record<string, never>;
   UI_HOVER: Record<string, never>;

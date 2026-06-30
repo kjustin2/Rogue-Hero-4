@@ -127,6 +127,20 @@ app.whenReady().then(async () => {
       const comboFails = await js(`window.__rh4debug.checkCombos()`);
       expect(Array.isArray(comboFails) && comboFails.length === 0, "combo self-check failed: " + JSON.stringify(comboFails));
 
+      // --- title sub-menus: settings + controls
+      await js(`document.querySelector('#settings')?.click()`);
+      await sleep(120);
+      expect(await js(`!!document.querySelector('.settings [data-set="sfx"]')`), "settings panel did not open");
+      await shot(win, "settings");
+      await js(`document.querySelector('#back')?.click()`);
+      await sleep(80);
+      await js(`document.querySelector('#controls')?.click()`);
+      await sleep(120);
+      expect(await js(`!!document.querySelector('.keybtn')`), "controls panel did not open");
+      await shot(win, "controls");
+      await js(`document.querySelector('#back')?.click()`);
+      await sleep(80);
+
       // --- start the run
       await js(`window.__rh4debug.start()`);
       await js(`window.__rh4debug.god(true)`); // survive the scripted demo (toggled off before the death beat)
@@ -277,14 +291,24 @@ app.whenReady().then(async () => {
       await shot(win, "weakpoint");
       await js(`window.__rh4.cam.pitch = 0`);
 
-      // --- drive the boss into phase 3 (collapse): break past 50% then 25%
+      // --- phase 2 transition: cross 50% → a phase-transition cutscene fires
       await js(`window.__rh4.boss.takeDamage(window.__rh4.boss.maxHp*0.55, {})`);
+      await frames(6);
+      expect(await js(`window.__rh4debug.cineActive()`), "phase-2 transition cutscene did not start");
+      expect(await js(`window.__rh4.player.frozen === true`), "player not frozen during the phase cutscene");
+      await shot(win, "boss-phase");
+      await js(`window.__rh4debug.skipCutscene()`);
       await frames(3);
-      await js(`window.__rh4.boss.takeDamage(window.__rh4.boss.maxHp*0.22, {})`);
-      await frames(22);
+
+      // --- phase 3: cross 25% → final-phase cutscene, then skip back to the fight
+      await js(`window.__rh4.boss.takeDamage(window.__rh4.boss.maxHp*0.30, {})`);
+      await frames(4);
+      await js(`window.__rh4debug.skipCutscene()`);
+      await frames(20);
       await shot(win, "boss-phase3");
 
       // --- defeat the boss → victory flow (victoryQueued ~1.8s)
+      await js(`window.__rh4debug.skipCutscene()`);
       await js(`if(window.__rh4.boss) window.__rh4.boss.takeDamage(99999,{})`);
       await frames(70);
       expect(await js(`window.__rh4state()==='victory'`), "victory state never reached");

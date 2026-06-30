@@ -30,8 +30,12 @@ export interface AttackDef {
   spread: number;
   big: boolean;
   pierce: boolean;
+  /** Projectile visual: a thin crossbow dart, a heavy iron cannonball, or a runed comet. */
+  shape: "dart" | "cannonball" | "comet";
   // rocket
   explodeRadius: number;
+  /** >0 → a lobbed shot that arcs under gravity (mortar) instead of flying straight. */
+  gravity: number;
   // laser (hitscan): beam half-width + reach
   beamWidth: number;
   beamRange: number;
@@ -70,15 +74,15 @@ export function attackDuration(a: AttackDef): number {
 const BASE: AttackDef = {
   mode: "bolt", type: "projectile", damage: 10, knockback: 3,
   windup: 0.05, active: 0.05, recovery: 0.08, cooldown: 0.2,
-  arc: 0, range: 0, speed: 38, pellets: 1, spread: 0, big: false, pierce: false,
-  explodeRadius: 0, beamWidth: 0, beamRange: 0,
+  arc: 0, range: 0, speed: 38, pellets: 1, spread: 0, big: false, pierce: false, shape: "comet",
+  explodeRadius: 0, gravity: 0, beamWidth: 0, beamRange: 0,
   strikeCount: 0, strikeRadius: 0, strikeRange: 0, strikeDelay: 0,
 };
 function bolt(o: Partial<AttackDef> & { damage: number; cooldown: number }): AttackDef {
-  return { ...BASE, mode: "bolt", type: "projectile", ...o };
+  return { ...BASE, mode: "bolt", type: "projectile", shape: "dart", ...o };
 }
 function rocket(o: Partial<AttackDef> & { damage: number; cooldown: number }): AttackDef {
-  return { ...BASE, mode: "rocket", type: "projectile", speed: 26, explodeRadius: 3.6, knockback: 7, windup: 0.1, ...o };
+  return { ...BASE, mode: "rocket", type: "projectile", shape: "cannonball", speed: 26, explodeRadius: 3.6, knockback: 7, windup: 0.1, ...o };
 }
 function laser(o: Partial<AttackDef> & { damage: number; cooldown: number }): AttackDef {
   return { ...BASE, mode: "laser", type: "projectile", beamWidth: 1.3, beamRange: 46, knockback: 2, ...o };
@@ -95,9 +99,10 @@ const GOLD = 0xffc24a, EMBER = 0xff7a3c, RED = 0xff5530, CYAN = 0x49f0ff, VIOLET
 export const WEAPONS: WeaponDef[] = [
   {
     // fast, precise single-target plinking — the all-rounder
-    id: "boltcaster", name: "BOLT CASTER", kind: "projectile", color: GOLD,
-    light: bolt({ damage: 11, cooldown: 0.18, speed: 44, knockback: 2 }),
-    heavy: bolt({ damage: 13, cooldown: 0.5, speed: 36, pellets: 3, spread: 0.13, windup: 0.09, knockback: 3 }),
+    id: "boltcaster", name: "HEAVY CROSSBOW", kind: "projectile", color: GOLD,
+    // light: rapid single darts. heavy: a slow charged POWER BOLT that pierces the whole lane.
+    light: bolt({ damage: 11, cooldown: 0.17, speed: 50, knockback: 2 }),
+    heavy: bolt({ damage: 30, cooldown: 0.7, speed: 38, big: true, pierce: true, windup: 0.18, recovery: 0.14, knockback: 6 }),
     combos: [
       { name: "STARFALL", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.2, effect: "barrage", radius: 4.5, color: GOLD },
       { name: "ARCSHOT", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 1.7, effect: "bolts", radius: 0, color: GOLD },
@@ -117,9 +122,10 @@ export const WEAPONS: WeaponDef[] = [
   },
   {
     // explosive rockets — AoE booms, splash, slower travel
-    id: "rocketlance", name: "ROCKET LANCE", kind: "projectile", color: RED,
-    light: rocket({ damage: 16, cooldown: 0.5, explodeRadius: 3.4, speed: 28 }),
-    heavy: rocket({ damage: 34, cooldown: 1.0, explodeRadius: 5.2, speed: 22, windup: 0.14, knockback: 11 }),
+    id: "rocketlance", name: "HAND BOMBARD", kind: "projectile", color: RED,
+    // light: a flat-fired iron shell, small blast. heavy: a lobbed MORTAR that arcs + big blast.
+    light: rocket({ damage: 16, cooldown: 0.5, explodeRadius: 3.4, speed: 30 }),
+    heavy: rocket({ damage: 36, cooldown: 1.05, explodeRadius: 6.0, speed: 22, gravity: 26, windup: 0.2, recovery: 0.18, knockback: 12 }),
     combos: [
       { name: "SALVO", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 1.8, effect: "rocketvolley", radius: 3.6, color: RED },
       { name: "DEMOLITION", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.2, effect: "rocketvolley", radius: 4.6, color: RED },
@@ -127,9 +133,10 @@ export const WEAPONS: WeaponDef[] = [
   },
   {
     // instant hitscan laser — no travel time, pierces a thin corridor
-    id: "arclaser", name: "ARC LASER", kind: "projectile", color: CYAN,
-    light: laser({ damage: 14, cooldown: 0.3, beamWidth: 1.1, beamRange: 46 }),
-    heavy: laser({ damage: 30, cooldown: 0.85, beamWidth: 2.4, beamRange: 52, windup: 0.12, knockback: 5 }),
+    id: "arclaser", name: "PRISM ROD", kind: "projectile", color: CYAN,
+    // light: a quick thin zap. heavy: a slow-charged WIDE lance-beam you can feel wind up.
+    light: laser({ damage: 13, cooldown: 0.26, beamWidth: 0.8, beamRange: 46, windup: 0.04 }),
+    heavy: laser({ damage: 34, cooldown: 1.0, beamWidth: 3.0, beamRange: 56, windup: 0.32, recovery: 0.2, knockback: 6 }),
     combos: [
       { name: "OVERLOAD", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.0, effect: "megabeam", radius: 3.2, color: CYAN },
       { name: "PRISM", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.4, effect: "megabeam", radius: 4.2, color: CYAN },
