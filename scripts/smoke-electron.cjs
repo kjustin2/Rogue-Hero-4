@@ -242,25 +242,39 @@ app.whenReady().then(async () => {
       const spawnPack = () => js(`[0,1,2].forEach(i=>window.__rh4debug.spawn('husk', -4 + i*4, window.__rh4.player.pos.z + 9))`);
       const clearPack = () => js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
 
+      // ---------- attack variety: light, heavy, and signature combo per weapon ----------
+      // The screenshot artifact the player audits — proves each weapon's light vs heavy vs
+      // combo read distinctly and that none of them blind the view. (boltcaster's three are
+      // captured above as attack / combat-combo / projectile.) Each fire() spawns a fresh
+      // pack at the right range, taps the keys (J=light, K=heavy) with combo-window gaps,
+      // then waits past the attack's wind-up + travel/delay so the shot lands on the FX.
+      const spawnAt = (dz) => js(`[0,1,2].forEach(i=>window.__rh4debug.spawn('husk', -5 + i*5, window.__rh4.player.pos.z + ${dz}))`);
+      const fire = async (id, label, keys, postF, dz) => {
+        await equip(id);
+        await spawnAt(dz); await frames(3);
+        for (let i = 0; i < keys.length; i++) { await tap(keys[i]); if (i < keys.length - 1) await frames(11); }
+        await frames(postF);
+        await shot(win, label);
+        await clearPack();
+      };
+
       await equip("greatsword");
       expect(await js(`window.__rh4.player.weapon.kind`) === "melee", "greatsword should be melee");
-      await spawnPack(); await frames(4); await tap("KeyJ"); await frames(5);
-      await shot(win, "wpn-greatsword"); await clearPack();
+      await fire("greatsword", "atk-sword-light", ["KeyJ"], 4, 4);
+      await fire("greatsword", "atk-sword-heavy", ["KeyK"], 8, 4);
+      await fire("greatsword", "atk-sword-combo", ["KeyJ", "KeyJ", "KeyK"], 10, 4); // CRESCENDO slam
 
-      await equip("rocketlance");
-      await spawnPack(); await frames(3); await tap("KeyJ"); await frames(9); // rocket flies + explodes
-      await shot(win, "wpn-rocket"); await clearPack();
+      await fire("rocketlance", "atk-rocket-light", ["KeyJ"], 12, 9);              // flat rocket → blast
+      await fire("rocketlance", "atk-rocket-heavy", ["KeyK"], 14, 9);             // lobbed mortar
+      await fire("rocketlance", "atk-rocket-combo", ["KeyJ", "KeyJ", "KeyK"], 16, 9); // SALVO rocket fan
 
-      await equip("arclaser");
-      await spawnPack(); await frames(3); await tap("KeyJ"); await frames(1); // instant hitscan beam
-      await shot(win, "wpn-laser"); await clearPack();
+      await fire("arclaser", "atk-laser-light", ["KeyJ"], 3, 9);                  // thin beam
+      await fire("arclaser", "atk-laser-heavy", ["KeyK"], 12, 9);                 // wide beam (windup 0.32)
+      await fire("arclaser", "atk-laser-combo", ["KeyJ", "KeyJ", "KeyJ"], 3, 9);  // OVERLOAD mega-beam
 
-      await equip("stormcaller");
-      // spawn the pack downrange at the strike zone so the airstrike reads as raining on a distant group
-      // (not the point-blank husk-bloom you'd get letting them rush the camera) — HEAVY = 3 strikes, the worst case
-      await js(`[0,1,2].forEach(i=>window.__rh4debug.spawn('husk', -5 + i*5, window.__rh4.player.pos.z + 18))`);
-      await frames(3); await tap("KeyK"); await frames(22);
-      await shot(win, "wpn-airstrike"); await clearPack();
+      await fire("stormcaller", "atk-storm-light", ["KeyJ"], 20, 16);             // single called strike
+      await fire("stormcaller", "atk-storm-heavy", ["KeyK"], 24, 18);             // 3-strike barrage
+      await fire("stormcaller", "atk-storm-combo", ["KeyJ", "KeyJ", "KeyK"], 28, 18); // TEMPEST cluster
 
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the projectile starter for the boss
       await frames(6);
