@@ -59,9 +59,14 @@ export class Enemy implements Hittable {
   group = new THREE.Group();
   private coreMat: THREE.MeshStandardMaterial;
   private core!: THREE.Mesh;
+  private weapon?: THREE.Group;     // held weapon, swung on the strike
+  private weaponBase = new THREE.Euler();
   private vt = 0;
   private atkCharge = 0; // wind-up inflate (0→1 across the telegraph)
   private atkLunge = 0;  // strike snap forward (set to 1, decays)
+  private moveAmt = 0;   // 0..1 stride signal (drives lean + bob), from actual displacement
+  private prevX = 0;
+  private prevZ = 0;
   dying = false;
   private deathT = 0;
 
@@ -72,6 +77,7 @@ export class Enemy implements Hittable {
     this.hp = this.maxHp = this.cfg.hp;
     this.hitColor = this.cfg.color;
     this.pos.set(x, 0, z);
+    this.prevX = x; this.prevZ = z;
 
     this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.cfg.color, emissiveIntensity: 1.6, roughness: 0.4, metalness: 0.2 });
     this.buildMesh();
@@ -124,6 +130,7 @@ export class Enemy implements Hittable {
       sword.position.set(0.62, 0.92, 0.32);
       sword.rotation.set(0.55, 0, -0.32);
       this.group.add(sword);
+      this.weapon = sword; this.weaponBase.copy(sword.rotation);
     } else if (this.kind === "spitter") {
       // hooded witchfire caster: a drooping robe, a cowl over a dark void, an orb it conjures
       const robe = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.7, 7, 1, true), shellMat);
@@ -155,7 +162,10 @@ export class Enemy implements Hittable {
       finial.position.set(0.34, 1.12, 0.06); finial.rotation.x = Math.PI / 2;
       const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), this.coreMat);
       ember.position.set(0.34, 1.12, 0.06);
-      this.group.add(staff, finial, ember);
+      const focus = new THREE.Group();
+      focus.add(staff, finial, ember);
+      this.group.add(focus);
+      this.weapon = focus; this.weaponBase.copy(focus.rotation);
     } else if (this.kind === "wraith") {
       // hooded banshee: a cowl over a baleful eye, a tapering spectral body, trailing tatters + reaching arms
       const body = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.6, 6, 1, true), shellMat);
@@ -181,7 +191,10 @@ export class Enemy implements Hittable {
       haft.position.set(0.5, 0.05, 0.12); haft.rotation.set(0.25, 0, 0.18);
       const scytheBlade = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.045, 6, 12, Math.PI * 0.85), edgeMat);
       scytheBlade.position.set(0.34, 0.86, 0.2); scytheBlade.rotation.set(Math.PI / 2, 0, 0.7);
-      this.group.add(haft, scytheBlade);
+      const reaper = new THREE.Group();
+      reaper.add(haft, scytheBlade);
+      this.group.add(reaper);
+      this.weapon = reaper; this.weaponBase.copy(reaper.rotation);
     } else {
       // brute: hulking golem — stacked torso plates, spiked pauldrons, grated chest core
       const lower = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.3), shellMat);
@@ -227,7 +240,10 @@ export class Enemy implements Hittable {
       cleaverHead.position.set(1.15, 1.95, 1.05);
       const cleaverEdge = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.1, 0.16), edgeMat);
       cleaverEdge.position.set(1.5, 1.95, 1.05);
-      this.group.add(cleaverHaft, cleaverHead, cleaverEdge);
+      const cleaver = new THREE.Group();
+      cleaver.add(cleaverHaft, cleaverHead, cleaverEdge);
+      this.group.add(cleaver);
+      this.weapon = cleaver; this.weaponBase.copy(cleaver.rotation);
     }
   }
 
@@ -296,6 +312,11 @@ export class Enemy implements Hittable {
     this.atkCharge = damp(this.atkCharge, chargeTarget, 10, dt);
     this.atkLunge = damp(this.atkLunge, 0, 7, dt);
 
+    // stride signal from actual displacement (drives forward lean + a livelier bob)
+    const sp = Math.hypot(this.pos.x - this.prevX, this.pos.z - this.prevZ) / Math.max(dt, 1e-3);
+    this.moveAmt = damp(this.moveAmt, Math.min(1, sp / this.cfg.speed), 8, dt);
+    this.prevX = this.pos.x; this.prevZ = this.pos.z;
+
     this.sync(nx, nz);
   }
 
@@ -346,6 +367,7 @@ export class Enemy implements Hittable {
     if (this.fireTimer <= 0 && dist < cfg.attackRange + 2) {
       this.fireTimer = 1.45;
       this.flash = 0.9; // iris flares as it spits
+      this.atkLunge = 1; // staff thrusts forward as it hurls the orb
       const p = this.ctx.player;
       const dir = new THREE.Vector3(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
       this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, dir, 17, cfg.contactDmg, false, cfg.color, 2);
@@ -395,11 +417,25 @@ export class Enemy implements Hittable {
   }
 
   private sync(nx = 0, nz = 0): void {
-    const bob = Math.sin(this.vt * 2.5 + this.id) * 0.1;
+    // bob grows with movement so a charging wight reads as striding, not gliding
+    const bob = Math.sin(this.vt * (2.5 + this.moveAmt * 3) + this.id) * (0.1 + this.moveAmt * 0.14);
     const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
     this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + bob, this.pos.z + nz * fwd);
     this.group.scale.setScalar(1 + this.atkCharge * 0.14 - this.atkLunge * 0.12);
     if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
+    // lean into the advance (toward the player), faint living sway, slight recoil on the strike
+    this.group.rotation.x = this.moveAmt * 0.17 - this.atkLunge * 0.1;
+    this.group.rotation.z = Math.sin(this.vt * 1.7 + this.id) * 0.04;
+    // weapon: cocked back through the wind-up, swung hard on the strike, idle drift otherwise
+    if (this.weapon) {
+      const b = this.weaponBase;
+      const idle = Math.sin(this.vt * 2 + this.id) * 0.07 * (1 - this.atkCharge);
+      this.weapon.rotation.set(
+        b.x - this.atkCharge * 0.8 + this.atkLunge * 1.9,
+        b.y,
+        b.z + idle - this.atkLunge * 0.3,
+      );
+    }
   }
 
   dispose(): void {

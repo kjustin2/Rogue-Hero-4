@@ -50,6 +50,10 @@ export class Boss implements Hittable {
 
   group = new THREE.Group();
   private orbit = new THREE.Group(); // rune shards circling the core (animated)
+  private cloak!: THREE.Mesh;        // ragged cloak — billows (animated)
+  private blade = new THREE.Group();  // hovering warblade — raised on wind-up, slammed on strike
+  private bladeBase = new THREE.Euler();
+  private readonly bladeY = 4.6;
   private light!: THREE.PointLight;
   private coreMat: THREE.MeshStandardMaterial;
 
@@ -71,9 +75,10 @@ export class Boss implements Hittable {
     core.position.y = 4.6;
     this.group.add(body, head, core);
 
-    // ragged cloak/skirt flaring from the body — a looming warlord silhouette
+    // ragged cloak/skirt flaring from the body — a looming warlord silhouette (billows in tick)
     const cloak = new THREE.Mesh(new THREE.ConeGeometry(3.2, 5.8, 10, 1, true), shell);
     cloak.position.y = 2.9; cloak.castShadow = true;
+    this.cloak = cloak;
     this.group.add(cloak);
 
     // pauldron spikes off the shoulders
@@ -101,6 +106,26 @@ export class Boss implements Hittable {
       inner.position.set(Math.cos(a + 0.39) * 0.8, 9.1, Math.sin(a + 0.39) * 0.8);
       this.group.add(inner);
     }
+
+    // a colossal soul-forged warblade hovering at the Warden's flank — raised on the
+    // wind-up, hammered down on the strike (animated in tick from charge/lunge)
+    const blade = this.blade;
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.3, 6), shell);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.3, 0.42), this.coreMat);
+    guard.position.y = 0.78;
+    const blMesh = new THREE.Mesh(new THREE.BoxGeometry(0.62, 7.6, 0.2), shell);
+    blMesh.position.y = 4.6; blMesh.castShadow = true;
+    const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.16, 6.9, 0.26), this.coreMat); // glowing fuller down the blade
+    fuller.position.y = 4.45;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.4, 4), shell);
+    tip.position.y = 8.75;
+    const pommel = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), this.coreMat);
+    pommel.position.y = -0.75;
+    blade.add(grip, guard, blMesh, fuller, tip, pommel);
+    blade.position.set(3.7, this.bladeY, 1.3);
+    blade.rotation.set(0, 0, -0.22);
+    this.bladeBase.copy(blade.rotation);
+    this.group.add(blade);
 
     // rune shards orbiting the core (spun in tick) — menace + motion
     for (let i = 0; i < 6; i++) {
@@ -192,6 +217,19 @@ export class Boss implements Hittable {
     this.coreMat.emissiveIntensity = base + this.flash * 4 + Math.sin(this.t * (this.phase === 3 ? 6 : 3)) * 0.4;
     // the shard halo wheels around the core, faster as the fight escalates
     this.orbit.rotation.y += dt * (this.phase >= 3 ? 1.7 : this.phase === 2 ? 1.1 : 0.7);
+    // halo gathers inward + lifts as it charges an attack, flares out on the strike
+    this.orbit.scale.setScalar(1 - this.charge * 0.34 + this.lunge * 0.22);
+    this.orbit.position.y = this.charge * 0.7 - this.lunge * 0.4;
+    // cloak billow — a slow living roll
+    this.cloak.rotation.z = Math.sin(this.t * 1.1) * 0.05;
+    this.cloak.rotation.x = Math.sin(this.t * 0.8 + 1) * 0.04;
+    // the warblade hovers, raises on the wind-up, hammers down on the strike
+    this.blade.position.y = this.bladeY + Math.sin(this.t * 1.3) * 0.3 + this.charge * 1.5 - this.lunge * 1.9;
+    this.blade.rotation.set(
+      this.bladeBase.x - this.charge * 0.9 + this.lunge * 2.3,
+      this.bladeBase.y + Math.sin(this.t * 0.9) * 0.08,
+      this.bladeBase.z,
+    );
 
     // rising entrance: scale up from nothing; no attacks until fully risen
     if (this.rise < 1 && !this.dying) {
@@ -214,6 +252,7 @@ export class Boss implements Hittable {
     const dx = p.pos.x - this.pos.x;
     const dz = p.pos.z - this.pos.z;
     this.group.rotation.y = Math.atan2(dx, dz);
+    this.group.rotation.z = Math.sin(this.t * 0.6) * 0.02; // faint menacing roll
 
     if (this.dying) {
       this.deathT += dt;

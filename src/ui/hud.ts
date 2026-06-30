@@ -18,6 +18,7 @@ function recipeChips(recipe: readonly Slot[]): string {
  */
 export class Hud {
   private hud = document.getElementById("hud")!;
+  private healthEl!: HTMLElement;
   private hpFill!: HTMLElement;
   private hpText!: HTMLElement;
   private shardN!: HTMLElement;
@@ -85,9 +86,17 @@ export class Hud {
         <div id="weapon"></div>
       </div>
 
-      <div id="health"><div class="hp-track"><div class="hp-fill"></div></div><div class="hp-text"></div></div>
+      <div id="health">
+        <div class="hp-crest"><span>✚</span></div>
+        <div class="hp-body">
+          <div class="hp-label">VITALITY</div>
+          <div class="hp-track"><div class="hp-fill"></div><div class="hp-notch"></div></div>
+          <div class="hp-text"></div>
+        </div>
+      </div>
     `;
 
+    this.healthEl = this.hud.querySelector("#health")!;
     this.hpFill = this.hud.querySelector(".hp-fill")!;
     this.hpText = this.hud.querySelector(".hp-text")!;
     this.shardN = this.hud.querySelector("#shards .sh-n")!;
@@ -178,7 +187,8 @@ export class Hud {
       this.danger.style.opacity = "0";
     }
     this.hpFill.style.width = (frac * 100).toFixed(1) + "%";
-    this.hpFill.style.background = frac > 0.3 ? "linear-gradient(90deg,#ffb24a,#ffe2a0)" : "linear-gradient(90deg,#ff4252,#ff8a3d)";
+    this.hpFill.style.background = frac > 0.3 ? "linear-gradient(180deg,#ffe2a0,#ffb24a 48%,#e07a2a)" : "linear-gradient(180deg,#ff8a6a,#ff4252 58%,#b81e2e)";
+    this.healthEl.classList.toggle("low", frac < 0.35 && p.alive);
     this.hpText.textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;
 
     // weapon attack cooldowns (light/heavy)

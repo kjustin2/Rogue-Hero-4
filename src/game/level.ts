@@ -58,9 +58,12 @@ export class Level {
     const pathLen = ARENA_BLEND_Z + 14;
     const grid = this.makeStoneTexture();
     grid.repeat.set((HALF_WIDTH * 2) / 6, pathLen / 6);
+    const gridN = this.makeStoneNormal();
+    gridN.repeat.copy(grid.repeat);
     const floorMat = new THREE.MeshStandardMaterial({
       color: 0x141015, roughness: 0.62, metalness: 0.2,
       map: grid, emissive: 0xff5a1e, emissiveMap: grid, emissiveIntensity: 0.85, envMapIntensity: 0.9,
+      normalMap: gridN, normalScale: new THREE.Vector2(0.85, 0.85),
     });
     this.floorMats.push(floorMat);
     const floor = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2, 1, pathLen), floorMat);
@@ -74,6 +77,9 @@ export class Level {
     const arenaMat = floorMat.clone();
     arenaMat.map = agrid;
     arenaMat.emissiveMap = agrid;
+    const agridN = this.makeStoneNormal();
+    agridN.repeat.copy(agrid.repeat);
+    arenaMat.normalMap = agridN;
     this.floorMats.push(arenaMat);
     const arena = new THREE.Mesh(new THREE.CylinderGeometry(ARENA_RADIUS + 3, ARENA_RADIUS + 3, 1, 56), arenaMat);
     arena.position.set(ARENA_CENTER.x, -0.5, ARENA_CENTER.y);
@@ -603,33 +609,87 @@ export class Level {
     });
   }
 
+  // Shared flagstone layout (running bond) so the albedo + normal map align exactly.
+  private static readonly STONE_S = 512;
+  private static readonly STONE_ROW = 104;
+  private static readonly STONE_COL = 128;
+  private static readonly STONE_GAP = 9;
+  /** Walk every flagstone rect once; fn paints into whichever canvas. Deterministic. */
+  private eachFlag(fn: (bx: number, by: number, bw: number, bh: number, row: number, col: number) => void): void {
+    const { STONE_S: s, STONE_ROW: rowH, STONE_COL: blockW, STONE_GAP: gap } = Level;
+    for (let row = 0, y = 0; y < s; row++, y += rowH) {
+      const off = (row % 2) * (blockW / 2);
+      for (let col = 0, x = -blockW; x < s + blockW; col++, x += blockW) {
+        fn(x + off + gap / 2, y + gap / 2, blockW - gap, rowH - gap, row, col);
+      }
+    }
+  }
+
   /**
-   * Canvas-painted flagstone floor — a 2×2 grid of hewn stone tiles with deep mortar
-   * gaps that glow faintly (used as emissiveMap), so the floor reads as cracked stone
-   * lit from within by buried embers rather than a neon grid.
+   * Canvas-painted flagstone floor — hewn ashlar blocks in a running-bond course with
+   * grime speckle, hewn bevels and ember-lit mortar/cracks (used as emissiveMap), so the
+   * floor reads as old cracked stone lit from within by buried embers, not a neon grid.
    */
   private makeStoneTexture(): THREE.CanvasTexture {
-    const s = 256;
+    const s = Level.STONE_S;
     const cv = document.createElement("canvas");
     cv.width = cv.height = s;
     const g = cv.getContext("2d")!;
     // mortar base (glows warm via emissiveMap)
-    g.fillStyle = "#5a2410";
+    g.fillStyle = "#52210f";
     g.fillRect(0, 0, s, s);
-    // four flagstones with a gap, slightly varied tone + a bevel
-    const gap = 7, half = s / 2;
-    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
-      const x = c * half + gap, y = r * half + gap, sz = half - gap * 2;
-      const v = 30 + ((r * 2 + c) % 3) * 6;
-      g.fillStyle = `rgb(${v + 6},${v},${v - 4})`;
-      g.fillRect(x, y, sz, sz);
-      g.fillStyle = "rgba(255,200,150,0.05)"; g.fillRect(x, y, sz, 4);
-      g.fillStyle = "rgba(0,0,0,0.4)"; g.fillRect(x, y + sz - 4, sz, 4);
-      // a couple of hairline cracks in the stone
-      g.strokeStyle = "rgba(255,110,40,0.35)"; g.lineWidth = 1;
-      g.beginPath(); g.moveTo(x + sz * 0.3, y); g.lineTo(x + sz * 0.45, y + sz * 0.5); g.lineTo(x + sz * 0.35, y + sz); g.stroke();
-    }
+    this.eachFlag((bx, by, bw, bh, row, col) => {
+      // hewn stone face — per-block value + slight warm/cool grain
+      const v = 28 + ((row * 7 + col * 3) % 5) * 5;
+      g.fillStyle = `rgb(${v + 8},${v + 1},${v - 5})`;
+      g.fillRect(bx, by, bw, bh);
+      // grime / aggregate speckle scattered over the face
+      for (let i = 0; i < 26; i++) {
+        const px = bx + ((row * 31 + col * 17 + i * 53) % bw);
+        const py = by + ((col * 29 + row * 19 + i * 37) % bh);
+        const d = (i % 3) - 1; // -1 dark fleck, 0 mid, +1 light fleck
+        g.fillStyle = d < 0 ? "rgba(0,0,0,0.22)" : d > 0 ? "rgba(255,210,160,0.07)" : "rgba(120,70,40,0.10)";
+        g.fillRect(px, py, 2, 2);
+      }
+      // hewn bevel: warm top-left highlight, deep bottom-right shadow
+      g.fillStyle = "rgba(255,205,155,0.08)"; g.fillRect(bx, by, bw, 4); g.fillRect(bx, by, 4, bh);
+      g.fillStyle = "rgba(0,0,0,0.42)"; g.fillRect(bx, by + bh - 4, bw, 4); g.fillRect(bx + bw - 4, by, 4, bh);
+      // a worn ember-lit crack across about a third of the blocks (glows via emissiveMap)
+      if ((row * 5 + col * 3) % 3 === 0) {
+        g.strokeStyle = "rgba(255,120,45,0.55)"; g.lineWidth = 1.5;
+        g.beginPath();
+        g.moveTo(bx + bw * 0.28, by); g.lineTo(bx + bw * 0.42, by + bh * 0.45);
+        g.lineTo(bx + bw * 0.34, by + bh * 0.72); g.lineTo(bx + bw * 0.5, by + bh); g.stroke();
+      }
+    });
     const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.anisotropy = 8;
+    return tex;
+  }
+
+  /**
+   * Matching tangent-space normal map for the flagstones (aligned to makeStoneTexture
+   * via eachFlag): each block is pillowed with beveled edges so the stone catches the
+   * moving torch/brazier light in real relief. Flat = (128,128,255).
+   */
+  private makeStoneNormal(): THREE.CanvasTexture {
+    const s = Level.STONE_S;
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = s;
+    const g = cv.getContext("2d")!;
+    g.fillStyle = "rgb(128,128,255)"; // flat
+    g.fillRect(0, 0, s, s);
+    const bvl = 11;
+    this.eachFlag((bx, by, bw, bh) => {
+      g.fillStyle = "rgb(128,128,255)"; g.fillRect(bx, by, bw, bh); // flat face
+      g.fillStyle = "rgb(128,184,236)"; g.fillRect(bx, by, bw, bvl);            // top edge → +Y
+      g.fillStyle = "rgb(128,72,236)";  g.fillRect(bx, by + bh - bvl, bw, bvl); // bottom edge → -Y
+      g.fillStyle = "rgb(184,128,236)"; g.fillRect(bx, by, bvl, bh);            // left edge → +X
+      g.fillStyle = "rgb(72,128,236)";  g.fillRect(bx + bw - bvl, by, bvl, bh); // right edge → -X
+    });
+    const tex = new THREE.CanvasTexture(cv);
+    tex.colorSpace = THREE.NoColorSpace; // normal data, not color — don't sRGB-decode
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.anisotropy = 8;
     return tex;
