@@ -49,7 +49,7 @@ export class Combat {
    */
   isAimingWeak(): boolean {
     const b = this.ctx.boss;
-    if (!b || !b.alive) return false;
+    if (!b || !b.alive || b.dormant) return false;
     const cam = this.ctx.stage.camera;
     cam.getWorldPosition(this.aimEye);
     cam.getWorldDirection(this.aimDir);
@@ -67,7 +67,7 @@ export class Combat {
     // living() returns a fresh array each call — push the boss onto it directly (no spread).
     const list: Hittable[] = this.ctx.enemies.living();
     const boss = this.ctx.boss;
-    if (boss && boss.alive) list.push(boss);
+    if (boss && boss.alive && !boss.dormant) list.push(boss);
     return list;
   }
 

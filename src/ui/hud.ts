@@ -209,7 +209,7 @@ export class Hud {
     this.crosshair.classList.toggle("weak", this.ctx.combat.isAimingWeak());
     this.lockHint.style.opacity = this.ctx.playing && !this.ctx.input.pointerLocked && p.alive ? "1" : "0";
 
-    const boss = this.ctx.boss;
+    const boss = this.ctx.boss && !this.ctx.boss.dormant ? this.ctx.boss : null;
     if (boss) {
       this.bossWrap.style.opacity = "1";
       this.bossFill.style.width = (Math.max(0, boss.hp / boss.maxHp) * 100).toFixed(1) + "%";

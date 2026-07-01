@@ -283,9 +283,14 @@ app.whenReady().then(async () => {
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the projectile starter for the boss
       await frames(6);
 
+      // the boss is built + shader-warmed at boot but stays DORMANT (hidden, untargetable)
+      // until the arena — that pre-warm is what kills the boss-cutscene compile/relink lag
+      expect(await js(`window.__rh4.boss.dormant === true`), "staged boss should be dormant before the arena");
+
       // --- jump to the boss arena (spawning triggers the boss-intro cutscene)
       await js(`window.__rh4debug.scenario('boss')`);
       await frames(8);
+      expect(await js(`window.__rh4.boss.dormant === false`), "boss did not activate on arena entry");
       const bossHp = await js(`window.__rh4.boss ? window.__rh4.boss.hp : null`);
       expect(typeof bossHp === "number" && bossHp > 0, "boss did not spawn (" + bossHp + ")");
       expect(await js(`window.__rh4debug.cineActive()`), "boss-intro cutscene did not start");

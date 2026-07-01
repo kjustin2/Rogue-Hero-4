@@ -54,7 +54,10 @@ ctx.enemies = new EnemyManager(ctx);
 ctx.projectiles = new Projectiles(ctx);
 ctx.pickups = new Pickups(ctx);
 ctx.player = new Player(ctx);
-ctx.boss = null;
+// Build the boss ONCE at boot so warmUp() (below) compiles its shaders and its light is
+// counted from the start — then it sits dormant/hidden until the player reaches the arena.
+// Spawning it live was the cause of the boss-cutscene lag (shader compile + light relink).
+ctx.boss = new Boss(ctx);
 ctx.playing = false;
 ctx.hitstop = 0;
 
@@ -144,7 +147,7 @@ function startRun(): void {
   ctx.pickups.clear();
   ctx.combat.reset();
   ctx.hitstop = 0;
-  if (ctx.boss) { ctx.boss.dispose(); ctx.boss = null; }
+  ctx.boss?.reset(); // back to hidden/dormant — reused, never rebuilt (keeps shaders + light warm)
   triggered = ctx.level.gates.map(() => false);
   bossSpawned = false;
   victoryQueued = 0;
@@ -186,7 +189,7 @@ function updatePlaying(dt: number): void {
 
   ctx.player.update(dt);
   ctx.enemies.update(dt);
-  if (ctx.boss) ctx.boss.tick(dt);
+  if (ctx.boss && !ctx.boss.dormant) ctx.boss.tick(dt);
   ctx.projectiles.update(dt);
   ctx.combat.update(dt);
   ctx.pickups.update(dt);
@@ -211,8 +214,8 @@ function updatePlaying(dt: number): void {
   }
 
   // boss spawns when the path is fully open and the player steps into the arena
-  if (!bossSpawned && ctx.level.gates.every((g) => g.open) && ctx.level.inArena(ctx.player.pos.z)) {
-    ctx.boss = new Boss(ctx);
+  if (!bossSpawned && ctx.boss && ctx.level.gates.every((g) => g.open) && ctx.level.inArena(ctx.player.pos.z)) {
+    ctx.boss.activate(); // reveal the pre-warmed boss (no compile/relink stall here)
     bossSpawned = true;
     startBossCutscene(BOSS_NAME);
   }
@@ -352,7 +355,7 @@ w.__rh4debug = {
   // grant the full arsenal (screenshot/manual showcase of weapon swapping)
   unlockAll: () => { for (const w of WEAPONS) if (!ctx.player.weapons.includes(w.id)) ctx.player.weapons.push(w.id); },
   swapWeapon: () => ctx.player.cycleWeapon(1),
-  stats: () => ({ time: runTime, kills, state, enemies: ctx.enemies.aliveCount(), bossHp: ctx.boss?.hp ?? null }),
+  stats: () => ({ time: runTime, kills, state, enemies: ctx.enemies.aliveCount(), bossHp: (ctx.boss && !ctx.boss.dormant) ? ctx.boss.hp : null }),
   // deterministic stepping for headless tests (rAF is suspended in a hidden window)
   tick: (dt = 0.033) => frame(dt),
   frames: (n: number, dt = 0.033) => { for (let i = 0; i < n; i++) frame(dt); },
@@ -362,7 +365,8 @@ w.__rh4debug = {
 };
 
 // --------------------------------------------------------------------- finish boot
-ctx.stage.warmUp();
+ctx.stage.warmUp(); // compiles the boss's shaders too (it's in the scene, visible, right now)
+ctx.boss?.reset();  // ...then hide it away, dormant, until the arena — shaders stay warm
 setState("title");
 
 function hideLoader(): void {

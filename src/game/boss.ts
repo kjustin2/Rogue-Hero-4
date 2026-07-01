@@ -47,6 +47,9 @@ export class Boss implements Hittable {
   private risen = false;
   /** Held during a phase-transition cutscene — animates but does not attack. */
   paused = false;
+  /** Staged-but-not-yet-fighting: built + shader-warmed at boot, hidden and inert
+   *  until activate(). Excluded from targeting/HUD/tick while true. */
+  dormant = true;
 
   group = new THREE.Group();
   private orbit = new THREE.Group(); // rune shards circling the core (animated)
@@ -157,9 +160,50 @@ export class Boss implements Hittable {
     }
     this.group.add(this.orbit);
 
+    // The soul-fire light lives on the SCENE (not the group) so it is counted from
+    // boot and STAYS counted while the boss is hidden. Adding a light mid-scene is what
+    // forces a synchronous whole-scene material relink — the "boss cutscene lag" freeze.
     this.light = new THREE.PointLight(this.hitColor, 30, 40, 2);
-    this.light.position.y = 5;
-    this.group.add(this.light);
+    this.light.position.set(this.pos.x, 5, this.pos.z);
+    this.ctx.stage.scene.add(this.light);
+  }
+
+  /**
+   * Wake the staged boss for its fight. It was built + shader-warmed at boot and its
+   * light has been in the scene since boot, so revealing it costs no shader compile and
+   * no light-count relink — that eliminates the multi-second boss-cutscene lag spike.
+   */
+  activate(): void {
+    this.dormant = false;
+    this.group.visible = true;
+  }
+
+  /**
+   * Return to a fresh, hidden, dormant pre-fight state. Reused across runs INSTEAD of
+   * rebuilding, so the warmed shaders and the scene light-count never change (no re-lag
+   * on a second run either).
+   */
+  reset(): void {
+    this.tele?.cancel(); this.tele = null;
+    for (const t of this.teles) t.cancel();
+    this.teles = []; this.spots = [];
+    this.hp = this.maxHp; this.alive = true;
+    this.dying = false; this.deathT = 0;
+    this.phase = 1; this.summoned = false;
+    this.rise = 0; this.risen = false;
+    this.charge = 0; this.lunge = 0; this.flash = 0; this.t = 0;
+    this.attack = null; this.windup = 0; this.cd = 1.3; this.paused = false;
+    this.light.intensity = 30; this.light.color.setHex(this.hitColor);
+    this.coreMat.emissiveIntensity = 2.0;
+    this.pos.copy(BOSS_ANCHOR);
+    this.group.position.copy(this.pos);
+    this.group.scale.setScalar(0.001);
+    this.group.rotation.set(0, 0, 0);
+    this.orbit.rotation.set(0, 0, 0);
+    this.orbit.scale.setScalar(1);
+    this.orbit.position.set(0, 0, 0);
+    this.group.visible = false;
+    this.dormant = true;
   }
 
   /** World position of the weak-point core (drives crosshair + crit aim). */
@@ -403,5 +447,6 @@ export class Boss implements Hittable {
       if (m.geometry) m.geometry.dispose();
     });
     this.ctx.stage.scene.remove(this.group);
+    this.ctx.stage.scene.remove(this.light);
   }
 }
