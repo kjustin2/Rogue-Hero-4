@@ -1,5 +1,64 @@
 import * as THREE from "three";
 import type { EnemyKind } from "../game/enemies";
+import type { Models, RiggedInstance } from "./models";
+
+/** Where the glowing core/eye overlay sits on each GLB body (group-local). The core is
+ * the per-instance hit-flash + charge-glow carrier — GLB materials are shared clones. */
+const CORE_ANCHOR: Record<EnemyKind, [number, number, number]> = {
+  husk: [0, 1.35, 0.28],
+  spitter: [0, 0.15, 0.5],   // the witchfire orb cupped in its hands (centered body)
+  brute: [0, 1.95, 0.55],
+  wraith: [0, 0.45, 0.3],    // the baleful eye under the cowl (centered body)
+  ghoul: [0, 1.15, 0.3],
+  archer: [0, 1.25, 0.28],
+};
+
+export interface EnemyVisual {
+  group: THREE.Group;
+  core: THREE.Mesh;
+  weapon?: THREE.Group;
+  /** Set when a rigged GLB loaded — Enemy drives its mixer/clips instead of scale-pulses. */
+  rigged?: RiggedInstance;
+}
+
+/**
+ * GLB body when loaded (rigged walkers animate via clips; wraith/spitter float via
+ * code), else the procedural primitive build. Core glow overlay always procedural.
+ */
+export function buildEnemyVisual(models: Models, kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMaterial, bodyY: number): EnemyVisual {
+  const anchor = CORE_ANCHOR[kind];
+  const rigged = models.getRigged(`enm-${kind}`);
+  if (rigged) {
+    const group = new THREE.Group();
+    rigged.root.position.y = -bodyY; // group floats at bodyY; feet must land on the floor
+    group.add(rigged.root);
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(0.16), coreMat);
+    core.position.set(...anchor);
+    group.add(core);
+    return { group, core, rigged };
+  }
+  const body = models.get(`enm-${kind}`);
+  if (body) {
+    const group = new THREE.Group();
+    group.add(body);
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(kind === "spitter" ? 0.28 : 0.18), coreMat);
+    core.position.set(...anchor);
+    group.add(core);
+    // keep the wraith's spectral scythe — the wind-up/strike swing is its fairness tell
+    let weapon: THREE.Group | undefined;
+    if (kind === "wraith") {
+      const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.8, 5), coreMat);
+      haft.position.set(0.5, 0.05, 0.12); haft.rotation.set(0.25, 0, 0.18);
+      const scytheBlade = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.045, 6, 12, Math.PI * 0.85), coreMat);
+      scytheBlade.position.set(0.34, 0.86, 0.2); scytheBlade.rotation.set(Math.PI / 2, 0, 0.7);
+      weapon = new THREE.Group();
+      weapon.add(haft, scytheBlade);
+      group.add(weapon);
+    }
+    return { group, core, weapon };
+  }
+  return buildEnemyMesh(kind, color, coreMat);
+}
 
 /**
  * Procedural enemy bodies, extracted from Enemy so art and logic live apart.

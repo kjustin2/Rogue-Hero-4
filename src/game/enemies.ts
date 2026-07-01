@@ -4,7 +4,8 @@ import type { Hittable, HitOpts } from "./combat";
 import type { TelegraphHandle } from "../render/telegraphs";
 import { GATES_Z, HALF_WIDTH } from "./level";
 import { damp } from "../core/math";
-import { buildEnemyMesh } from "../render/enemyMeshes";
+import { buildEnemyVisual } from "../render/enemyMeshes";
+import type { RiggedInstance } from "../render/models";
 
 export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer";
 
@@ -67,6 +68,8 @@ export class Enemy implements Hittable {
   private core: THREE.Mesh;
   private weapon?: THREE.Group;     // held weapon, swung on the strike
   private weaponBase = new THREE.Euler();
+  private rigged?: RiggedInstance;  // GLB skeleton — clips replace the scale-pulse body language
+  private clip = "";                // current animation clip label
   private vt = 0;
   private atkCharge = 0; // wind-up inflate (0→1 across the telegraph)
   private atkLunge = 0;  // strike snap forward (set to 1, decays)
@@ -76,6 +79,11 @@ export class Enemy implements Hittable {
   dying = false;
   private deathT = 0;
 
+  /** Death animation finished — the manager parks the body back into the pool. */
+  reapReady(): boolean {
+    return this.dying && (this.rigged ? this.deathT > 1.6 : this.group.scale.x <= 0.02);
+  }
+
   constructor(private ctx: Ctx, kind: EnemyKind, x: number, z: number) {
     this.kind = kind;
     this.cfg = KIND[kind];
@@ -84,10 +92,11 @@ export class Enemy implements Hittable {
     this.hitColor = this.cfg.color;
 
     this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.cfg.color, emissiveIntensity: 1.6, roughness: 0.4, metalness: 0.2 });
-    const parts = buildEnemyMesh(kind, this.cfg.color, this.coreMat);
+    const parts = buildEnemyVisual(ctx.models, kind, this.cfg.color, this.coreMat, this.cfg.bodyY);
     this.group = parts.group;
     this.core = parts.core;
     this.weapon = parts.weapon;
+    this.rigged = parts.rigged;
     if (this.weapon) this.weaponBase.copy(this.weapon.rotation);
     this.ctx.stage.scene.add(this.group);
     this.reset(x, z);
@@ -114,6 +123,32 @@ export class Enemy implements Hittable {
     this.group.scale.setScalar(1);
     this.group.rotation.set(0, 0, 0);
     this.group.position.set(x, this.cfg.bodyY, z);
+    if (this.rigged) {
+      this.rigged.mixer.stopAllAction();
+      this.clip = "";
+      this.playClip("idle");
+    }
+  }
+
+  /** Crossfade to a clip; one-shots (attack/flinch/death) clamp at their last frame. */
+  private playClip(label: string, once = false): void {
+    const a = this.rigged?.actions[label];
+    if (!a || this.clip === label) return;
+    const prev = this.rigged!.actions[this.clip];
+    a.reset();
+    if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
+    else a.setLoop(THREE.LoopRepeat, Infinity);
+    if (prev) a.crossFadeFrom(prev, 0.18, false);
+    a.play();
+    this.clip = label;
+  }
+
+  /** Which clip the current AI state wants (priority: death > attack > flinch > locomotion). */
+  private desiredClip(): { label: string; once: boolean } {
+    if (this.dying) return { label: "death", once: true };
+    if (this.state === "windup" || this.state === "lunge" || this.atkLunge > 0.5) return { label: "attack", once: true };
+    if (this.flinch > 0.55) return { label: "flinch", once: true };
+    return this.moveAmt > 0.22 ? { label: "walk", once: false } : { label: "idle", once: false };
   }
 
   /** Hide + deactivate, keeping mesh in-scene (shaders stay warm) for pool reuse. */
@@ -168,8 +203,14 @@ export class Enemy implements Hittable {
 
     if (this.dying) {
       this.deathT += dt;
-      const s = Math.max(0.001, 1 - this.deathT * 5);
-      this.group.scale.setScalar(s);
+      if (this.rigged) {
+        const want = this.desiredClip();
+        this.playClip(want.label, want.once);
+        this.rigged.mixer.update(dt);
+        if (this.deathT > 1.1) this.group.position.y -= dt * 1.5; // sink into the barrow
+      } else {
+        this.group.scale.setScalar(Math.max(0.001, 1 - this.deathT * 5));
+      }
       return;
     }
 
@@ -208,6 +249,13 @@ export class Enemy implements Hittable {
     let fnx = nx, fnz = nz;
     if (this.kind === "wraith" && (this.state === "windup" || this.state === "lunge")) {
       fnx = this.lungeDir.x; fnz = this.lungeDir.z;
+    }
+    if (this.rigged) {
+      const want = this.desiredClip();
+      this.playClip(want.label, want.once);
+      const walk = this.rigged.actions.walk;
+      if (walk) walk.timeScale = 0.7 + this.moveAmt * 0.7; // stride pace tracks actual speed
+      this.rigged.mixer.update(dt);
     }
     this.sync(fnx, fnz);
   }
@@ -334,9 +382,16 @@ export class Enemy implements Hittable {
   }
 
   private sync(nx = 0, nz = 0): void {
+    const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
+    if (this.rigged) {
+      // real clips carry the body language — keep only facing, the strike shove and a hit snap
+      this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY, this.pos.z + nz * fwd);
+      if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
+      this.group.rotation.x = -this.flinch * 0.18;
+      return;
+    }
     // bob grows with movement so a charging wight reads as striding, not gliding
     const bob = Math.sin(this.vt * (2.5 + this.moveAmt * 3) + this.id) * (0.1 + this.moveAmt * 0.14);
-    const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
     this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + bob, this.pos.z + nz * fwd);
     this.group.scale.setScalar(1 + this.atkCharge * 0.14 - this.atkLunge * 0.12 - this.flinch * 0.1);
     if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
@@ -423,7 +478,7 @@ export class EnemyManager {
     // reap finished death animations back into the pool
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
-      if (e.dying && e.group.scale.x <= 0.02) {
+      if (e.reapReady()) {
         e.park();
         this.parked[e.kind].push(e);
         this.list.splice(i, 1);

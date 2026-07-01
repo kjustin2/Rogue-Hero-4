@@ -1,10 +1,12 @@
 import * as THREE from "three";
+import type { Models } from "./models";
 
 /**
- * The Barrow King's procedural body, extracted from Boss so art and logic live
- * apart. Also the fallback when the GLB model is missing (see render/models.ts).
- * The PointLight is NOT built here — it must stay scene-owned in Boss (light-count
- * relink fix). Animated parts are returned by name; Boss drives them in tick().
+ * The Barrow King's body — the Meshy GLB when loaded (procedural warblade/orbit/core
+ * overlays kept on top: they carry the attack tells and the weak point), else the
+ * full procedural build. The PointLight is NOT built here — it must stay scene-owned
+ * in Boss (light-count relink fix). Animated parts are returned by name; Boss drives
+ * them in tick().
  */
 export interface BossMeshParts {
   group: THREE.Group;
@@ -13,7 +15,52 @@ export interface BossMeshParts {
   orbit: THREE.Group;
 }
 
-export function buildBossMesh(hitColor: number, coreMat: THREE.MeshStandardMaterial): BossMeshParts {
+export function buildBossMesh(hitColor: number, coreMat: THREE.MeshStandardMaterial, models?: Models): BossMeshParts {
+  const glbBody = models?.get("boss-barrowking");
+  if (glbBody) {
+    const group = new THREE.Group();
+    group.add(glbBody);
+    // weak-point core pokes out of the breastplate (isWeakHit tests a sphere at CORE_Y)
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.0), coreMat);
+    core.position.set(0, 4.6, 1.0);
+    group.add(core);
+    const { blade, orbit } = buildBladeAndOrbit(hitColor, coreMat);
+    group.add(blade, orbit);
+    const cloak = new THREE.Mesh(); // GLB has its own cloak — tick()'s billow becomes a no-op
+    cloak.visible = false;
+    group.add(cloak);
+    return { group, cloak, blade, orbit };
+  }
+  return buildProcedural(hitColor, coreMat);
+}
+
+function buildBladeAndOrbit(hitColor: number, coreMat: THREE.MeshStandardMaterial): { blade: THREE.Group; orbit: THREE.Group } {
+  const shell = new THREE.MeshStandardMaterial({ color: 0x0a0b16, roughness: 0.55, metalness: 0.5, emissive: hitColor, emissiveIntensity: 0.3 });
+  const blade = new THREE.Group();
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.3, 6), shell);
+  const guard = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.3, 0.42), coreMat);
+  guard.position.y = 0.78;
+  const blMesh = new THREE.Mesh(new THREE.BoxGeometry(0.62, 7.6, 0.2), shell);
+  blMesh.position.y = 4.6; blMesh.castShadow = true;
+  const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.16, 6.9, 0.26), coreMat);
+  fuller.position.y = 4.45;
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.4, 4), shell);
+  tip.position.y = 8.75;
+  const pommel = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), coreMat);
+  pommel.position.y = -0.75;
+  blade.add(grip, guard, blMesh, fuller, tip, pommel);
+  blade.rotation.set(0, 0, -0.22);
+  const orbit = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.5), coreMat);
+    shard.position.set(Math.cos(a) * 3.6, 4.6 + Math.sin(a * 2) * 0.7, Math.sin(a) * 3.6);
+    orbit.add(shard);
+  }
+  return { blade, orbit };
+}
+
+function buildProcedural(hitColor: number, coreMat: THREE.MeshStandardMaterial): BossMeshParts {
   const group = new THREE.Group();
   const shell = new THREE.MeshStandardMaterial({ color: 0x0a0b16, roughness: 0.55, metalness: 0.5, emissive: hitColor, emissiveIntensity: 0.3 });
   const body = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 2.4, 6.5, 8), shell);
@@ -76,33 +123,8 @@ export function buildBossMesh(hitColor: number, coreMat: THREE.MeshStandardMater
     group.add(pole, banner, sigil);
   }
 
-  // a colossal soul-forged warblade hovering at the Warden's flank — raised on the
-  // wind-up, hammered down on the strike (animated in tick from charge/lunge)
-  const blade = new THREE.Group();
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.3, 6), shell);
-  const guard = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.3, 0.42), coreMat);
-  guard.position.y = 0.78;
-  const blMesh = new THREE.Mesh(new THREE.BoxGeometry(0.62, 7.6, 0.2), shell);
-  blMesh.position.y = 4.6; blMesh.castShadow = true;
-  const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.16, 6.9, 0.26), coreMat); // glowing fuller down the blade
-  fuller.position.y = 4.45;
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.4, 4), shell);
-  tip.position.y = 8.75;
-  const pommel = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), coreMat);
-  pommel.position.y = -0.75;
-  blade.add(grip, guard, blMesh, fuller, tip, pommel);
-  blade.rotation.set(0, 0, -0.22);
-  group.add(blade);
-
-  // rune shards orbiting the core (spun in tick) — menace + motion
-  const orbit = new THREE.Group();
-  for (let i = 0; i < 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.5), coreMat);
-    shard.position.set(Math.cos(a) * 3.6, 4.6 + Math.sin(a * 2) * 0.7, Math.sin(a) * 3.6);
-    orbit.add(shard);
-  }
-  group.add(orbit);
+  const { blade, orbit } = buildBladeAndOrbit(hitColor, coreMat);
+  group.add(blade, orbit);
 
   return { group, cloak, blade, orbit };
 }

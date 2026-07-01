@@ -64,7 +64,7 @@ export class Boss implements Hittable {
 
   constructor(private ctx: Ctx) {
     this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.hitColor, emissiveIntensity: 2.0, roughness: 0.35, metalness: 0.2 });
-    const parts = buildBossMesh(this.hitColor, this.coreMat);
+    const parts = buildBossMesh(this.hitColor, this.coreMat, ctx.models);
     this.group = parts.group;
     this.cloak = parts.cloak;
     this.blade = parts.blade;
