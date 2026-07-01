@@ -194,8 +194,10 @@ export class Telegraphs {
       } else {
         const endPulse = Math.max(0, (k - 0.78) / 0.22);
         t.sweep.scale.z = Math.max(0.001, t.length * k);
-        t.sweepMat.opacity = Math.min(0.95, 0.28 + k * 0.32 + endPulse * 0.35);
-        t.zoneMat.opacity = Math.min(0.42, 0.16 * pulse + k * 0.06 + endPulse * 0.12);
+        // brighter than before so short wind-ups (ranged shots) still read as a clear aim-lane
+        // against the bright medieval floor — the full-path zone shows immediately, sweep fills it
+        t.sweepMat.opacity = Math.min(0.95, 0.38 + k * 0.3 + endPulse * 0.3);
+        t.zoneMat.opacity = Math.min(0.58, 0.28 * pulse + k * 0.1 + endPulse * 0.15);
       }
       if (k >= 1) this.release(t);
     }

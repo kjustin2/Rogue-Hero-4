@@ -280,6 +280,35 @@ app.whenReady().then(async () => {
       await fire("stormcaller", "atk-storm-heavy", ["KeyK"], 24, 18);             // 3-strike barrage
       await fire("stormcaller", "atk-storm-combo", ["KeyJ", "KeyJ", "KeyK"], 28, 18); // TEMPEST cluster
 
+      // ---------- enemy telegraph + hit-reaction pass (fairness/juice) ----------
+      await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0); p.hp=p.maxHp;}`);
+      await js(`window.__rh4.cam.yaw = Math.PI; window.__rh4.cam.pitch = 0;`); // face down the lane
+      // 1) ranged enemies now PAINT an aim-line before they loose. The real wind-up is a
+      //    ~0.3s flash a random frame rarely catches, so freeze the pack and paint the SAME
+      //    ctx.tele.line() call tickRanged fires (same origin/angle/width) — proving the
+      //    aim-lane reads on the bright floor (the telegraphs.ts opacity fix), then hold it
+      //    half-swept for the capture.
+      await js(`{const pz=window.__rh4.player.pos.z; window.__rh4.enemies.clear(); window.__rh4debug.spawn('archer', 6, pz+13); window.__rh4debug.spawn('spitter', -6, pz+11); 0;}`);
+      await frames(50); // let them close to realistic mid-range first
+      await js(`{const p=window.__rh4.player; window.__rh4.enemies.living().forEach(e=>{ e.frozen=5; const dx=p.pos.x-e.pos.x, dz=p.pos.z-e.pos.z, d=Math.hypot(dx,dz)||1; window.__rh4.tele.line(e.pos.x, e.pos.z, Math.atan2(dz,dx), Math.min(d+2,18), 1.5, 1.2, e.cfg.color); }); 0;}`);
+      await frames(20); // sweep fills to ~half along the aim-lane, then hold for the shot
+      await shot(win, "enemy-telegraph");
+
+      // 2) staggering a winding-up enemy CANCELS its strike (the hit-reaction payoff)
+      await js(`window.__rh4debug.god(false)`); // god is on for the demo — off so the baseline hit can land
+      const maxHp = await js(`window.__rh4.player.maxHp`);
+      await js(`{const p=window.__rh4.player; p.hp=p.maxHp; window.__rh4.enemies.clear(); window.__rh4debug.spawn('husk', 0, p.pos.z + 2.0); 0;}`);
+      await frames(12); // un-staggered: the wind-up completes and it strikes
+      const hpFree = await js(`window.__rh4.player.hp`);
+      expect(hpFree < maxHp, "baseline: a winding-up husk should land its strike (" + hpFree + ")");
+      await js(`{const p=window.__rh4.player; p.hp=p.maxHp; window.__rh4.enemies.clear(); window.__rh4debug.spawn('husk', 0, p.pos.z + 2.0); 0;}`);
+      await frames(3); // let it enter the wind-up...
+      await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(5,{}))`); // ...then stagger it
+      await frames(8);
+      const hpStag = await js(`window.__rh4.player.hp`);
+      expect(hpStag === maxHp, "stagger should cancel the winding-up husk's strike (" + hpStag + ")");
+      await js(`window.__rh4.enemies.clear(); window.__rh4.player.hp = window.__rh4.player.maxHp; window.__rh4debug.god(true);`); // restore god for the boss beats
+
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the projectile starter for the boss
       await frames(6);
 

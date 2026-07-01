@@ -58,6 +58,7 @@ export class Enemy implements Hittable {
   private lungeDir = new THREE.Vector3();
   private didHit = false;
   private flash = 0;
+  private flinch = 0; // hit-reaction recoil (0→1 on hit, decays) — leans the body back
   private kb = new THREE.Vector3();
   private tele: TelegraphHandle | null = null;
   group = new THREE.Group();
@@ -317,6 +318,7 @@ export class Enemy implements Hittable {
     if (!this.alive) return false;
     this.hp -= dmg;
     this.flash = 1;
+    this.flinch = 1; // snap-back hit reaction
     if (opts.knockback && opts.fromX !== undefined && opts.fromZ !== undefined) {
       const dx = this.pos.x - opts.fromX;
       const dz = this.pos.z - opts.fromZ;
@@ -330,12 +332,26 @@ export class Enemy implements Hittable {
       this.tele?.cancel();
       return true;
     }
+    // hit-reaction stagger: a solid hit CANCELS a winding-up attack — the payoff for
+    // aggressive counterplay. Fodder buckles to anything; the brute only to heavy/big hits.
+    if (this.state === "windup") {
+      const tanky = this.kind === "brute";
+      const solid = !!opts.heavy || dmg >= this.maxHp * 0.14;
+      if (!tanky || solid) {
+        this.tele?.cancel(); this.tele = null;
+        this.state = "recover";
+        this.timer = tanky ? 0.35 : 0.5;
+        this.atkCharge = 0;
+        this.ctx.fx.burst({ x: this.pos.x, y: this.cfg.bodyY + 1.1, z: this.pos.z, count: 8, color: 0xffffff, speed: [2, 6], size: [0.1, 0.28], life: [0.12, 0.3] });
+      }
+    }
     return false;
   }
 
   tick(dt: number): void {
     this.vt += dt;
     this.flash = Math.max(0, this.flash - dt * 4);
+    this.flinch = Math.max(0, this.flinch - dt * 5);
     // ponytail: charge glow capped lower (2.0, was 3.5) — a clustered pack winding up at 5x emissive bloomed to a full-white frame
     this.coreMat.emissiveIntensity = 1.6 + this.flash * 4 + this.atkCharge * 2.0;
     if (this.core) { this.core.rotation.y += dt * 2.2; this.core.rotation.x += dt * 1.4; }
@@ -430,20 +446,44 @@ export class Enemy implements Hittable {
     }
   }
 
+  // Ranged: reposition to mid-range → TELEGRAPH the shot lane (a wind-up you can react to,
+  // by dodging or breaking line with cover) → loose along it → recover. Firing with no tell
+  // was the unfair part; the aim line is the fairness contract.
   private tickRanged(dt: number, dist: number, nx: number, nz: number): void {
     const cfg = this.cfg;
+    const pj = cfg.proj ?? { speed: 17, shape: "comet" as const, interval: 1.45 };
+
+    if (this.state === "windup") {
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.flash = 0.9;  // iris/eye flares as it looses
+        this.atkLunge = 1; // staff thrusts / bow snaps forward on the shot
+        const p = this.ctx.player;
+        const dir = new THREE.Vector3(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
+        this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, dir, pj.speed, cfg.contactDmg, false, cfg.color, 2, { shape: pj.shape });
+        this.tele = null;
+        this.state = "recover";
+        this.timer = 0.3;
+        this.fireTimer = pj.interval;
+      }
+      return; // brace while aiming — don't drift
+    }
+    if (this.state === "recover") {
+      this.timer -= dt;
+      if (this.timer <= 0) this.state = "approach";
+    }
+
     // keep mid-range
     if (dist < 8) { this.pos.x -= nx * cfg.speed * dt; this.pos.z -= nz * cfg.speed * dt; }
     else if (dist > cfg.attackRange) { this.pos.x += nx * cfg.speed * dt; this.pos.z += nz * cfg.speed * dt; }
+
     this.fireTimer -= dt;
-    if (this.fireTimer <= 0 && dist < cfg.attackRange + 2) {
-      const pj = cfg.proj ?? { speed: 17, shape: "comet" as const, interval: 1.45 };
-      this.fireTimer = pj.interval;
-      this.flash = 0.9; // iris/eye flares as it looses
-      this.atkLunge = 1; // staff thrusts / bow snaps forward on the shot
-      const p = this.ctx.player;
-      const dir = new THREE.Vector3(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
-      this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, dir, pj.speed, cfg.contactDmg, false, cfg.color, 2, { shape: pj.shape });
+    if (this.state === "approach" && this.fireTimer <= 0 && dist < cfg.attackRange + 2) {
+      // wind up a telegraphed shot: paint the lane toward the player, then loose when it fills
+      this.state = "windup";
+      this.timer = cfg.windup;
+      const len = Math.min(dist + 2, pj.shape === "dart" ? 22 : 15);
+      this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), len, 1.5, cfg.windup, cfg.color);
     }
   }
 
@@ -494,10 +534,10 @@ export class Enemy implements Hittable {
     const bob = Math.sin(this.vt * (2.5 + this.moveAmt * 3) + this.id) * (0.1 + this.moveAmt * 0.14);
     const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
     this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + bob, this.pos.z + nz * fwd);
-    this.group.scale.setScalar(1 + this.atkCharge * 0.14 - this.atkLunge * 0.12);
+    this.group.scale.setScalar(1 + this.atkCharge * 0.14 - this.atkLunge * 0.12 - this.flinch * 0.1);
     if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
-    // lean into the advance (toward the player), faint living sway, slight recoil on the strike
-    this.group.rotation.x = this.moveAmt * 0.17 - this.atkLunge * 0.1;
+    // lean into the advance (toward the player), faint living sway, recoil on strike, snap back on a hit
+    this.group.rotation.x = this.moveAmt * 0.17 - this.atkLunge * 0.1 - this.flinch * 0.4;
     this.group.rotation.z = Math.sin(this.vt * 1.7 + this.id) * 0.04;
     // weapon: cocked back through the wind-up, swung hard on the strike, idle drift otherwise
     if (this.weapon) {

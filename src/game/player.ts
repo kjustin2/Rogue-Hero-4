@@ -192,6 +192,7 @@ export class Player {
   private dashTime = 0;
   private dashCd = 0;
   private dashDir = new THREE.Vector3();
+  private kb = new THREE.Vector3(); // self-recoil (rocket kick) / lunge (melee) impulse — decays
 
   // viewmodel — one distinct model per weapon, swapped on equip
   private vm = new THREE.Group();
@@ -230,6 +231,7 @@ export class Player {
     this.moveT = 0;
     this.dashTime = 0;
     this.dashCd = 0;
+    this.kb.set(0, 0, 0);
     this.lastCombo = "";
     this.cooldowns.light = this.cooldowns.heavy = 0;
     // fresh run: back to the starter weapon, shards zeroed
@@ -473,6 +475,9 @@ export class Player {
     this.ctx.cam.forward(this.aim);
     const heavy = c.slot === "heavy";
 
+    // weapon-feel self-shove: + recoil kicks you BACKWARD (rocket/beam), - lunges you FORWARD (melee)
+    if (a.recoil) { this.kb.x += -fx * a.recoil; this.kb.z += -fz * a.recoil; }
+
     if (a.type === "melee") {
       this.ctx.sfx.meleeSwing(heavy);
       this.ctx.combat.meleeSweep(this.pos.x, this.pos.z, fx, fz, a.arc, a.range, a.damage, a.knockback, heavy);
@@ -619,10 +624,14 @@ export class Player {
       const len = Math.hypot(this.vel.x, this.vel.z);
       if (len > 1) this.vel.multiplyScalar(1 / len);
       let speed = WALK_SPEED;
-      if (this.cur && this.cur.a.type === "melee") speed *= 0.5; // committed melee swing roots you a bit
+      if (this.cur) speed *= this.weapon.moveMult; // committing to an attack sets your mobility (weapon identity)
       this.vel.multiplyScalar(this.alive ? speed : 0);
     }
     this.pos.addScaledVector(this.vel, dt);
+    // self-recoil / lunge impulse (weapon feel), decays fast
+    this.pos.addScaledVector(this.kb, dt);
+    this.kb.x = damp(this.kb.x, 0, 9, dt);
+    this.kb.z = damp(this.kb.z, 0, 9, dt);
     this.ctx.level.clampPosition(this.pos, this.radius);
     const target = this.dashTime > 0 ? 1 : clamp(Math.hypot(this.vel.x, this.vel.z) / WALK_SPEED, 0, 1);
     this.moveAmount = damp(this.moveAmount, target, 8, dt);
