@@ -42,6 +42,7 @@ export class Level {
   private portalRings: THREE.Mesh[] = [];
   private portalGlow?: THREE.Mesh;
   private portalGlowMat?: THREE.MeshBasicMaterial;
+  private portalSpin?: THREE.Group;
   private floorMats: THREE.MeshStandardMaterial[] = [];
   private panes: THREE.MeshStandardMaterial[] = [];
   private starMats: THREE.ShaderMaterial[] = [];
@@ -263,6 +264,72 @@ export class Level {
     rungs.instanceMatrix.needsUpdate = true;
     this.group.add(rungs);
 
+    // --- medieval dressing: heraldic wall targes, a headstone graveyard, arena sentinels ---
+    // round shields hung on the inner wall faces (merged geo, a handful per side)
+    const shieldGeo = mergeGeometries([
+      new THREE.CylinderGeometry(0.6, 0.6, 0.14, 18).rotateZ(Math.PI / 2),   // disc, axis→X so it faces across
+      new THREE.TorusGeometry(0.6, 0.08, 8, 22).rotateY(Math.PI / 2),        // rim
+      new THREE.SphereGeometry(0.14, 10, 8).translate(0.09, 0, 0),           // central boss stud
+      new THREE.BoxGeometry(0.1, 0.95, 0.1).translate(0.08, 0, 0),           // cross — vertical
+      new THREE.BoxGeometry(0.1, 0.1, 0.72).translate(0.08, 0, 0),           // cross — horizontal
+    ]);
+    for (const sx of [-1, 1]) {
+      for (let z = 40; z < ARENA_BLEND_Z; z += 44) {
+        const shield = new THREE.Mesh(shieldGeo, ironMat);
+        shield.position.set(sx * (HALF_WIDTH - 0.05), 7.4, z + 8);
+        this.group.add(shield);
+      }
+    }
+    // a cross-topped headstone graveyard lining the causeway edges (instanced, one draw)
+    const graveGeo = mergeGeometries([
+      new THREE.BoxGeometry(0.72, 1.4, 0.22).translate(0, 0.7, 0),
+      new THREE.BoxGeometry(0.16, 0.62, 0.16).translate(0, 1.72, 0),
+      new THREE.BoxGeometry(0.46, 0.16, 0.16).translate(0, 1.64, 0),
+    ]);
+    const graveN = 22;
+    const graves = new THREE.InstancedMesh(graveGeo, stoneMat, graveN);
+    graves.frustumCulled = false;
+    const gd = new THREE.Object3D();
+    let gi = 0;
+    for (const sx of [-1, 1]) {
+      for (let z = 14; z < ARENA_BLEND_Z && gi < graveN; z += 15) {
+        const jit = Math.sin(gi * 12.9898); // deterministic lean/scatter, no RNG needed
+        gd.position.set(sx * (HALF_WIDTH - 1.7) - sx * jit * 0.4, 0, z + (sx > 0 ? 7 : 0));
+        gd.rotation.set(jit * 0.13, sx * 0.5 + jit * 0.6, Math.sin(gi * 7.13) * 0.14);
+        gd.updateMatrix();
+        graves.setMatrixAt(gi++, gd.matrix);
+      }
+    }
+    graves.count = gi;
+    graves.instanceMatrix.needsUpdate = true;
+    this.group.add(graves);
+    // two hulking gargoyle sentinels flanking the arena mouth (guardians of the Warden)
+    for (const sx of [-1, 1]) {
+      const st = new THREE.Group();
+      const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 2.2), stoneMat);
+      plinth.position.y = 0.6; plinth.castShadow = true;
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.1, 2.6, 6), stoneMat);
+      torso.position.y = 2.4; torso.castShadow = true;
+      const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), stoneMat);
+      head.position.y = 4.0; head.castShadow = true;
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.14), this.emissiveMat(0xff5022, 1.6));
+      eye.position.set(0, 4.05, 0.55);
+      st.add(plinth, torso, head, eye);
+      for (const wx of [-1, 1]) { // folded gargoyle wings
+        const wing = new THREE.Mesh(new THREE.ConeGeometry(0.5, 2.6, 3), stoneMat);
+        wing.position.set(wx * 0.9, 2.8, -0.4); wing.rotation.z = wx * 0.5; wing.castShadow = true;
+        st.add(wing);
+      }
+      for (const hx of [-1, 1]) { // horns
+        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.8, 4), stoneMat);
+        horn.position.set(hx * 0.3, 4.5, 0); horn.rotation.z = hx * 0.5;
+        st.add(horn);
+      }
+      st.position.set(sx * (HALF_WIDTH - 2.4), 0, ARENA_BLEND_Z - 3);
+      st.rotation.y = sx > 0 ? -0.5 : 0.5; // turned in toward the path
+      this.group.add(st);
+    }
+
     // --- gradient sky dome behind everything ---
     const sky = new THREE.Mesh(
       new THREE.SphereGeometry(190, 32, 16),
@@ -348,21 +415,30 @@ export class Level {
     flow.position.set(0, 0.08, pathLen / 2 - 8);
     this.group.add(flow);
 
-    // --- giant rift portal behind the boss ---
+    // --- colossal rift maw behind the boss: a churning vortex the Warden was torn from ---
     const portal = new THREE.Group();
     // soft additive glow disc behind the rings (pulses in update)
-    this.portalGlowMat = new THREE.MeshBasicMaterial({ map: this.makeGlowTexture(), color: 0xff5a1e, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
-    this.portalGlow = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), this.portalGlowMat);
-    this.portalGlow.position.z = -0.6;
+    this.portalGlowMat = new THREE.MeshBasicMaterial({ map: this.makeGlowTexture(), color: 0xff5a1e, transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    this.portalGlow = new THREE.Mesh(new THREE.PlaneGeometry(66, 66), this.portalGlowMat);
+    this.portalGlow.position.z = -1.0;
     portal.add(this.portalGlow);
-    const pcore = new THREE.Mesh(new THREE.CircleGeometry(5, 48), new THREE.MeshBasicMaterial({ color: 0x1a0a04, side: THREE.DoubleSide }));
+    const pcore = new THREE.Mesh(new THREE.CircleGeometry(6, 56), new THREE.MeshBasicMaterial({ color: 0x120604, side: THREE.DoubleSide }));
     portal.add(pcore);
-    for (let i = 0; i < 5; i++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(5 + i * 2.1, 0.38 - i * 0.045, 10, 48), this.emissiveMat(EMBER[i % EMBER.length], 2.5 - i * 0.28));
+    // a swirling spoke vortex behind the rings (spun as one group in update)
+    this.portalSpin = new THREE.Group();
+    this.portalSpin.position.z = -0.4;
+    for (let i = 0; i < 12; i++) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.5, 30, 0.14), this.emissiveMat(i % 2 ? 0xff5022 : 0xffb24a, 1.3));
+      spoke.rotation.z = (i / 12) * Math.PI * 2;
+      this.portalSpin.add(spoke);
+    }
+    portal.add(this.portalSpin);
+    for (let i = 0; i < 8; i++) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(6 + i * 2.5, 0.5 - i * 0.04, 10, 56), this.emissiveMat(EMBER[i % EMBER.length], 2.6 - i * 0.22));
       this.portalRings.push(ring);
       portal.add(ring);
     }
-    portal.position.set(ARENA_CENTER.x, 12, ARENA_CENTER.y + 22);
+    portal.position.set(ARENA_CENTER.x, 13, ARENA_CENTER.y + 22);
     this.group.add(portal);
 
     // --- glowing arrow-slit windows high on the walls (inner firelight) ---
@@ -408,6 +484,7 @@ export class Level {
       this.portalGlow.scale.setScalar(1 + 0.07 * Math.sin(t * 1.3));
       this.portalGlowMat.opacity = 0.7 + 0.25 * (0.5 + 0.5 * Math.sin(t * 1.3));
     }
+    if (this.portalSpin) this.portalSpin.rotation.z += dt * 0.28; // the maw churns
     // subtle floor + wall-panel breathing so the whole map feels alive
     for (let i = 0; i < this.floorMats.length; i++) this.floorMats[i].emissiveIntensity = 0.95 + 0.22 * Math.sin(t * 0.8);
     for (let i = 0; i < this.panes.length; i++) this.panes[i].emissiveIntensity = 1.0 + 0.8 * (0.5 + 0.5 * Math.sin(t * 1.5 + i * 0.7));

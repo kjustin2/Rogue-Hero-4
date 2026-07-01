@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Ctx } from "./ctx";
 import { ARENA_CENTER, ARENA_RADIUS, HALF_WIDTH } from "./level";
 
@@ -53,7 +54,7 @@ export class Projectiles {
   private ringGeo = new THREE.TorusGeometry(0.34, 0.05, 6, 18);
   private runeGeo = new THREE.TetrahedronGeometry(0.14);
   private tailGeo: THREE.ConeGeometry;
-  private dartGeo: THREE.ConeGeometry;
+  private dartGeo: THREE.BufferGeometry;
   private headMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
   private q = new THREE.Quaternion();
   private vn = new THREE.Vector3();
@@ -63,10 +64,20 @@ export class Projectiles {
     this.tailGeo = new THREE.ConeGeometry(0.3, 1.8, 12, 1, true);
     this.tailGeo.rotateX(Math.PI / 2);
     this.tailGeo.translate(0, 0, -0.9);
-    // crossbow dart: a long thin spike, apex forward (+Z)
-    this.dartGeo = new THREE.ConeGeometry(0.09, 1.1, 6);
-    this.dartGeo.rotateX(Math.PI / 2);
-    this.dartGeo.translate(0, 0, 0.2);
+    // crossbow bolt: a slim shaft + a barbed head + 3 fletching vanes at the tail, merged
+    // into one geometry (1 draw) — reads as a real medieval bolt, spun in flight (update).
+    const shaft = new THREE.CylinderGeometry(0.035, 0.03, 0.95, 6).rotateX(Math.PI / 2);
+    const head = new THREE.ConeGeometry(0.085, 0.36, 6).rotateX(Math.PI / 2).translate(0, 0, 0.62);
+    const boltParts: THREE.BufferGeometry[] = [shaft, head];
+    for (let k = 0; k < 3; k++) {
+      const vane = new THREE.BoxGeometry(0.02, 0.2, 0.3)
+        .translate(0, 0.13, 0)          // fin sits off the shaft
+        .rotateZ((k / 3) * TAU)         // spread three around the axis
+        .translate(0, 0, -0.4);         // at the tail
+      boltParts.push(vane);
+    }
+    this.dartGeo = mergeGeometries(boltParts);
+    boltParts.forEach((g) => g.dispose());
 
     for (let i = 0; i < POOL; i++) {
       const glowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -165,6 +176,7 @@ export class Projectiles {
       s.glow.scale.setScalar((ball ? 1.5 : 0.85) + Math.sin(age * 30) * 0.15);
       s.head.scale.setScalar((ball ? 1.7 : 0.9) + Math.sin(age * 46) * 0.22);
       s.runes.rotation.z += dt * 9;
+      if (s.shape === "dart") s.dart.rotation.z += dt * 16; // fletched bolt spins in flight
       // throttled trailing sparks (a thicker, sootier trail behind a cannonball)
       s.trailT -= dt;
       if (s.trailT <= 0) {

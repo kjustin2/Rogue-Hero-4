@@ -426,6 +426,8 @@ export class Player {
     const input = this.ctx.input;
     if (input.actionPressed("dash") && this.dashCd <= 0) this.startDash();
     if (input.actionPressed("switch") && this.weapons.length > 1) this.cycleWeapon();
+    const wheel = input.consumeWheelStep();
+    if (wheel && this.weapons.length > 1) this.cycleWeapon(wheel > 0 ? 1 : -1);
     if (this.cur) return; // committed to an attack
     if (input.actionPressed("light") && this.cooldowns.light <= 0) this.startAttack("light");
     else if (input.actionPressed("heavy") && this.cooldowns.heavy <= 0) this.startAttack("heavy");
@@ -466,6 +468,9 @@ export class Player {
     const color = c.color;
     this.ctx.cam.worldForward(this.fwd);
     const fx = this.fwd.x, fz = this.fwd.z;
+    // full 3D look ray (includes pitch) — projectiles AND combo finishers fire here so
+    // everything goes exactly where the crosshair points, not flat down the lane.
+    this.ctx.cam.forward(this.aim);
     const heavy = c.slot === "heavy";
 
     if (a.type === "melee") {
@@ -511,7 +516,6 @@ export class Player {
     } else {
       // bolt / rocket: fire `pellets` along the look ray, fanned by `spread`
       this.ctx.sfx.boltCast();
-      this.ctx.cam.forward(this.aim);
       const n = Math.max(1, a.pellets);
       const opts = {
         scale: a.big ? 1.9 : 1,
@@ -538,7 +542,7 @@ export class Player {
 
     const combo = matchWeaponCombo(this.buffer, this.weapon);
     if (combo) {
-      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, fx, fz, a.damage);
+      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, this.aim, a.damage);
       this.lastCombo = combo.name;
       this.lastComboT = 2.4;
       this.buffer.length = 0;

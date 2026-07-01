@@ -107,6 +107,27 @@ export class Boss implements Hittable {
       this.group.add(inner);
     }
 
+    // knightly plate: a great-helm crest ridge, a gorget collar, a breastplate + heraldic sigil
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 1.4), this.coreMat);
+    crest.position.set(0, 8.35, 0); // comb/plume ridge atop the helm
+    const gorget = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.24, 8, 16), shell);
+    gorget.position.y = 6.5; gorget.rotation.x = Math.PI / 2;
+    const breast = new THREE.Mesh(new THREE.BoxGeometry(2.7, 2.3, 1.0), shell);
+    breast.position.set(0, 4.5, 0.95); breast.castShadow = true;
+    const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.55), this.coreMat);
+    emblem.position.set(0, 4.7, 1.55); emblem.scale.set(1, 1.5, 0.4); // sigil on the chest
+    this.group.add(crest, gorget, breast, emblem);
+    // tattered war-banners on iron poles planted behind the Warden (face the player)
+    for (const sx of [-1, 1]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 12, 6), shell);
+      pole.position.set(sx * 3.7, 5, -2.0);
+      const banner = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 5.2), shell);
+      banner.position.set(sx * 3.7, 7.4, -2.05); banner.rotation.y = Math.PI;
+      const sigil = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 3.2), this.coreMat);
+      sigil.position.set(sx * 3.7, 7.4, -1.98); sigil.rotation.y = Math.PI;
+      this.group.add(pole, banner, sigil);
+    }
+
     // a colossal soul-forged warblade hovering at the Warden's flank — raised on the
     // wind-up, hammered down on the strike (animated in tick from charge/lunge)
     const blade = this.blade;
@@ -194,6 +215,8 @@ export class Boss implements Hittable {
       this.summoned = true;
       this.ctx.enemies.spawn("husk", this.pos.x - 4, this.pos.z - 4);
       this.ctx.enemies.spawn("husk", this.pos.x + 4, this.pos.z - 4);
+      this.ctx.enemies.spawn("ghoul", this.pos.x - 6, this.pos.z - 2);
+      this.ctx.enemies.spawn("ghoul", this.pos.x + 6, this.pos.z - 2);
     }
   }
 
@@ -289,7 +312,7 @@ export class Boss implements Hittable {
     const c = this.hitColor;
     if (this.attack === "slam") this.tele = this.ctx.tele.circle(this.aim.x, this.aim.z, 5, this.windupMax, c);
     else if (this.attack === "sweep") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 40, 5, this.windupMax, c);
-    else if (this.attack === "beam") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 60, 3, this.windupMax, c);
+    else if (this.attack === "beam") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 60, 4, this.windupMax, c);
     else if (this.attack === "collapse") {
       // rift collapse: several slam zones bloom across the arena at once — keep moving
       for (const t of this.teles) t.cancel();
@@ -335,24 +358,19 @@ export class Boss implements Hittable {
         this.ctx.projectiles.spawn(this.pos.x, sy, this.pos.z, dir, 24, 14, false, this.hitColor, 3);
       }
     } else if (a === "beam") {
-      // a fan of three searing laser beams lances down the lane toward the player
-      const dx = p.pos.x - this.pos.x, dz = p.pos.z - this.pos.z;
+      // a searing lance fires ALONG THE TELEGRAPHED LINE (locked at wind-up on this.aim),
+      // NOT the player's live position — so stepping off the strip actually dodges it.
+      const dx = this.aim.x - this.pos.x, dz = this.aim.z - this.pos.z;
       const d = Math.hypot(dx, dz) || 1;
-      const dirX = dx / d, dirZ = dz / d;
-      let hit = false;
-      for (const off of [-0.32, 0, 0.32]) {
-        const ca = Math.cos(off), sa = Math.sin(off);
-        const bx = dirX * ca - dirZ * sa, bz = dirX * sa + dirZ * ca;
-        this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, bz, 60, this.hitColor, 1.4);
-        this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, bz, 60, 0xffffff, 0.5);
-        const px = p.pos.x - this.pos.x, pz = p.pos.z - this.pos.z;
-        const along = px * bx + pz * bz;
-        const perp = Math.abs(px * bz - pz * bx);
-        if (along > 0 && perp <= 2.3) hit = true;
-      }
+      const bx = dx / d, bz = dz / d;
+      this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, bz, 60, this.hitColor, 1.6);
+      this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, bz, 60, 0xffffff, 0.6);
+      const px = p.pos.x - this.pos.x, pz = p.pos.z - this.pos.z;
+      const along = px * bx + pz * bz;
+      const perp = Math.abs(px * bz - pz * bx);
       this.ctx.cam.addTrauma(0.32);
       this.ctx.sfx.beamFire();
-      if (hit) this.ctx.combat.damagePlayer(30, this.pos.x, this.pos.z);
+      if (along > 0 && perp <= 2.0) this.ctx.combat.damagePlayer(30, this.pos.x, this.pos.z); // corridor matches the width-4 strip
     } else if (a === "sweep") {
       // hit if player is within the swept band along aimAngle
       const dx = p.pos.x - this.pos.x;

@@ -195,7 +195,7 @@ export class Combat {
    * reads downrange, not as a flash in the player's face. Only the melee weapon's slam
    * lands a ground shockwave just ahead. Camera/sfx feel kept; the screen flash removed.
    */
-  resolveCombo(combo: WeaponComboDef, x: number, z: number, dirX: number, dirZ: number, baseDmg: number): void {
+  resolveCombo(combo: WeaponComboDef, x: number, z: number, aim: THREE.Vector3, baseDmg: number): void {
     const dmg = baseDmg * combo.damageMult;
     this.ctx.events.emit("COMBO_RESOLVE", { name: combo.name, tier: combo.tier });
     this.ctx.stage.punch(0.3 + combo.tier * 0.1);
@@ -204,24 +204,29 @@ export class Combat {
     this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.09);
     this.ctx.sfx.critical();
     if (combo.tier >= 3) this.ctx.sfx.bossRoar();
-    const dir = new THREE.Vector3(dirX, 0, dirZ).normalize();
+    // ground-projected heading for area/melee finishers; full 3D aim (incl. pitch) for
+    // the shots, so a barrage/volley flies exactly where the crosshair points.
+    const glen = Math.hypot(aim.x, aim.z) || 1;
+    const dirX = aim.x / glen, dirZ = aim.z / glen;
+    const dir = new THREE.Vector3(aim.x, aim.y, aim.z).normalize();
+    const my = 1.55;
     const muzzleX = x + dirX * 1.2, muzzleZ = z + dirZ * 1.2;
 
     switch (combo.effect) {
       case "barrage": {
-        // a single colossal piercing comet straight down the lane
-        this.ctx.projectiles.spawn(muzzleX, 1.4, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 3.4, pierce: true });
-        this.ctx.fx.burst({ x: muzzleX, y: 1.4, z: muzzleZ, count: 18, color: [combo.color, 0xffffff], speed: [3, 10], size: [0.14, 0.4], life: [0.2, 0.5] });
+        // a single colossal piercing comet along the look ray
+        this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 3.4, pierce: true });
+        this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 18, color: [combo.color, 0xffffff], speed: [3, 10], size: [0.14, 0.4], life: [0.2, 0.5] });
         break;
       }
       case "bolts": {
-        // a wide fan of fast bolts sprayed forward
+        // a wide fan of fast bolts sprayed forward (fanned in the horizontal plane, keeps pitch)
         const n = 9;
         for (let i = 0; i < n; i++) {
           const off = (i - (n - 1) / 2) * 0.12;
           const ca = Math.cos(off), sa = Math.sin(off);
-          const d = new THREE.Vector3(dir.x * ca - dir.z * sa, 0, dir.x * sa + dir.z * ca);
-          this.ctx.projectiles.spawn(muzzleX, 1.45, muzzleZ, d, 46, dmg / 3, true, combo.color, 3);
+          const d = new THREE.Vector3(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
+          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, d, 46, dmg / 3, true, combo.color, 3);
         }
         break;
       }
@@ -231,15 +236,15 @@ export class Combat {
         for (let i = 0; i < n; i++) {
           const off = (i - (n - 1) / 2) * 0.16;
           const ca = Math.cos(off), sa = Math.sin(off);
-          const d = new THREE.Vector3(dir.x * ca - dir.z * sa, 0, dir.x * sa + dir.z * ca);
-          this.ctx.projectiles.spawn(muzzleX, 1.4, muzzleZ, d, 26, dmg / 2, true, combo.color, 8, { explode: combo.radius });
+          const d = new THREE.Vector3(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
+          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, d, 26, dmg / 2, true, combo.color, 8, { explode: combo.radius });
         }
         break;
       }
       case "megabeam": {
         // one huge instant hitscan corridor
         this.beam(x, z, dirX, dirZ, 60, combo.radius, dmg, 8, combo.color);
-        this.ctx.fx.burst({ x: muzzleX, y: 1.4, z: muzzleZ, count: 20, color: [combo.color, 0xffffff], speed: [3, 9], size: [0.12, 0.34], life: [0.18, 0.4] });
+        this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 20, color: [combo.color, 0xffffff], speed: [3, 9], size: [0.12, 0.34], life: [0.18, 0.4] });
         break;
       }
       case "airstrike": {

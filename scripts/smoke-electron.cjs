@@ -178,7 +178,7 @@ app.whenReady().then(async () => {
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the starter
 
       // --- enemy lineup showcase (clean look at the upgraded models at distance)
-      await js(`['husk','spitter','brute','wraith'].forEach((k,i)=>window.__rh4debug.spawn(k, -10 + i*6.5, window.__rh4.player.pos.z + 15))`);
+      await js(`['husk','spitter','brute','wraith','ghoul','archer'].forEach((k,i)=>window.__rh4debug.spawn(k, -14 + i*5.6, window.__rh4.player.pos.z + 15))`);
       await frames(4);
       await shot(win, "enemies");
       await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
@@ -210,12 +210,12 @@ app.whenReady().then(async () => {
       await shot(win, "attack");
       await frames(14);
 
-      // --- drive a STARFALL combo on the starter (3× light = J, J, J → big barrage shot)
+      // --- drive an ARROWSTORM combo on the starter (3× light = J, J, J → big barrage shot)
       await tap("KeyJ"); await frames(11);
       await tap("KeyJ"); await frames(11);
       await tap("KeyJ"); await frames(11);
       const lastCombo = await js(`window.__rh4.player.lastCombo`);
-      expect(lastCombo === "STARFALL", "STARFALL combo did not resolve (got '" + lastCombo + "')");
+      expect(lastCombo === "ARROWSTORM", "ARROWSTORM combo did not resolve (got '" + lastCombo + "')");
       await shot(win, "combat-combo");
 
       // --- a single light attack fires a projectile (capture early so the comet reads near camera)

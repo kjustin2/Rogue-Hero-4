@@ -5,7 +5,7 @@ import type { TelegraphHandle } from "../render/telegraphs";
 import { GATES_Z, HALF_WIDTH } from "./level";
 import { damp } from "../core/math";
 
-export type EnemyKind = "husk" | "spitter" | "brute" | "wraith";
+export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer";
 
 interface KindCfg {
   hp: number;
@@ -16,22 +16,26 @@ interface KindCfg {
   windup: number;
   color: number;
   bodyY: number;
+  /** Ranged kinds only: what they hurl and how often (tickRanged reads this). */
+  proj?: { speed: number; shape: "dart" | "cannonball" | "comet"; interval: number };
 }
 
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
   husk: { hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
-  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0 }, // witchfire caster
+  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0, proj: { speed: 17, shape: "comet", interval: 1.45 } }, // witchfire caster: slow lobbed orb
   brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
   wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
+  ghoul: { hp: 20, radius: 0.5, speed: 15.5, contactDmg: 12, attackRange: 2.2, windup: 0.13, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast
+  archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: 0x8fb4ff, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
 };
 
 // Waves, one per gate (see level.ts GATES_Z). Cleared → the gate opens. Escalating:
-// fodder → fodder + ranged + a lunger → an elite brute with support.
+// fodder + rushers → a ranged line + lungers → an elite brute with a full support pack.
 const WAVES: { kind: EnemyKind; count: number }[][] = [
-  [{ kind: "husk", count: 3 }, { kind: "wraith", count: 1 }],
-  [{ kind: "husk", count: 3 }, { kind: "spitter", count: 2 }, { kind: "wraith", count: 2 }],
-  [{ kind: "brute", count: 1 }, { kind: "wraith", count: 2 }, { kind: "spitter", count: 2 }, { kind: "husk", count: 2 }],
+  [{ kind: "husk", count: 3 }, { kind: "ghoul", count: 2 }, { kind: "wraith", count: 1 }],
+  [{ kind: "husk", count: 3 }, { kind: "spitter", count: 2 }, { kind: "archer", count: 2 }, { kind: "wraith", count: 2 }, { kind: "ghoul", count: 2 }],
+  [{ kind: "brute", count: 1 }, { kind: "wraith", count: 2 }, { kind: "spitter", count: 2 }, { kind: "archer", count: 2 }, { kind: "ghoul", count: 3 }, { kind: "husk", count: 2 }],
 ];
 
 let NEXT_ID = 1;
@@ -195,6 +199,68 @@ export class Enemy implements Hittable {
       reaper.add(haft, scytheBlade);
       this.group.add(reaper);
       this.weapon = reaper; this.weaponBase.copy(reaper.rotation);
+    } else if (this.kind === "ghoul") {
+      // feral flesh-eater: a hunched gaunt ghoul — lean ribbed torso, cracked skull, long raking claws
+      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.5, 1.1, 6), shellMat);
+      torso.position.set(0, 0.85, 0.06); torso.rotation.x = 0.35; torso.castShadow = true; // hunched forward
+      const spine = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.9, 0.13), plateMat);
+      spine.position.set(0, 1.12, -0.26); spine.rotation.x = 0.4;
+      const skull = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), plateMat);
+      skull.position.set(0, 1.5, 0.26); skull.castShadow = true;
+      const jaw = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 4), plateMat);
+      jaw.position.set(0, 1.32, 0.36); jaw.rotation.x = Math.PI;
+      this.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.15), this.coreMat); // hollow glowing eye-socket
+      this.core.position.set(0, 1.56, 0.42);
+      this.group.add(torso, spine, skull, jaw, this.core);
+      for (let i = 0; i < 3; i++) { // exposed ribs
+        const rib = new THREE.Mesh(new THREE.TorusGeometry(0.22 - i * 0.03, 0.028, 4, 8, Math.PI), edgeMat);
+        rib.position.set(0, 0.72 + i * 0.22, 0.18); rib.rotation.set(Math.PI / 2, 0, 0);
+        this.group.add(rib);
+      }
+      const larm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.9, 5), shellMat);
+      larm.position.set(-0.42, 0.9, 0.18); larm.rotation.set(0.5, 0, -0.5);
+      this.group.add(larm);
+      // the right claw-arm is the "weapon" — it rakes forward on the strike
+      const claws = new THREE.Group();
+      const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.9, 5), shellMat);
+      forearm.position.set(0, -0.3, 0); forearm.rotation.x = 0.4;
+      claws.add(forearm);
+      for (let i = 0; i < 3; i++) {
+        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.038, 0.4, 4), edgeMat);
+        claw.position.set((i - 1) * 0.1, -0.72, 0.14); claw.rotation.x = -0.5;
+        claws.add(claw);
+      }
+      claws.position.set(0.44, 1.08, 0.2);
+      this.group.add(claws);
+      this.weapon = claws; this.weaponBase.copy(claws.rotation);
+    } else if (this.kind === "archer") {
+      // skeletal bowman: upright thin body, hooded skull, a recurve bow held out, a quiver on the back
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.42, 1.5, 6), shellMat);
+      body.position.y = 0.55; body.castShadow = true;
+      const hood = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.7, 6), plateMat);
+      hood.position.y = 1.32;
+      this.core = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), this.coreMat); // baleful eye under the hood
+      this.core.position.set(0, 1.18, 0.3);
+      this.group.add(body, hood, this.core);
+      const quiver = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.6, 6), plateMat);
+      quiver.position.set(-0.24, 0.9, -0.26); quiver.rotation.x = -0.4;
+      this.group.add(quiver);
+      for (let i = 0; i < 3; i++) { // arrow fletchings poking from the quiver
+        const fl = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18, 4), edgeMat);
+        fl.position.set(-0.24 + (i - 1) * 0.06, 1.2, -0.34); fl.rotation.x = -0.4;
+        this.group.add(fl);
+      }
+      // a spectral recurve bow held forward — the "weapon", snaps on the loose
+      const bow = new THREE.Group();
+      const arc = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.035, 6, 14, Math.PI * 1.15), edgeMat);
+      arc.rotation.z = Math.PI * 0.42;
+      const string = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.9, 4), plateMat);
+      const knock = new THREE.Mesh(new THREE.OctahedronGeometry(0.08), this.coreMat); // nocked witch-bolt
+      knock.position.z = 0.03;
+      bow.add(arc, string, knock);
+      bow.position.set(0.3, 0.9, 0.32);
+      this.group.add(bow);
+      this.weapon = bow; this.weaponBase.copy(bow.rotation);
     } else {
       // brute: hulking golem — stacked torso plates, spiked pauldrons, grated chest core
       const lower = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.3), shellMat);
@@ -300,9 +366,8 @@ export class Enemy implements Hittable {
     const nz = dz / dist;
 
     switch (this.kind) {
-      case "husk": this.tickMelee(dt, dist, nx, nz); break;
-      case "brute": this.tickMelee(dt, dist, nx, nz); break;
-      case "spitter": this.tickRanged(dt, dist, nx, nz); break;
+      case "husk": case "brute": case "ghoul": this.tickMelee(dt, dist, nx, nz); break;
+      case "spitter": case "archer": this.tickRanged(dt, dist, nx, nz); break;
       case "wraith": this.tickLunge(dt, dist, nx, nz); break;
     }
     this.ctx.level.clampPosition(this.pos, this.radius);
@@ -318,7 +383,13 @@ export class Enemy implements Hittable {
     this.moveAmt = damp(this.moveAmt, Math.min(1, sp / this.cfg.speed), 8, dt);
     this.prevX = this.pos.x; this.prevZ = this.pos.z;
 
-    this.sync(nx, nz);
+    // a winding-up / lunging wraith commits to its telegraphed line — face + shove along
+    // THAT, not the live player angle (the mismatch read as "dashing sideways").
+    let fnx = nx, fnz = nz;
+    if (this.kind === "wraith" && (this.state === "windup" || this.state === "lunge")) {
+      fnx = this.lungeDir.x; fnz = this.lungeDir.z;
+    }
+    this.sync(fnx, fnz);
   }
 
   private tickMelee(dt: number, dist: number, nx: number, nz: number): void {
@@ -366,12 +437,13 @@ export class Enemy implements Hittable {
     else if (dist > cfg.attackRange) { this.pos.x += nx * cfg.speed * dt; this.pos.z += nz * cfg.speed * dt; }
     this.fireTimer -= dt;
     if (this.fireTimer <= 0 && dist < cfg.attackRange + 2) {
-      this.fireTimer = 1.45;
-      this.flash = 0.9; // iris flares as it spits
-      this.atkLunge = 1; // staff thrusts forward as it hurls the orb
+      const pj = cfg.proj ?? { speed: 17, shape: "comet" as const, interval: 1.45 };
+      this.fireTimer = pj.interval;
+      this.flash = 0.9; // iris/eye flares as it looses
+      this.atkLunge = 1; // staff thrusts / bow snaps forward on the shot
       const p = this.ctx.player;
       const dir = new THREE.Vector3(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
-      this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, dir, 17, cfg.contactDmg, false, cfg.color, 2);
+      this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, dir, pj.speed, cfg.contactDmg, false, cfg.color, 2, { shape: pj.shape });
     }
   }
 

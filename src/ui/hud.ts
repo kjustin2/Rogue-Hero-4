@@ -67,7 +67,7 @@ export class Hud {
       <div id="dmgflash"></div>
       <div id="crosshair"><span></span><span></span><span></span><span></span></div>
 
-      <div id="boss-bar"><div class="boss-name">RIFT WARDEN</div><div class="boss-track"><div class="boss-fill"></div></div></div>
+      <div id="boss-bar"><div class="boss-name">MORDREK · BARROW KING</div><div class="boss-track"><div class="boss-fill"></div></div></div>
 
       <div id="objective"><div class="obj-text"></div><div class="obj-track"><div class="obj-fill"></div></div></div>
 

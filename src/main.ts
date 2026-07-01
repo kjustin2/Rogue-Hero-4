@@ -84,6 +84,7 @@ let cineT = 0; // boss-intro cutscene timer (>0 = cutscene running)
 let cineBeatT = 0; // ticks down to fire the next scripted ripple/beam beat
 const cineTarget = new THREE.Vector3();
 const BOSS_TEAL = 0x4fe0d0; // matches Boss.hitColor
+const BOSS_NAME = "Mordrek · Barrow King";
 
 ctx.events.on("KILL", (e) => {
   kills++;
@@ -168,6 +169,9 @@ function unlockAudio(): void {
 canvas.addEventListener("click", () => {
   if (state === "playing" && !ctx.input.pointerLocked) { unlockAudio(); ctx.input.lockPointer(); }
 });
+// Esc in a locked FPS is eaten by the browser to exit lock (no keydown reaches us), so
+// losing the lock mid-play IS the pause request — open the menu (RH3-style).
+ctx.input.onPointerUnlock = () => { if (state === "playing" && cineT <= 0) setState("paused"); };
 
 // --------------------------------------------------------------------- flow
 function updatePlaying(dt: number): void {
@@ -210,7 +214,7 @@ function updatePlaying(dt: number): void {
   if (!bossSpawned && ctx.level.gates.every((g) => g.open) && ctx.level.inArena(ctx.player.pos.z)) {
     ctx.boss = new Boss(ctx);
     bossSpawned = true;
-    startBossCutscene("Rift Warden");
+    startBossCutscene(BOSS_NAME);
   }
 
   if (victoryQueued > 0) {
@@ -298,6 +302,7 @@ function frame(dt: number): void {
 
   ctx.input.pollGamepad();
   if (state === "playing") updatePlaying(dt);
+  else if (state === "paused" && (ctx.input.actionPressed("pause") || ctx.input.pauseEdgeRaw())) setState("playing");
 
   ctx.cam.update(dt, state === "playing" ? ctx.player.moveAmount : 0);
   ctx.level.update(dt);

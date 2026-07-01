@@ -157,7 +157,7 @@ export class Menus {
 
   showVictory(stats: { time: number; kills: number }, onAgain: () => void): void {
     this.panel(`
-      <div class="title small win">THE WARDEN FALLS</div>
+      <div class="title small win">THE BARROW KING FALLS</div>
       <div class="stats">Cleared in ${stats.time.toFixed(0)}s · ${stats.kills} slain</div>
       <div class="menu-buttons">
         <button id="again" class="primary">RUN AGAIN</button>

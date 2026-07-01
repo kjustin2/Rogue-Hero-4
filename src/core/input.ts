@@ -100,6 +100,10 @@ export class Input {
   private mouseDX = 0;
   private mouseDY = 0;
   pointerLocked = false;
+  /** Fired when the pointer LEAVES lock (Esc in a locked FPS, alt-tab) — main pauses. */
+  onPointerUnlock: (() => void) | null = null;
+  /** Net mouse-wheel notches accumulated since last consume (down = +1). */
+  private wheelSteps = 0;
 
   bindings: Bindings = loadBindings();
 
@@ -153,9 +157,16 @@ export class Input {
       }
     });
     document.addEventListener("pointerlockchange", () => {
+      const was = this.pointerLocked;
       this.pointerLocked = document.pointerLockElement === this.canvas;
-      if (!this.pointerLocked) { this.mouseDX = 0; this.mouseDY = 0; }
+      if (!this.pointerLocked) {
+        this.mouseDX = 0; this.mouseDY = 0;
+        // Esc in a locked FPS is swallowed by the browser to exit lock (no keydown
+        // reaches us) — treat losing the lock during play as the pause request.
+        if (was) this.onPointerUnlock?.();
+      }
     });
+    window.addEventListener("wheel", (e) => { if (this.enabled) this.wheelSteps += Math.sign(e.deltaY); }, { passive: true });
     this.canvas.addEventListener("pointerdown", (e) => {
       if (e.button >= 3) return;
       if (this.capturing) {
@@ -207,6 +218,9 @@ export class Input {
     } catch { /* not allowed yet */ }
   }
   unlockPointer(): void { try { document.exitPointerLock(); } catch { /* ignore */ } }
+
+  /** Net mouse-wheel notches since last call (scroll down = +1) — for weapon cycling. */
+  consumeWheelStep(): number { const s = this.wheelSteps; this.wheelSteps = 0; return s; }
 
   /** Drain accumulated locked-pointer motion (pixels) since last call. */
   consumeMouseDelta(): { dx: number; dy: number } {
