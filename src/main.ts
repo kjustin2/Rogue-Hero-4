@@ -30,9 +30,11 @@ import { Hud } from "./ui/hud";
 import { Menus } from "./ui/menus";
 import type { Ctx } from "./game/ctx";
 import { PAL } from "./core/palette";
+import { pick3 } from "./game/boons";
+import { loadSave, writeSave, dailyStamp } from "./core/save";
 
 const lowfx = new URLSearchParams(location.search).has("lowfx");
-type State = "title" | "playing" | "paused" | "dead" | "victory";
+type State = "title" | "playing" | "paused" | "boon" | "dead" | "victory";
 
 // --------------------------------------------------------------------- boot
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -84,6 +86,10 @@ let runTime = 0;
 let kills = 0;
 let streak = 0;
 let streakTimer = 0;
+const save = loadSave();
+let isDaily = false;
+// run stats — fed entirely by existing events, rendered on the death/victory screens
+const runStats = { dmgDealt: 0, dmgTaken: 0, combos: 0, bestStreak: 0 };
 let bossSpawned = false;
 let triggered: boolean[] = ctx.level.gates.map(() => false);
 let victoryQueued = 0;
@@ -100,10 +106,13 @@ ctx.events.on("KILL", (e) => {
   kills++;
   streak++;
   streakTimer = 3;
+  runStats.bestStreak = Math.max(runStats.bestStreak, streak);
   ctx.events.emit("KILL_STREAK", { count: streak });
   ctx.pickups.maybeDrop(e.x, e.z, e.elite ? 1 : undefined);
 });
-ctx.events.on("PLAYER_HIT", () => { streak = 0; });
+ctx.events.on("ENEMY_HIT", (e) => { runStats.dmgDealt += e.dmg; });
+ctx.events.on("COMBO_RESOLVE", () => { runStats.combos++; });
+ctx.events.on("PLAYER_HIT", (e) => { streak = 0; runStats.dmgTaken += e.dmg; });
 ctx.events.on("PLAYER_DIED", () => setState("dead"));
 ctx.events.on("BOSS_PHASE", (e) => startPhaseCutscene(e.phase));
 ctx.events.on("BOSS_DEFEATED", (e) => {
@@ -126,7 +135,15 @@ function setState(s: State): void {
     ctx.input.unlockPointer();
     hud.setVisible(false);
     ctx.music.menu();
-    menus.showTitle(() => { unlockAudio(); startRun(); });
+    menus.showTitle({
+      clears: save.clears,
+      unlockedStarts: save.unlockedStarts,
+      daily: save.daily && save.daily.date === dailyStamp() ? save.daily.score : null,
+      bestTime: save.bestTime,
+    }, (daily, startWeapon) => {
+      unlockAudio();
+      startRun(daily ? parseInt(dailyStamp(), 10) : newSeed(), { daily, startWeapon });
+    });
   } else if (s === "playing") {
     ctx.stage.setLowCost(false);
     menus.clear();
@@ -135,23 +152,64 @@ function setState(s: State): void {
   } else if (s === "paused") {
     ctx.input.unlockPointer();
     menus.showPause(() => { ctx.input.lockPointer(); setState("playing"); }, () => setState("title"));
+  } else if (s === "boon") {
+    // between-gate decision beat: the world holds while the player claims a boon
+    ctx.input.unlockPointer();
+    menus.showBoons(pick3(ctx.rng), (b) => {
+      b.apply(ctx.player.mods);
+      if (b.id === "vigor") { ctx.player.maxHp += 25; ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 25); }
+      ctx.sfx.unlockFanfare();
+      ctx.input.lockPointer();
+      setState("playing");
+    });
   } else if (s === "dead") {
     ctx.input.unlockPointer();
     hud.setVisible(false);
     ctx.music.silence();
-    menus.showDead({ time: runTime, kills }, () => startRun(), () => setState("title"));
+    ctx.sfx.defeat();
+    menus.showDead(fullStats(), () => startRun(newSeed()), () => setState("title"));
   } else if (s === "victory") {
     ctx.cam.setCinematic(false); // release the killcam
     ctx.input.unlockPointer();
     hud.setVisible(false);
     ctx.music.menu();
-    menus.showVictory({ time: runTime, kills }, () => startRun());
+    ctx.sfx.victory();
+    // meta progression: record the clear, unlock held weapons as starting picks
+    save.clears++;
+    save.totalKills += kills;
+    if (!save.bestTime || runTime < save.bestTime) save.bestTime = runTime;
+    for (const id of ctx.player.weapons) if (!save.unlockedStarts.includes(id)) save.unlockedStarts.push(id);
+    if (isDaily) {
+      const score = dailyScore();
+      if (!save.daily || save.daily.date !== dailyStamp() || score > save.daily.score) {
+        save.daily = { date: dailyStamp(), score };
+      }
+    }
+    writeSave(save);
+    menus.showVictory(fullStats(), () => startRun(newSeed()));
   }
 }
 
-function startRun(): void {
-  ctx.rng.reseed(20260629);
+function dailyScore(): number {
+  return Math.max(0, kills * 10 + ctx.player.shards * 5 - Math.round(runTime));
+}
+
+function fullStats() {
+  return {
+    time: runTime, kills, ...runStats, shards: ctx.player.shards,
+    bestTime: save.bestTime, daily: isDaily ? dailyScore() : null,
+  };
+}
+
+function newSeed(): number {
+  return (Date.now() ^ (Math.random() * 0x7fffffff)) & 0x7fffffff;
+}
+
+function startRun(seed = 20260629, opts?: { daily?: boolean; startWeapon?: string }): void {
+  ctx.rng.reseed(seed);
+  isDaily = !!opts?.daily;
   ctx.player.reset(PLAYER_SPAWN);
+  if (opts?.startWeapon && save.unlockedStarts.includes(opts.startWeapon)) ctx.player.setStartingWeapon(opts.startWeapon);
   ctx.cam.yaw = Math.PI;
   ctx.cam.pitch = 0;
   ctx.level.reset();
@@ -171,6 +229,7 @@ function startRun(): void {
   runTime = 0;
   kills = 0;
   streak = 0;
+  runStats.dmgDealt = 0; runStats.dmgTaken = 0; runStats.combos = 0; runStats.bestStreak = 0;
   // the melee greatsword waits on the ground just ahead — teaches the pickup mechanic early
   ctx.pickups.dropWeapon("greatsword", 0, PLAYER_SPAWN.z + 16);
   ctx.music.combat(1, false);
@@ -225,6 +284,8 @@ function updatePlaying(dt: number): void {
       // clearing a wave reveals a new weapon on the ground just past the gate
       const reward = GATE_WEAPONS[idx];
       if (reward) ctx.pickups.dropWeapon(reward, 0, GATES_Z[idx] + 4);
+      setState("boon"); // the decision beat: pick one of three boons
+      return;
     }
   }
 

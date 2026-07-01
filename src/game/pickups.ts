@@ -114,8 +114,9 @@ export class Pickups {
       const dx = p.pos.x - m.x;
       const dz = p.pos.z - m.z;
       const d = Math.hypot(dx, dz) || 1;
-      if (d < MAGNET_R) {
-        const pull = (1 - d / MAGNET_R) * 14 * dt;
+      const magnetR = MAGNET_R * this.ctx.player.mods.magnetMult; // SHARD CALL boon
+      if (d < magnetR) {
+        const pull = (1 - d / magnetR) * 14 * dt;
         m.x += (dx / d) * pull;
         m.z += (dz / d) * pull;
       }

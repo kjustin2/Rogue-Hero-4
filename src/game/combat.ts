@@ -109,6 +109,11 @@ export class Combat {
     if (crit) this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.4, color: t.hitColor, duration: 0.32, y: 1 });
     this.ctx.cam.addTrauma(crit ? 0.22 : 0.08);
     if (crit) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.05);
+    // SOUL LEECH boon: a slice of every dealt hit comes back as vitality
+    const p = this.ctx.player;
+    if (p.mods.lifesteal > 0 && p.alive && p.hp < p.maxHp) {
+      p.hp = Math.min(p.maxHp, p.hp + dmg * p.mods.lifesteal);
+    }
     if (killed) {
       this.ctx.events.emit("KILL", { x: t.pos.x, z: t.pos.z, kind: t.kind, elite: !!t.elite || !!t.guaranteedShard });
       this.ctx.fx.burst({
@@ -301,7 +306,7 @@ export class Combat {
       p.cooldowns.heavy = 0;
       return "dodged";
     }
-    dmg = Math.max(1, Math.round(dmg));
+    dmg = Math.max(1, Math.round(dmg * p.mods.dmgTakenMult));
     p.hp -= dmg;
     this.ctx.events.emit("PLAYER_HIT", { dmg, srcX, srcZ });
     const dx = p.pos.x - srcX;

@@ -100,6 +100,10 @@ export class Input {
   private mouseDX = 0;
   private mouseDY = 0;
   pointerLocked = false;
+  private realLocked = false; // document-truth lock state (events only; never faked)
+  /** True while WE asked for the unlock (menu/boon transitions) — those change events
+   *  must not read as "the player broke the lock" (they can arrive a state later). */
+  private expectUnlock = false;
   /** Fired when the pointer LEAVES lock (Esc in a locked FPS, alt-tab) — main pauses. */
   onPointerUnlock: (() => void) | null = null;
   /** Net mouse-wheel notches accumulated since last consume (down = +1). */
@@ -157,13 +161,19 @@ export class Input {
       }
     });
     document.addEventListener("pointerlockchange", () => {
-      const was = this.pointerLocked;
-      this.pointerLocked = document.pointerLockElement === this.canvas;
-      if (!this.pointerLocked) {
+      // realLocked tracks the DOCUMENT's truth only — the test harness fakes
+      // `pointerLocked`, and Chromium fires a change event for exitPointerLock even
+      // when nothing was locked, which must never read as "the player broke the lock".
+      const rwas = this.realLocked;
+      this.realLocked = document.pointerLockElement === this.canvas;
+      this.pointerLocked = this.realLocked;
+      if (!this.realLocked) {
         this.mouseDX = 0; this.mouseDY = 0;
         // Esc in a locked FPS is swallowed by the browser to exit lock (no keydown
-        // reaches us) — treat losing the lock during play as the pause request.
-        if (was) this.onPointerUnlock?.();
+        // reaches us) — a GENUINE lock loss during play is the pause request; a
+        // change WE requested (menu/boon transitions) is not.
+        if (rwas && !this.expectUnlock) this.onPointerUnlock?.();
+        this.expectUnlock = false;
       }
     });
     window.addEventListener("wheel", (e) => { if (this.enabled) this.wheelSteps += Math.sign(e.deltaY); }, { passive: true });
@@ -212,12 +222,16 @@ export class Input {
 
   // ------------------------------------------------------------ pointer lock (first-person look)
   lockPointer(): void {
+    this.expectUnlock = false;
     try {
       const p = this.canvas.requestPointerLock() as unknown as Promise<void> | undefined;
       if (p && typeof p.catch === "function") p.catch(() => { /* no gesture / hidden window */ });
     } catch { /* not allowed yet */ }
   }
-  unlockPointer(): void { try { document.exitPointerLock(); } catch { /* ignore */ } }
+  unlockPointer(): void {
+    this.expectUnlock = true;
+    try { document.exitPointerLock(); } catch { /* ignore */ }
+  }
 
   /** Net mouse-wheel notches since last call (scroll down = +1) — for weapon cycling. */
   consumeWheelStep(): number { const s = this.wheelSteps; this.wheelSteps = 0; return s; }

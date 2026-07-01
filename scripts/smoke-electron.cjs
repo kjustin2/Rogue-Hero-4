@@ -244,6 +244,14 @@ app.whenReady().then(async () => {
       await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
       await frames(10);
       expect(await js(`window.__rh4.level.gates[0].open === true`), "gate did not open after clearing the wave");
+      // the gate clear now cuts to the boon choice — claim one to resume the run
+      expect(await js(`window.__rh4state()==='boon'`), "boon choice did not open after the gate cleared");
+      await sleep(200);
+      await shot(win, "boon-choice");
+      await js(`document.querySelector('.boon')?.click()`);
+      await frames(3);
+      expect(await js(`window.__rh4state()==='playing'`), "picking a boon did not resume play");
+      await js(`window.__rh4.input.pointerLocked = true`); // boon pick re-locks; reflect it hidden
       await shot(win, "gate-open");
 
       // --- arsenal: grant all weapons, then showcase each DISTINCT mechanic firing
@@ -416,6 +424,10 @@ app.whenReady().then(async () => {
       await js(`if(window.__rh4.boss) window.__rh4.boss.takeDamage(99999,{})`);
       await frames(100);
       expect(await js(`window.__rh4state()==='victory'`), "victory state never reached");
+      // meta save written on the clear (fresh origin each smoke run → clears === 1)
+      const saved = await js(`JSON.parse(localStorage.getItem('rh4-save')||'{}')`);
+      expect(saved.clears === 1, "victory did not write the meta save: " + JSON.stringify(saved));
+      expect(Array.isArray(saved.unlockedStarts) && saved.unlockedStarts.length >= 1, "clear did not unlock starting weapons");
       await shot(win, "victory", false);
 
       // --- death flow (god off so the lethal hit lands)

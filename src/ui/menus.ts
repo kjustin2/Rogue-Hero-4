@@ -1,6 +1,27 @@
 import type { Ctx } from "../game/ctx";
 import { ACTION_LABELS, codeLabel, type Action } from "../core/input";
 import { loadSettings, saveSettings, applySettings, type Settings } from "../core/settings";
+import { WEAPONS } from "../game/weapons";
+import type { BoonDef } from "../game/boons";
+
+export interface TitleMeta {
+  clears: number;
+  unlockedStarts: string[];
+  daily: number | null; // today's best daily score, if any
+  bestTime: number;
+}
+
+export interface RunStatsView {
+  time: number;
+  kills: number;
+  dmgDealt: number;
+  dmgTaken: number;
+  combos: number;
+  bestStreak: number;
+  shards: number;
+  bestTime: number;
+  daily: number | null;
+}
 
 /** Actions shown on the Controls screen (skip pause-rebinding to keep it simple). */
 const REBINDABLE: Action[] = ["up", "down", "left", "right", "light", "heavy", "switch", "dash"];
@@ -14,6 +35,7 @@ const REBINDABLE: Action[] = ["up", "down", "left", "right", "light", "heavy", "
 export class Menus {
   private overlay = document.getElementById("overlay")!;
   settings: Settings = loadSettings();
+  private startWeapon: string = WEAPONS[0].id;
   private fs = false; // mirrored OS fullscreen state (Electron only)
 
   constructor(private ctx: Ctx) {
@@ -47,19 +69,54 @@ export class Menus {
     el?.addEventListener("click", () => { this.ctx.events.emit("UI_CLICK", {}); fn(); });
   }
 
-  showTitle(onStart: () => void): void {
+  showTitle(meta: TitleMeta, onStart: (daily: boolean, startWeapon?: string) => void): void {
+    // starting-weapon rack — the first-clear meta unlock
+    const rack = meta.clears > 0 && meta.unlockedStarts.length > 1
+      ? `<div class="start-rack"><span class="sr-lbl">BEGIN WITH</span>` + WEAPONS
+          .filter((w) => meta.unlockedStarts.includes(w.id))
+          .map((w) => `<button class="sr-btn${w.id === this.startWeapon ? " on" : ""}" data-w="${w.id}" style="--gc:#${w.color.toString(16).padStart(6, "0")}">${w.name}</button>`)
+          .join("") + `</div>`
+      : "";
+    const laurels = meta.clears > 0
+      ? `<div class="meta-line">${meta.clears} CLEAR${meta.clears > 1 ? "S" : ""} · BEST ${meta.bestTime.toFixed(0)}s${meta.daily != null ? ` · DAILY ${meta.daily}` : ""}</div>`
+      : "";
     this.panel(`
       <div class="title">ROGUE HERO <b>IV</b></div>
       <div class="subtitle">RIFT CAUSEWAY</div>
+      ${laurels}
       <div class="menu-buttons">
         <button id="start" class="primary">DESCEND</button>
+        <button id="daily">DAILY RITE</button>
         <button id="controls">CONTROLS</button>
         <button id="settings">SETTINGS</button>
       </div>
+      ${rack}
     `);
-    this.wire("start", onStart);
-    this.wire("controls", () => this.showControls(() => this.showTitle(onStart)));
-    this.wire("settings", () => this.showSettings(() => this.showTitle(onStart)));
+    this.overlay.querySelectorAll<HTMLButtonElement>(".sr-btn").forEach((b) => b.addEventListener("click", () => {
+      this.startWeapon = b.dataset.w!;
+      this.ctx.events.emit("UI_CLICK", {});
+      this.showTitle(meta, onStart);
+    }));
+    this.wire("start", () => onStart(false, this.startWeapon));
+    this.wire("daily", () => onStart(true, this.startWeapon));
+    this.wire("controls", () => this.showControls(() => this.showTitle(meta, onStart)));
+    this.wire("settings", () => this.showSettings(() => this.showTitle(meta, onStart)));
+  }
+
+  /** The between-gate decision beat: claim one of three boons. */
+  showBoons(boons: BoonDef[], onPick: (b: BoonDef) => void): void {
+    const cards = boons.map((b, i) =>
+      `<button class="boon" data-i="${i}"><span class="boon-name">${b.name}</span><span class="boon-desc">${b.desc}</span></button>`,
+    ).join("");
+    this.panel(`
+      <div class="title small">THE WAY OPENS</div>
+      <div class="subtitle">CLAIM A BOON</div>
+      <div class="boon-cards">${cards}</div>
+    `);
+    this.overlay.querySelectorAll<HTMLButtonElement>(".boon").forEach((b) => b.addEventListener("click", () => {
+      this.ctx.events.emit("UI_CLICK", {});
+      onPick(boons[parseInt(b.dataset.i!, 10)]);
+    }));
   }
 
   showPause(onResume: () => void, onQuit: () => void): void {
@@ -154,10 +211,24 @@ export class Menus {
     this.wire("back", back);
   }
 
-  showDead(stats: { time: number; kills: number }, onRetry: () => void, onQuit: () => void): void {
+  private statGrid(s: RunStatsView): string {
+    const rows: [string, string][] = [
+      ["TIME", `${s.time.toFixed(0)}s`],
+      ["SLAIN", String(s.kills)],
+      ["DAMAGE DEALT", String(Math.round(s.dmgDealt))],
+      ["DAMAGE TAKEN", String(Math.round(s.dmgTaken))],
+      ["COMBOS", String(s.combos)],
+      ["BEST STREAK", `${s.bestStreak}×`],
+      ["SHARDS", String(s.shards)],
+    ];
+    if (s.daily != null) rows.push(["DAILY SCORE", String(s.daily)]);
+    return `<div class="stat-grid">` + rows.map(([k, v]) => `<div class="sg-row"><span>${k}</span><b>${v}</b></div>`).join("") + `</div>`;
+  }
+
+  showDead(stats: RunStatsView, onRetry: () => void, onQuit: () => void): void {
     this.panel(`
       <div class="title small lose">YOU FELL</div>
-      <div class="stats">Survived ${stats.time.toFixed(0)}s · ${stats.kills} slain</div>
+      ${this.statGrid(stats)}
       <div class="menu-buttons">
         <button id="retry" class="primary">TRY AGAIN</button>
         <button id="quit">TITLE</button>
@@ -167,14 +238,16 @@ export class Menus {
     this.wire("quit", onQuit);
   }
 
-  showVictory(stats: { time: number; kills: number }, onAgain: () => void): void {
+  showVictory(stats: RunStatsView, onAgain: () => void): void {
     this.panel(`
       <div class="title small win">THE BARROW KING FALLS</div>
-      <div class="stats">Cleared in ${stats.time.toFixed(0)}s · ${stats.kills} slain</div>
+      ${this.statGrid(stats)}
       <div class="menu-buttons">
         <button id="again" class="primary">RUN AGAIN</button>
+        <button id="totitle">TITLE</button>
       </div>
     `);
     this.wire("again", onAgain);
+    this.wire("totitle", () => location.reload());
   }
 }

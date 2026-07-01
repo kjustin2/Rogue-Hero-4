@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { Ctx } from "./ctx";
 import { WEAPONS, attackDuration, matchWeaponCombo, weaponById, type AttackDef, type Slot, type WeaponDef } from "./weapons";
 import { clamp, damp, ease } from "../core/math";
+import { defaultMods, type PlayerMods } from "./boons";
 
 const WALK_SPEED = 14;      // brisk, arcade-fast traversal
 const DASH_SPEED = 46;
@@ -167,6 +168,8 @@ export class Player {
   radius = 0.5;
   maxHp = 120;
   hp = 120;
+  /** Boon-driven multipliers — every system reads these at its one funnel point. */
+  mods: PlayerMods = defaultMods();
   alive = true;
   iframes = 0;
   god = false;
@@ -199,6 +202,7 @@ export class Player {
   private bufferTimer = 0;
   private dashTime = 0;
   private dashCd = 0;
+  private dashCdMax = DASH_CD;
   private dashDir = new THREE.Vector3();
   private kb = new THREE.Vector3(); // self-recoil (rocket kick) / lunge (melee) impulse — decays
 
@@ -231,6 +235,8 @@ export class Player {
 
   reset(spawn: THREE.Vector3): void {
     this.pos.copy(spawn);
+    this.mods = defaultMods();
+    this.maxHp = 120; // boons may have raised it last run
     this.hp = this.maxHp;
     this.alive = true;
     this.iframes = 0;
@@ -471,7 +477,7 @@ export class Player {
 
     if (this.buffer.length) {
       this.bufferTimer += dt;
-      if (this.bufferTimer > COMBO_WINDOW) { this.buffer.length = 0; this.bufferWeapons.length = 0; }
+      if (this.bufferTimer > COMBO_WINDOW + this.mods.comboWindowBonus) { this.buffer.length = 0; this.bufferWeapons.length = 0; }
     }
 
     if (this.alive && !this.frozen) {
@@ -496,7 +502,7 @@ export class Player {
     const hv = this.weapon.heavy;
     if (this.chargeT >= 0) {
       if (input.actionDown("heavy")) {
-        this.chargeT = Math.min(hv.chargeMax, this.chargeT + this.lastDt);
+        this.chargeT = Math.min(hv.chargeMax, this.chargeT + this.lastDt * this.mods.chargeRateMult);
       } else {
         const t = hv.chargeMax > 0 ? this.chargeT / hv.chargeMax : 0;
         const overcharged = t >= 0.999;
@@ -522,7 +528,7 @@ export class Player {
 
   /** 0..1 dash cooldown remaining (crosshair ring). */
   dashCd01(): number {
-    return this.dashCd / DASH_CD;
+    return this.dashCd / this.dashCdMax;
   }
 
   cycleWeapon(dir = 1): void {
@@ -541,6 +547,7 @@ export class Player {
     const a = this.weapon[slot];
     const pose = poseFor(this.weapon.id, slot, a.type === "melee");
     // full fervor: the heavy is FREE (no cooldown) and empowered, then the meter resets
+    if (slot === "heavy") dmgMult *= this.mods.heavyDmgMult;
     let fervorFree = false;
     if (slot === "heavy" && this.fervor >= 1) {
       fervorFree = true;
@@ -652,14 +659,14 @@ export class Player {
     if (combo) {
       // a chain that spans a weapon swap finishes 1.25x harder — the swap reward
       const swapped = this.bufferWeapons.some((id) => id !== this.weapon.id);
-      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, this.aim, a.damage * (swapped ? 1.25 : 1));
+      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, this.aim, a.damage * (swapped ? 1.25 : 1) * this.mods.comboDmgMult);
       if (swapped) this.ctx.floaters.spawn(this.pos.x, 2.1, this.pos.z, "SWAP FINISH", "label", "#ffc24a");
       this.lastCombo = combo.name;
       this.lastComboT = 2.4;
       this.buffer.length = 0;
       this.bufferWeapons.length = 0;
       // fervor builds on every finisher; at full the next heavy is free + empowered
-      this.fervor = Math.min(1, this.fervor + 0.34);
+      this.fervor = Math.min(1, this.fervor + 0.34 * this.mods.fervorGainMult);
       this.ctx.events.emit("FERVOR", { value: this.fervor });
     }
   }
@@ -676,7 +683,15 @@ export class Player {
   addShard(heal: number): void {
     this.shards++;
     this.ctx.events.emit("SHARD", { total: this.shards });
-    if (this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + heal);
+    if (this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + heal + this.mods.shardHealBonus);
+  }
+
+  /** Meta unlock: begin the run holding a different weapon (title choice). */
+  setStartingWeapon(id: string): void {
+    this.weapons = [id];
+    this.wi = 0;
+    this.applyWeaponLook();
+    this.ctx.events.emit("WEAPON_SWITCH", { id, name: this.weapon.name });
   }
 
   /** Claim a weapon found on the causeway: add it, equip it immediately, fanfare. */
@@ -694,7 +709,8 @@ export class Player {
   }
 
   private startDash(): void {
-    this.dashCd = DASH_CD;
+    this.dashCdMax = DASH_CD * this.mods.dashCdMult;
+    this.dashCd = this.dashCdMax;
     this.dashTime = DASH_TIME;
     this.iframes = DASH_IFRAMES;
     const mv = this.ctx.input.moveVector();
@@ -735,7 +751,7 @@ export class Player {
       );
       const len = Math.hypot(this.vel.x, this.vel.z);
       if (len > 1) this.vel.multiplyScalar(1 / len);
-      let speed = WALK_SPEED;
+      let speed = WALK_SPEED * this.mods.moveSpeedMult;
       if (this.cur || this.chargeT >= 0) speed *= this.weapon.moveMult; // committing (or drawing a charge) sets your mobility
       if (this.selfSlow > 0) speed *= 0.55; // overcharge stagger
       this.vel.multiplyScalar(this.alive ? speed : 0);
