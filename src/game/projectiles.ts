@@ -122,7 +122,9 @@ export class Projectiles {
     s.glow.visible = s.shape !== "dart";
     s.head.visible = s.shape !== "dart";
     s.ring.visible = s.shape === "comet";
-    s.runes.visible = s.shape === "comet";
+    // ponytail: only the player's hero comet wears orbiting runes; hostile shots skip
+    // them (3 fewer draws/bolt — a boss volley is 7 bolts) and read fine as plain comets.
+    s.runes.visible = s.shape === "comet" && friendly;
     s.tail.visible = true;
     s.group.visible = true;
     this.orient(s);
@@ -144,6 +146,10 @@ export class Projectiles {
 
   update(dt: number): void {
     const player = this.ctx.player;
+    // Build the target list ONCE per frame, not once per projectile per frame (a barrage
+    // has 10-40 shots in flight). The per-hit `!t.alive` guards below reproduce living()'s
+    // filter so a corpse killed earlier this frame can't take a phantom second hit.
+    const targets = this.ctx.combat.targets();
     for (const s of this.pool) {
       if (!s.active) continue;
       const p = s.group.position;
@@ -166,23 +172,26 @@ export class Projectiles {
         this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: ball ? 2 : 1, color: ball ? [s.color, 0x442018] : s.color, speed: [0.2, 1.2], size: ball ? [0.2, 0.42] : [0.12, 0.26], life: [0.18, 0.36], gravity: 0, drag: 3 });
       }
 
-      // out of bounds / expired
+      // out of bounds / expired (squared-distance arena test — no sqrt)
       const outX = Math.abs(p.x) > HALF_WIDTH + 2 && p.z < ARENA_CENTER.y - ARENA_RADIUS;
-      const inArenaOut = p.z >= ARENA_CENTER.y - ARENA_RADIUS && Math.hypot(p.x - ARENA_CENTER.x, p.z - ARENA_CENTER.y) > ARENA_RADIUS + 2;
+      const ax = p.x - ARENA_CENTER.x, az = p.z - ARENA_CENTER.y;
+      const inArenaOut = p.z >= ARENA_CENTER.y - ARENA_RADIUS && ax * ax + az * az > (ARENA_RADIUS + 2) * (ARENA_RADIUS + 2);
       if (s.life <= 0 || p.z < -4 || outX || inArenaOut) { if (s.explodeRadius > 0) this.detonate(s); else this.kill(s); continue; }
 
       const r = RADIUS * s.scale;
       if (s.friendly) {
         if (s.explodeRadius > 0) {
           // explosive: detonate on touching any target (splash handles the kill)
-          for (const t of this.ctx.combat.targets()) {
-            const top = t.hitTop ?? 2.6;
-            if (Math.hypot(p.x - t.pos.x, p.z - t.pos.z) <= t.radius + r && p.y >= 0.2 && p.y <= top) { this.detonate(s); break; }
+          for (const t of targets) {
+            if (!t.alive) continue;
+            const dx = p.x - t.pos.x, dz = p.z - t.pos.z, rr = t.radius + r, top = t.hitTop ?? 2.6;
+            if (dx * dx + dz * dz <= rr * rr && p.y >= 0.2 && p.y <= top) { this.detonate(s); break; }
           }
         } else {
-          for (const t of this.ctx.combat.targets()) {
-            const top = t.hitTop ?? 2.6;
-            if (Math.hypot(p.x - t.pos.x, p.z - t.pos.z) <= t.radius + r && p.y >= 0.2 && p.y <= top) {
+          for (const t of targets) {
+            if (!t.alive) continue;
+            const dx = p.x - t.pos.x, dz = p.z - t.pos.z, rr = t.radius + r, top = t.hitTop ?? 2.6;
+            if (dx * dx + dz * dz <= rr * rr && p.y >= 0.2 && p.y <= top) {
               if (s.pierce && s.hit.has(t)) continue; // a piercing shot hits each target once
               const weak = t.isWeakHit ? t.isWeakHit(p.x, p.y, p.z) : false;
               this.ctx.combat.dealDamage(t, s.dmg, { knockback: s.knockback, fromX: p.x - s.vel.x, fromZ: p.z - s.vel.z, weak });
@@ -192,7 +201,8 @@ export class Projectiles {
           }
         }
       } else if (player.alive) {
-        if (Math.hypot(p.x - player.pos.x, p.z - player.pos.z) <= player.radius + r) {
+        const dx = p.x - player.pos.x, dz = p.z - player.pos.z, rr = player.radius + r;
+        if (dx * dx + dz * dz <= rr * rr) {
           this.ctx.combat.damagePlayer(s.dmg, p.x, p.z);
           this.impact(p, s.color);
           this.kill(s);

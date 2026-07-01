@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Ctx } from "./ctx";
 import { clamp } from "../core/math";
 
@@ -113,12 +114,20 @@ export class Level {
       const cope = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.7, pathLen), ironMat);
       cope.position.set(sx * (HALF_WIDTH + 1.4), 12.1, pathLen / 2 - 8);
       this.group.add(cope);
-      // crenellated battlements: stone merlons with gaps between them (castle silhouette)
+      // crenellated battlements: stone merlons (instanced — ~40 boxes → 1 draw call/side).
+      // frustumCulled off: InstancedMesh culls off its base-geometry bounds at the mesh
+      // origin, ignoring per-instance offsets, so a spread row would wrongly vanish.
+      const merlonN = Math.ceil((ARENA_BLEND_Z - 8) / 4.4);
+      const merlons = new THREE.InstancedMesh(new THREE.BoxGeometry(1.9, 1.3, 1.9), wallMat, merlonN);
+      merlons.frustumCulled = false;
+      const mMat = new THREE.Matrix4();
+      let mI = 0;
       for (let z = 8; z < ARENA_BLEND_Z; z += 4.4) {
-        const merlon = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.3, 1.9), wallMat);
-        merlon.position.set(sx * (HALF_WIDTH + 1.4), 13.1, z);
-        this.group.add(merlon);
+        merlons.setMatrixAt(mI++, mMat.makeTranslation(sx * (HALF_WIDTH + 1.4), 13.1, z));
       }
+      merlons.count = mI;
+      merlons.instanceMatrix.needsUpdate = true;
+      this.group.add(merlons);
       const baseBand = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, pathLen), ironMat);
       baseBand.position.set(sx * (HALF_WIDTH + 1.3), 1.0, pathLen / 2 - 8);
       this.group.add(baseBand);
@@ -188,23 +197,22 @@ export class Level {
       light.position.set(0, 4, z);
       this.group.add(light);
 
-      // iron portcullis grille in front of the energy barrier — a real castle gate
+      // iron portcullis grille — 25 bars/spikes/crossbars merged into one mesh (1 draw).
+      // Kept inside a Group so openGate/reset can still raise it via `.visible`.
       const portcullis = new THREE.Group();
       const nBars = 11;
+      const grilleParts: THREE.BufferGeometry[] = [];
       for (let b = 0; b < nBars; b++) {
         const bx = -HALF_WIDTH + (b / (nBars - 1)) * HALF_WIDTH * 2;
-        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 8, 6), ironMat);
-        bar.position.set(bx, 4, 0);
-        portcullis.add(bar);
-        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.6, 6), ironMat);
-        spike.position.set(bx, -0.1, 0); spike.rotation.x = Math.PI;
-        portcullis.add(spike);
+        grilleParts.push(new THREE.CylinderGeometry(0.12, 0.12, 8, 6).translate(bx, 4, 0));
+        grilleParts.push(new THREE.ConeGeometry(0.18, 0.6, 6).rotateX(Math.PI).translate(bx, -0.1, 0));
       }
       for (const hy of [7.5, 4, 0.5]) {
-        const cross = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2, 0.24, 0.24), ironMat);
-        cross.position.set(0, hy, 0);
-        portcullis.add(cross);
+        grilleParts.push(new THREE.BoxGeometry(HALF_WIDTH * 2, 0.24, 0.24).translate(0, hy, 0));
       }
+      const grille = mergeGeometries(grilleParts);
+      grilleParts.forEach((g) => g.dispose());
+      portcullis.add(new THREE.Mesh(grille, ironMat));
       portcullis.position.set(0, 0, z - 0.35);
       this.group.add(portcullis);
 
@@ -242,12 +250,18 @@ export class Level {
       this.group.add(col, bowl, fl);
     }
 
-    // --- warm iron inlay strips across the flags (depth cue + wayfinding) ---
+    // --- warm iron inlay strips across the flags (instanced — ~18 boxes → 1 draw) ---
+    const rungN = Math.ceil((ARENA_BLEND_Z - 6) / 10);
+    const rungs = new THREE.InstancedMesh(new THREE.BoxGeometry(HALF_WIDTH * 2 - 1, 0.05, 0.16), this.emissiveMat(0xff5a1e, 0.5), rungN);
+    rungs.frustumCulled = false;
+    const rMat = new THREE.Matrix4();
+    let rI = 0;
     for (let z = 6; z < ARENA_BLEND_Z; z += 10) {
-      const rung = new THREE.Mesh(new THREE.BoxGeometry(HALF_WIDTH * 2 - 1, 0.05, 0.16), this.emissiveMat(0xff5a1e, 0.5));
-      rung.position.set(0, 0.03, z);
-      this.group.add(rung);
+      rungs.setMatrixAt(rI++, rMat.makeTranslation(0, 0.03, z));
     }
+    rungs.count = rI;
+    rungs.instanceMatrix.needsUpdate = true;
+    this.group.add(rungs);
 
     // --- gradient sky dome behind everything ---
     const sky = new THREE.Mesh(

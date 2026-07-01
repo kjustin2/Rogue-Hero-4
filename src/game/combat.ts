@@ -39,7 +39,6 @@ export class Combat {
   private aimEye = new THREE.Vector3();
   private aimDir = new THREE.Vector3(0, 0, 1);
   private wp = new THREE.Vector3();
-  private cp = new THREE.Vector3();
 
   constructor(private ctx: Ctx) {}
 
@@ -55,14 +54,18 @@ export class Combat {
     cam.getWorldPosition(this.aimEye);
     cam.getWorldDirection(this.aimDir);
     b.coreWorld(this.wp);
-    const t = this.wp.clone().sub(this.aimEye).dot(this.aimDir);
+    // ray-to-core, allocation-free: project (core - eye) onto the aim dir, then
+    // squared distance from the core to that closest point (no clone, no sqrt).
+    const ex = this.wp.x - this.aimEye.x, ey = this.wp.y - this.aimEye.y, ez = this.wp.z - this.aimEye.z;
+    const t = ex * this.aimDir.x + ey * this.aimDir.y + ez * this.aimDir.z;
     if (t < 0) return false;
-    this.cp.copy(this.aimEye).addScaledVector(this.aimDir, t);
-    return this.cp.distanceTo(this.wp) < b.weakRadius;
+    const cx = ex - this.aimDir.x * t, cy = ey - this.aimDir.y * t, cz = ez - this.aimDir.z * t;
+    return cx * cx + cy * cy + cz * cz < b.weakRadius * b.weakRadius;
   }
 
   targets(): Hittable[] {
-    const list: Hittable[] = [...this.ctx.enemies.living()];
+    // living() returns a fresh array each call — push the boss onto it directly (no spread).
+    const list: Hittable[] = this.ctx.enemies.living();
     const boss = this.ctx.boss;
     if (boss && boss.alive) list.push(boss);
     return list;

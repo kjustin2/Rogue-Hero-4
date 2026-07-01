@@ -46,6 +46,7 @@ export class Hud {
   private crosshair!: HTMLElement;
   private dmgT = 0;
   private t = 0;
+  private lastChain = "";
 
   constructor(private ctx: Ctx) {
     this.build();
@@ -199,8 +200,11 @@ export class Hud {
     // combo chain pips + "armed" glow when the current buffer already forms a combo
     const buf = p.buffer;
     const armed = matchWeaponCombo(buf, w);
-    this.chain.innerHTML = buf.map((s) => `<span class="pip pip-${s}"></span>`).join("")
+    // buffer only changes on attack — skip the innerHTML reparse+reflow on the ~99% of
+    // frames it's identical (usually "" while idle).
+    const chainHtml = buf.map((s) => `<span class="pip pip-${s}"></span>`).join("")
       + (armed ? `<span class="pip-armed" style="color:${cssHex(armed.color)}">▶ ${armed.name}</span>` : "");
+    if (chainHtml !== this.lastChain) { this.chain.innerHTML = chainHtml; this.lastChain = chainHtml; }
 
     this.crosshair.classList.toggle("weak", this.ctx.combat.isAimingWeak());
     this.lockHint.style.opacity = this.ctx.playing && !this.ctx.input.pointerLocked && p.alive ? "1" : "0";

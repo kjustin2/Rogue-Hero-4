@@ -295,7 +295,7 @@ export class Enemy implements Hittable {
     const p = this.ctx.player;
     const dx = p.pos.x - this.pos.x;
     const dz = p.pos.z - this.pos.z;
-    const dist = Math.hypot(dx, dz) || 1;
+    const dist = Math.sqrt(dx * dx + dz * dz) || 1;
     const nx = dx / dist;
     const nz = dz / dist;
 
@@ -313,7 +313,8 @@ export class Enemy implements Hittable {
     this.atkLunge = damp(this.atkLunge, 0, 7, dt);
 
     // stride signal from actual displacement (drives forward lean + a livelier bob)
-    const sp = Math.hypot(this.pos.x - this.prevX, this.pos.z - this.prevZ) / Math.max(dt, 1e-3);
+    const sdx = this.pos.x - this.prevX, sdz = this.pos.z - this.prevZ;
+    const sp = Math.sqrt(sdx * sdx + sdz * sdz) / Math.max(dt, 1e-3);
     this.moveAmt = damp(this.moveAmt, Math.min(1, sp / this.cfg.speed), 8, dt);
     this.prevX = this.pos.x; this.prevZ = this.pos.z;
 
@@ -509,7 +510,7 @@ export class EnemyManager {
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i], b = live[j];
         const dx = b.pos.x - a.pos.x, dz = b.pos.z - a.pos.z;
-        const d = Math.hypot(dx, dz) || 1;
+        const d = Math.sqrt(dx * dx + dz * dz) || 1;
         const min = a.radius + b.radius;
         if (d < min) {
           const push = (min - d) * 0.5;

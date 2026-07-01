@@ -72,6 +72,10 @@ export class Stage {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // Accumulate render.info across all composer passes of one frame (reset once per
+    // frame in render()); with autoReset on, EffectComposer leaves only the final
+    // fullscreen pass counted, so draw-call/triangle totals can't be measured or gated.
+    this.renderer.info.autoReset = false;
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0a0705);
@@ -291,6 +295,7 @@ export class Stage {
   }
 
   render(dt: number): void {
+    this.renderer.info.reset(); // once per frame: totals now span every pass (see ctor)
     (this.lowCost ? this.menuComposer : this.composer).render(dt);
   }
 

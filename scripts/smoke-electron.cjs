@@ -193,8 +193,12 @@ app.whenReady().then(async () => {
       const z1 = await js(`window.__rh4.player.pos.z`);
       expect(z1 > z0 + 1.5, `player did not advance on W (z ${z0.toFixed(1)} -> ${z1.toFixed(1)})`);
       expect(await js(`window.__rh4.enemies.aliveCount() > 0`), "advancing did not spawn the gate wave");
+      // Real per-frame draw-call total (Stage sets renderer.info.autoReset=false + resets
+      // once per frame, so this spans every composer pass — not just the final blit).
       const calls = await js(`window.__rh4.stage.renderer.info.render.calls`);
+      console.log(`  draw calls (gate-1 combat): ${calls}`);
       expect(calls > 0, "no draw calls (" + calls + ")");
+      expect(calls < 900, "draw-call regression: " + calls + " (gate-1 combat ~300-500; check level.ts instancing/merges)");
       await frames(18); // let enemies close in
       await shot(win, "combat");
 
