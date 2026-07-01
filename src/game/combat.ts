@@ -29,6 +29,8 @@ export interface Hittable {
   modifyIncoming?(dmg: number, opts: HitOpts): number;
   /** Elite tag — killed elites always drop a shard. */
   elite?: string | null;
+  /** Boss-summoned adds always drop a shard. */
+  guaranteedShard?: boolean;
   /** Returns true if this hit killed it. */
   takeDamage(dmg: number, opts: HitOpts): boolean;
 }
@@ -108,7 +110,7 @@ export class Combat {
     this.ctx.cam.addTrauma(crit ? 0.22 : 0.08);
     if (crit) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.05);
     if (killed) {
-      this.ctx.events.emit("KILL", { x: t.pos.x, z: t.pos.z, kind: t.kind, elite: !!t.elite });
+      this.ctx.events.emit("KILL", { x: t.pos.x, z: t.pos.z, kind: t.kind, elite: !!t.elite || !!t.guaranteedShard });
       this.ctx.fx.burst({
         x: t.pos.x, y: 1.1, z: t.pos.z, count: 26, color: t.hitColor,
         speed: [5, 14], size: [0.14, 0.4], life: [0.3, 0.7], gravity: -3,

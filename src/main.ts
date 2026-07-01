@@ -106,10 +106,15 @@ ctx.events.on("KILL", (e) => {
 ctx.events.on("PLAYER_HIT", () => { streak = 0; });
 ctx.events.on("PLAYER_DIED", () => setState("dead"));
 ctx.events.on("BOSS_PHASE", (e) => startPhaseCutscene(e.phase));
-ctx.events.on("BOSS_DEFEATED", () => {
+ctx.events.on("BOSS_DEFEATED", (e) => {
   ctx.events.emit("RUN_VICTORY", {});
   ctx.sfx.bossDeath();
   ctx.music.silence();
+  // killcam beat: the world hangs, the camera locks onto the falling king, soulfire erupts
+  ctx.slowmo = Math.max(ctx.slowmo, 1.1);
+  if (ctx.boss) { ctx.boss.coreWorld(cineTarget); ctx.cam.setCinematic(true, cineTarget); }
+  for (let i = 0; i < 3; i++) ctx.fx.beam(e.x + (i - 1) * 2.5, e.z, BOSS_TEAL);
+  ctx.fx.burst({ x: e.x, y: 5, z: e.z, count: 70, color: [BOSS_TEAL, 0xffffff], speed: [6, 18], up: 1.2, life: [0.5, 1.2] });
   victoryQueued = 1.8; // let the death animation play, then show victory
 });
 
@@ -136,6 +141,7 @@ function setState(s: State): void {
     ctx.music.silence();
     menus.showDead({ time: runTime, kills }, () => startRun(), () => setState("title"));
   } else if (s === "victory") {
+    ctx.cam.setCinematic(false); // release the killcam
     ctx.input.unlockPointer();
     hud.setVisible(false);
     ctx.music.menu();

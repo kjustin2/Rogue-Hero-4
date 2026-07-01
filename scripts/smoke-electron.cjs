@@ -411,10 +411,10 @@ app.whenReady().then(async () => {
       await frames(20);
       await shot(win, "boss-phase3");
 
-      // --- defeat the boss → victory flow (victoryQueued ~1.8s)
+      // --- defeat the boss → victory flow (victoryQueued ~1.8s, stretched by the killcam slow-mo)
       await js(`window.__rh4debug.skipCutscene()`);
       await js(`if(window.__rh4.boss) window.__rh4.boss.takeDamage(99999,{})`);
-      await frames(70);
+      await frames(100);
       expect(await js(`window.__rh4state()==='victory'`), "victory state never reached");
       await shot(win, "victory", false);
 

@@ -65,6 +65,8 @@ export class Enemy implements Hittable {
   kind: EnemyKind;
   hitColor: number;
   elite: EliteKind | null = null;
+  /** Boss-summoned adds always drop a shard (the boss-fight heal economy). */
+  guaranteedShard = false;
   private speedMult = 1;
   private baseScale = 1;
   private crown?: THREE.Mesh;
@@ -135,6 +137,7 @@ export class Enemy implements Hittable {
     this.moveAmt = 0; this.vt = 0;
     this.kb.set(0, 0, 0);
     this.elite = null;
+    this.guaranteedShard = false;
     this.speedMult = 1;
     this.baseScale = 1;
     this.burstT = -1;

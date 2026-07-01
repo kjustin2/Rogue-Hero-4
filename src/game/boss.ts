@@ -10,7 +10,10 @@ import { buildBossMesh } from "../render/bossMesh";
 const CORE_Y = 6.0; // world height of the weak-point core
 const VOLLEY_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
 
-type Attack = "slam" | "volley" | "sweep" | "collapse" | "beam" | null;
+// arena anchors the Warden shifts between (phase 2+) — the fight roams, camping dies
+const ANCHORS: [number, number][] = [[0, 226], [-14, 214], [14, 214], [0, 203]];
+
+type Attack = "slam" | "volley" | "sweep" | "collapse" | "beam" | "gravewave" | "harvest" | "shift" | null;
 
 /**
  * The Rift Warden — the boss waiting at the end of the causeway. Mostly holds the
@@ -31,6 +34,15 @@ export class Boss implements Hittable {
 
   private phase = 1;
   private summoned = false;
+  private attacksSinceShift = 0;
+  private anchorIdx = 0;
+  private shiftFrom = new THREE.Vector3();
+  private shiftT = -1; // >0 = mid-glide
+  private waveR = -1;  // >0 = a gravewave ring is expanding
+  private waveHit = false;
+  private summonT = 25; // phase-3 recurring adds timer
+  /** Phase-3 soulfire pools left by collapses — the safe floor shrinks. */
+  private pools: { x: number; z: number; r: number; t: number; tick: number }[] = [];
   private rise = 0;
   private charge = 0; // attack wind-up inflate
   private lunge = 0; // strike snap
@@ -103,6 +115,13 @@ export class Boss implements Hittable {
     this.tele?.cancel(); this.tele = null;
     for (const t of this.teles) t.cancel();
     this.teles = []; this.spots = [];
+    this.attacksSinceShift = 0;
+    this.anchorIdx = 0;
+    this.shiftT = -1;
+    this.waveR = -1;
+    this.summonT = 25;
+    this.pools.length = 0;
+    this.light.position.set(BOSS_ANCHOR.x, 5, BOSS_ANCHOR.z);
     this.hp = this.maxHp; this.alive = true;
     this.dying = false; this.deathT = 0;
     this.phase = 1; this.summoned = false;
@@ -160,6 +179,11 @@ export class Boss implements Hittable {
       const a = (i / 6) * Math.PI * 2;
       this.ctx.fx.beam(this.pos.x + Math.cos(a) * 5, this.pos.z + Math.sin(a) * 5, this.hitColor);
     }
+  }
+
+  /** Telegraph color per phase: threat red → deep blood red → white-hot. */
+  private teleColor(): number {
+    return this.phase >= 3 ? 0xfff0e0 : this.phase === 2 ? 0xd01020 : PAL.threat;
   }
 
   private enterPhase2(): void {
@@ -248,6 +272,73 @@ export class Boss implements Hittable {
 
     if (this.rise < 1) return; // still rising in
     if (this.paused) return;   // frozen for a phase-transition cutscene
+
+    // the soul-fire light rides with the Warden now that he roams
+    this.light.position.set(this.pos.x, 5, this.pos.z);
+
+    // mid-glide shift: sweep to the target anchor, shockwave on arrival
+    if (this.shiftT > 0) {
+      this.shiftT -= dt;
+      const [ax, az] = ANCHORS[this.anchorIdx];
+      const k = 1 - Math.max(0, this.shiftT) / 0.5;
+      this.pos.x = this.shiftFrom.x + (ax - this.shiftFrom.x) * k;
+      this.pos.z = this.shiftFrom.z + (az - this.shiftFrom.z) * k;
+      this.group.position.x = this.pos.x;
+      this.group.position.z = this.pos.z;
+      this.ctx.fx.burst({ x: this.pos.x, y: 2, z: this.pos.z, count: 3, color: this.hitColor, speed: [1, 4], size: [0.2, 0.5], life: [0.2, 0.4] });
+      if (this.shiftT <= 0) {
+        this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 8, color: this.hitColor, duration: 0.4, y: 0.2 });
+        this.ctx.cam.addTrauma(0.3);
+        this.ctx.sfx.bossSlam();
+        const p2 = this.ctx.player;
+        if (Math.hypot(p2.pos.x - this.pos.x, p2.pos.z - this.pos.z) <= 6) this.ctx.combat.damagePlayer(18, this.pos.x, this.pos.z);
+      }
+      return; // committed to the glide
+    } else {
+      this.group.position.x = this.pos.x;
+      this.group.position.z = this.pos.z;
+    }
+
+    // expanding gravewave ring — dash THROUGH it (i-frames) or take the hit
+    if (this.waveR > 0) {
+      this.waveR += dt * 16;
+      const p2 = this.ctx.player;
+      const d = Math.hypot(p2.pos.x - this.pos.x, p2.pos.z - this.pos.z);
+      if (Math.floor(this.waveR * 2) % 2 === 0) {
+        this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: this.waveR, color: this.teleColor(), duration: 0.16, y: 0.3, startRadius: this.waveR - 0.5 });
+      }
+      if (!this.waveHit && Math.abs(d - this.waveR) < 1.3) {
+        this.waveHit = true; // one chance to hit — a dash's i-frames carry you through
+        if (this.ctx.combat.damagePlayer(24, this.pos.x, this.pos.z) === "dodged") {
+          this.ctx.floaters.spawn(p2.pos.x, 2.2, p2.pos.z, "THROUGH", "label", "#ffc24a");
+        }
+      }
+      if (this.waveR > ARENA_RADIUS) this.waveR = -1;
+    }
+
+    // phase-3 recurring adds: heal economy pressure — kill adds to heal, or focus the boss
+    if (this.phase >= 3) {
+      this.summonT -= dt;
+      if (this.summonT <= 0) {
+        this.summonT = 25;
+        if (this.ctx.enemies.aliveCount() < 4) this.summonAdds();
+      }
+    }
+
+    // soulfire pools: the collapsed floor burns for a while
+    for (let i = this.pools.length - 1; i >= 0; i--) {
+      const pool = this.pools[i];
+      pool.t -= dt;
+      pool.tick -= dt;
+      if (pool.tick <= 0) {
+        pool.tick = 0.45;
+        this.ctx.fx.ring(pool.x, pool.z, { radius: pool.r, color: this.hitColor, duration: 0.45, y: 0.12, startRadius: pool.r * 0.5 });
+        const p2 = this.ctx.player;
+        if (Math.hypot(p2.pos.x - pool.x, p2.pos.z - pool.z) <= pool.r) this.ctx.combat.damagePlayer(4, pool.x, pool.z);
+      }
+      if (pool.t <= 0) this.pools.splice(i, 1);
+    }
+
     if (this.attack) this.progressAttack(dt);
     else {
       this.cd -= dt;
@@ -255,13 +346,39 @@ export class Boss implements Hittable {
     }
   }
 
+  /** Boss-summoned adds always drop a shard — the heal economy of the fight. */
+  private summonAdds(): void {
+    const kinds = ["husk", "ghoul"] as const;
+    for (let i = 0; i < 2; i++) {
+      const a = this.ctx.rng.range(0, Math.PI * 2);
+      const e = this.ctx.enemies.spawn(kinds[i % 2], this.pos.x + Math.cos(a) * 6, this.pos.z - 4 + Math.sin(a) * 3);
+      e.guaranteedShard = true;
+      this.ctx.fx.beam(e.pos.x, e.pos.z, this.hitColor);
+    }
+    this.ctx.sfx.bossRoar();
+  }
+
   private chooseAttack(): void {
+    // every ~4 attacks (phase 2+) the Warden SHIFTS to a new anchor — the fight roams
+    this.attacksSinceShift++;
+    if (this.phase >= 2 && this.attacksSinceShift >= 4) {
+      this.attack = "shift";
+      this.attacksSinceShift = 0;
+      this.windupMax = 0.55;
+      this.windup = this.windupMax;
+      let next = this.ctx.rng.int(0, ANCHORS.length - 1);
+      if (next === this.anchorIdx) next = (next + 1) % ANCHORS.length;
+      this.anchorIdx = next;
+      const [ax, az] = ANCHORS[next];
+      this.tele = this.ctx.tele.circle(ax, az, 7, this.windupMax, this.teleColor());
+      return;
+    }
     const pool: Attack[] =
-      this.phase === 1 ? ["slam", "volley", "beam"]
-        : this.phase === 2 ? ["slam", "volley", "sweep", "beam", "sweep"]
-          : ["collapse", "sweep", "volley", "beam", "collapse"];
+      this.phase === 1 ? ["slam", "volley", "beam", "gravewave"]
+        : this.phase === 2 ? ["slam", "volley", "sweep", "beam", "sweep", "gravewave", "harvest"]
+          : ["collapse", "sweep", "volley", "beam", "collapse", "gravewave", "harvest"];
     this.attack = this.ctx.rng.pick(pool);
-    this.windupMax = this.attack === "collapse" ? 0.95 : this.attack === "beam" ? 0.85 : this.attack === "sweep" ? 0.8 : this.attack === "slam" ? 0.65 : 0.52;
+    this.windupMax = this.attack === "collapse" ? 0.95 : this.attack === "beam" ? 0.85 : this.attack === "sweep" || this.attack === "harvest" ? 0.8 : this.attack === "gravewave" ? 0.7 : this.attack === "slam" ? 0.65 : 0.52;
     if (this.phase === 2) this.windupMax *= 0.8;
     if (this.phase === 3) this.windupMax *= 0.65;
     this.windup = this.windupMax;
@@ -269,10 +386,12 @@ export class Boss implements Hittable {
     const p = this.ctx.player;
     this.aim.copy(p.pos);
     this.aimAngle = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
-    const c = PAL.threat;
+    const c = this.teleColor();
     if (this.attack === "slam") this.tele = this.ctx.tele.circle(this.aim.x, this.aim.z, 5, this.windupMax, c);
     else if (this.attack === "sweep") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 40, 5, this.windupMax, c);
     else if (this.attack === "beam") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 60, 4, this.windupMax, c);
+    else if (this.attack === "gravewave") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, 8, this.windupMax, c);
+    else if (this.attack === "harvest") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, 9, this.windupMax, c);
     else if (this.attack === "collapse") {
       // rift collapse: several slam zones bloom across the arena at once — keep moving
       for (const t of this.teles) t.cancel();
@@ -347,11 +466,32 @@ export class Boss implements Hittable {
         this.ctx.fx.ring(s.x, s.z, { radius: 4.5, color: this.hitColor, duration: 0.4 });
         this.ctx.fx.burst({ x: s.x, y: 0.5, z: s.z, count: 22, color: this.hitColor, speed: [5, 13], life: [0.3, 0.7], up: 1 });
         if (Math.hypot(p.pos.x - s.x, p.pos.z - s.z) <= 4.5) hit = true;
+        // phase 3: every collapse leaves a burning soulfire pool — the floor shrinks
+        if (this.phase >= 3) this.pools.push({ x: s.x, z: s.z, r: 4.0, t: 6, tick: 0 });
       }
       this.ctx.cam.addTrauma(0.5);
       this.ctx.stage.punch(0.4);
       if (hit) this.ctx.combat.damagePlayer(30, this.pos.x, this.pos.z);
       this.spots = [];
+    } else if (a === "gravewave") {
+      // launch the expanding ring (resolved over time in tick)
+      this.waveR = 3;
+      this.waveHit = false;
+      this.ctx.sfx.bossSlam();
+      this.ctx.cam.addTrauma(0.25);
+      this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 6, color: this.teleColor(), duration: 0.3, y: 0.3 });
+    } else if (a === "harvest") {
+      // a full-circle reap that punishes hugging the Warden
+      this.ctx.fx.slash(this.pos.x, 2.2, this.pos.z, this.ctx.rng.range(0, Math.PI * 2), { color: this.hitColor, radius: 9.5, tilt: -0.02, duration: 0.32, spin: 6 });
+      this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 9, color: this.hitColor, duration: 0.4, y: 1.2 });
+      this.ctx.sfx.bossSlam();
+      this.ctx.cam.addTrauma(0.35);
+      if (Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z) <= 9) this.ctx.combat.damagePlayer(26, this.pos.x, this.pos.z);
+    } else if (a === "shift") {
+      // begin the glide (resolved over time in tick)
+      this.shiftFrom.copy(this.pos);
+      this.shiftT = 0.5;
+      this.ctx.sfx.bossDash();
     }
   }
 
