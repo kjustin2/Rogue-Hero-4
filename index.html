@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 26,16 16,30 6,16' fill='%235fe0ff'/%3E%3Cpolygon points='16,8 21,16 16,24 11,16' fill='%23070710'/%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpolygon points='16,2 26,16 16,30 6,16' fill='%23ffb24a'/%3E%3Cpolygon points='16,8 21,16 16,24 11,16' fill='%23070710'/%3E%3C/svg%3E" />
   <title>Rogue Hero 4 — Rift Causeway</title>
   <style>
     /* Boot loader — inlined so it paints before the JS bundle downloads/evaluates,
@@ -13,8 +13,8 @@
     #rift-loader {
       position: fixed; inset: 0; z-index: 1000;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      background: radial-gradient(125% 95% at 50% 36%, #111a3a 0%, #0a0c1c 46%, #050509 100%);
-      color: #e8ecf4; overflow: hidden;
+      background: radial-gradient(125% 95% at 50% 36%, #241109 0%, #140a06 46%, #070404 100%);
+      color: #f2e8d8; overflow: hidden;
       font-family: "Rajdhani", "Segoe UI", system-ui, sans-serif;
       transition: opacity 0.6s ease, visibility 0.6s ease;
     }
@@ -26,8 +26,8 @@
     /* faint vignette + a slow aurora wash to match the menu backdrop */
     #rift-loader::before {
       content: ""; position: absolute; inset: -20%;
-      background: radial-gradient(60% 40% at 30% 20%, rgba(95,224,255,0.10), transparent 70%),
-                  radial-gradient(50% 40% at 75% 80%, rgba(255,138,61,0.08), transparent 70%);
+      background: radial-gradient(60% 40% at 30% 20%, rgba(255,178,74,0.08), transparent 70%),
+                  radial-gradient(50% 40% at 75% 80%, rgba(79,224,208,0.05), transparent 70%);
       animation: rl-wash 9s ease-in-out infinite alternate;
     }
     @keyframes rl-wash { from { transform: translate3d(-2%, -1%, 0) scale(1); } to { transform: translate3d(2%, 1%, 0) scale(1.05); } }
@@ -51,12 +51,12 @@
     .rl-diamond { position: relative; width: 96px; height: 96px; margin-bottom: 36px; animation: rl-spin 7s linear infinite; }
     .rl-diamond::before, .rl-diamond::after {
       content: ""; position: absolute; inset: 0; transform: rotate(45deg);
-      border: 2px solid #5fe0ff;
-      box-shadow: 0 0 24px rgba(95,224,255,0.5), inset 0 0 16px rgba(95,224,255,0.32);
+      border: 2px solid #ffb24a;
+      box-shadow: 0 0 24px rgba(255,178,74,0.45), inset 0 0 16px rgba(255,178,74,0.28);
     }
     .rl-diamond::after {
-      inset: 28px; border-color: #ffc266;
-      box-shadow: 0 0 18px rgba(255,194,102,0.6), inset 0 0 10px rgba(255,194,102,0.4);
+      inset: 28px; border-color: #ff7a2c;
+      box-shadow: 0 0 18px rgba(255,122,44,0.6), inset 0 0 10px rgba(255,122,44,0.4);
       animation: rl-pulse 1.7s ease-in-out infinite;
     }
     @keyframes rl-spin { to { transform: rotate(360deg); } }
@@ -65,21 +65,21 @@
     .rl-title {
       font-family: "Cinzel", "Times New Roman", serif;
       font-size: clamp(26px, 5vw, 46px); font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
-      background: linear-gradient(180deg, #ffffff, #9fd8ff 58%, #5fe0ff);
+      background: linear-gradient(180deg, #fff3dc, #ffd480 58%, #ffb24a);
       -webkit-background-clip: text; background-clip: text; color: transparent;
-      filter: drop-shadow(0 0 26px rgba(95,224,255,0.25));
+      filter: drop-shadow(0 0 26px rgba(255,178,74,0.25));
     }
     .rl-title b { -webkit-text-fill-color: #ffc266; color: #ffc266; }
-    .rl-sub { margin-top: 9px; font-size: 13px; letter-spacing: 0.5em; padding-left: 0.5em; color: #8a93a8; text-transform: uppercase; }
+    .rl-sub { margin-top: 9px; font-size: 13px; letter-spacing: 0.5em; padding-left: 0.5em; color: #a8907a; text-transform: uppercase; }
 
-    .rl-bar { margin-top: 30px; width: min(320px, 62vw); height: 3px; border-radius: 3px; background: rgba(120,150,200,0.16); overflow: hidden; }
+    .rl-bar { margin-top: 30px; width: min(320px, 62vw); height: 3px; border-radius: 3px; background: rgba(200,150,90,0.16); overflow: hidden; }
     .rl-bar-fill {
       height: 100%; width: 8%; border-radius: 3px;
-      background: linear-gradient(90deg, #5fe0ff, #ffc266);
-      box-shadow: 0 0 14px rgba(95,224,255,0.7);
+      background: linear-gradient(90deg, #ff7a2c, #ffd480);
+      box-shadow: 0 0 14px rgba(255,122,44,0.7);
       transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .rl-status { margin-top: 15px; font-size: 11.5px; letter-spacing: 0.34em; text-transform: uppercase; color: #7d869c; min-height: 1em; }
+    .rl-status { margin-top: 15px; font-size: 11.5px; letter-spacing: 0.34em; text-transform: uppercase; color: #9c8471; min-height: 1em; }
   </style>
 </head>
 <body>
@@ -108,7 +108,7 @@
       <div class="rl-title">Rogue Hero <b>IV</b></div>
       <div class="rl-sub">Rift Causeway</div>
       <div class="rl-bar"><div class="rl-bar-fill"></div></div>
-      <div class="rl-status">Opening the rift…</div>
+      <div class="rl-status">Kindling the causeway…</div>
     </div>
   </div>
 

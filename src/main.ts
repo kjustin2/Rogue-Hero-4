@@ -29,6 +29,7 @@ import { weaponComboSelfCheck, WEAPONS } from "./game/weapons";
 import { Hud } from "./ui/hud";
 import { Menus } from "./ui/menus";
 import type { Ctx } from "./game/ctx";
+import { PAL } from "./core/palette";
 
 const lowfx = new URLSearchParams(location.search).has("lowfx");
 type State = "title" | "playing" | "paused" | "dead" | "victory";
@@ -91,7 +92,7 @@ const CINE_LEN = 3.4; // boss-intro cutscene length
 let cineT = 0; // boss-intro cutscene timer (>0 = cutscene running)
 let cineBeatT = 0; // ticks down to fire the next scripted ripple/beam beat
 const cineTarget = new THREE.Vector3();
-const BOSS_TEAL = 0x4fe0d0; // matches Boss.hitColor
+const BOSS_TEAL = PAL.soulfire; // matches Boss.hitColor
 const BOSS_NAME = "Mordrek · Barrow King";
 
 ctx.events.on("KILL", (e) => {
@@ -206,11 +207,11 @@ function updatePlaying(dt: number): void {
     if (!triggered[idx] && ctx.player.pos.z > g.triggerZ) {
       ctx.enemies.spawnWave(idx);
       triggered[idx] = true;
-      hud.showBanner("RIFT-BORN", 0xff5ea0);
+      hud.showBanner("RIFT-BORN", PAL.threat);
       ctx.sfx.bossIntroSting();
     } else if (triggered[idx] && ctx.enemies.aliveCount() === 0) {
       ctx.level.openGate(idx);
-      hud.showBanner("WAY OPEN", 0x8affd0);
+      hud.showBanner("WAY OPEN", PAL.gold);
       ctx.sfx.critical();
       ctx.music.combat(idx + 2); // each cleared gate advances the combat bed (set1→2→3…)
       // clearing a wave reveals a new weapon on the ground just past the gate

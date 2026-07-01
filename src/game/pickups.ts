@@ -19,7 +19,9 @@ interface WeaponDrop {
   alive: boolean;
 }
 
-const COLOR = 0x6affa0;
+import { PAL } from "../core/palette";
+
+const COLOR = PAL.gold;
 const MAGNET_R = 6;
 const PICKUP_R = 1.4;
 const WEAPON_PICKUP_R = 2.4;

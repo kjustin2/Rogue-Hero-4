@@ -4,6 +4,7 @@ import type { Hittable, HitOpts } from "./combat";
 import type { TelegraphHandle } from "../render/telegraphs";
 import { GATES_Z, HALF_WIDTH } from "./level";
 import { damp } from "../core/math";
+import { PAL } from "../core/palette";
 import { buildEnemyVisual } from "../render/enemyMeshes";
 import type { RiggedInstance } from "../render/models";
 
@@ -24,12 +25,12 @@ interface KindCfg {
 
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
-  husk: { hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
-  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0, proj: { speed: 17, shape: "comet", interval: 1.45 } }, // witchfire caster: slow lobbed orb
-  brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
-  wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
-  ghoul: { hp: 20, radius: 0.5, speed: 15.5, contactDmg: 12, attackRange: 2.2, windup: 0.13, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast
-  archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: 0x8fb4ff, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
+  husk: { hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: PAL.soulfire, bodyY: 0 }, // bone-pale risen wight
+  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: PAL.soulfire, bodyY: 1.0, proj: { speed: 17, shape: "comet", interval: 1.45 } }, // witchfire caster: slow lobbed orb
+  brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: PAL.soulfire, bodyY: 0 }, // molten-iron ogre
+  wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: PAL.soulfire, bodyY: 0.7 }, // spectral banshee
+  ghoul: { hp: 20, radius: 0.5, speed: 15.5, contactDmg: 12, attackRange: 2.2, windup: 0.13, color: PAL.soulfire, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast
+  archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: PAL.soulfire, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
 };
 
 // Waves, one per gate (see level.ts GATES_Z). Cleared → the gate opens. Escalating:
@@ -270,8 +271,8 @@ export class Enemy implements Hittable {
         this.state = "windup";
         this.timer = cfg.windup;
         const angle = Math.atan2(nz, nx);
-        if (this.kind === "brute") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, cfg.attackRange, cfg.windup, cfg.color);
-        else this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, angle, cfg.attackRange + 0.5, 1.4, cfg.windup, cfg.color);
+        if (this.kind === "brute") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, cfg.attackRange, cfg.windup, PAL.threat);
+        else this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, angle, cfg.attackRange + 0.5, 1.4, cfg.windup, PAL.threat);
       }
     } else if (this.state === "windup") {
       this.timer -= dt;
@@ -312,7 +313,7 @@ export class Enemy implements Hittable {
         this.atkLunge = 1; // staff thrusts / bow snaps forward on the shot
         const p = this.ctx.player;
         SHOT_DIR.set(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
-        this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, cfg.color, 2, { shape: pj.shape });
+        this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape });
         this.tele = null;
         this.state = "recover";
         this.timer = 0.3;
@@ -335,7 +336,7 @@ export class Enemy implements Hittable {
       this.state = "windup";
       this.timer = cfg.windup;
       const len = Math.min(dist + 2, pj.shape === "dart" ? 22 : 15);
-      this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), len, 1.5, cfg.windup, cfg.color);
+      this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), len, 1.5, cfg.windup, PAL.threat);
     }
   }
 
@@ -351,7 +352,7 @@ export class Enemy implements Hittable {
         this.state = "windup";
         this.timer = cfg.windup;
         this.lungeDir.set(nx, 0, nz);
-        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), 12, 1.6, cfg.windup, cfg.color);
+        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), 12, 1.6, cfg.windup, PAL.threat);
       }
     } else if (this.state === "windup") {
       this.timer -= dt;

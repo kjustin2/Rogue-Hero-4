@@ -38,7 +38,7 @@ html, body {
 }
 .floater--dmg { color: #fff; }
 .floater--crit { color: var(--ui-gold); font-size: 26px; animation-name: floater-crit; }
-.floater--heal { color: #5fffa8; }
+.floater--heal { color: #ffc24a; }
 .floater--tempo { color: #66ffee; font-size: 22px; letter-spacing: 2px; animation-name: floater-crit; }
 .floater--playerdmg { color: var(--ui-red); font-size: 24px; }
 .floater--label { color: #fff; font-size: 22px; font-weight: 800; letter-spacing: 3px; animation-name: floater-crit; text-shadow: 0 0 18px currentColor, 0 2px 8px #000; }
@@ -150,7 +150,7 @@ html, body {
 
 /* rift-shard counter (top-left under the objective) */
 #shards { position: absolute; top: 56px; left: 24px; display: flex; align-items: center; gap: 7px; }
-#shards .sh-ico { color: #6affa0; font-size: 17px; text-shadow: 0 0 12px rgba(106, 255, 160, 0.8); }
+#shards .sh-ico { color: #ffc24a; font-size: 17px; text-shadow: 0 0 12px rgba(255, 194, 74, 0.8); }
 #shards .sh-n { font-family: var(--font-display); font-weight: 800; font-size: 20px; color: #cdffe2; text-shadow: 0 0 10px rgba(106, 255, 160, 0.5); min-width: 18px; }
 #shards .sh-lbl { font-size: 9.5px; letter-spacing: 2.5px; color: var(--ui-dim); }
 

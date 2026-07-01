@@ -287,7 +287,7 @@ export class Combat {
       this.ctx.events.emit("DODGE", {});
       this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.1);
       this.ctx.cam.pulseFov(0.22);
-      this.ctx.floaters.spawn(p.pos.x, 1.9, p.pos.z, "PERFECT", "label", "#8affd0");
+      this.ctx.floaters.spawn(p.pos.x, 1.9, p.pos.z, "PERFECT", "label", "#ffc24a");
       this.ctx.sfx.critical();
       p.cooldowns.light = 0;
       p.cooldowns.heavy = 0;

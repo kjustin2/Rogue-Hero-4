@@ -4,6 +4,7 @@ import type { Hittable, HitOpts } from "./combat";
 import type { TelegraphHandle } from "../render/telegraphs";
 import { BOSS_ANCHOR, ARENA_CENTER, ARENA_RADIUS } from "./level";
 import { damp } from "../core/math";
+import { PAL } from "../core/palette";
 import { buildBossMesh } from "../render/bossMesh";
 
 const CORE_Y = 6.0; // world height of the weak-point core
@@ -24,7 +25,7 @@ export class Boss implements Hittable {
   hp = 820;
   alive = true;
   kind = "boss";
-  hitColor = 0x4fe0d0; // cold soul-fire — an undead warden, contrasting the firelit keep
+  hitColor = PAL.soulfire; // cold soul-fire — an undead warden, contrasting the firelit keep
   hitTop = 9; // tall vertical hitbox so high bolts connect
   readonly weakRadius = 2.0;
 
@@ -268,7 +269,7 @@ export class Boss implements Hittable {
     const p = this.ctx.player;
     this.aim.copy(p.pos);
     this.aimAngle = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
-    const c = this.hitColor;
+    const c = PAL.threat;
     if (this.attack === "slam") this.tele = this.ctx.tele.circle(this.aim.x, this.aim.z, 5, this.windupMax, c);
     else if (this.attack === "sweep") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 40, 5, this.windupMax, c);
     else if (this.attack === "beam") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 60, 4, this.windupMax, c);

@@ -7,12 +7,15 @@ import {
   EffectPass,
   HueSaturationEffect,
   NoiseEffect,
+  NormalPass,
   RenderPass,
   SMAAEffect,
+  SSAOEffect,
   VignetteEffect,
   type Effect,
 } from "postprocessing";
 import { clamp01, damp } from "../core/math";
+import { PAL } from "../core/palette";
 
 export type Quality = "low" | "medium" | "high";
 
@@ -78,21 +81,23 @@ export class Stage {
     this.renderer.info.autoReset = false;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0a0705);
-    // warm, torch-lit gloom — fog the colour of dim embers
-    this.fog = new THREE.FogExp2(0x140a06, 0.016);
+    this.scene.background = new THREE.Color(PAL.skyBg);
+    // near-black gloom — distance reads as DARKNESS, not orange wash (the old warm
+    // fog painted the whole frame ember; torch pools carry the warmth instead)
+    this.fog = new THREE.FogExp2(PAL.fog, 0.014);
     this.scene.fog = this.fog;
 
     this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 220);
     this.camera.position.set(0, 16, 11);
     this.camera.lookAt(0, 0, 0);
 
-    // low warm ambient: a dim amber sky over deep shadow, so torchlight does the work
-    this.hemiLight = new THREE.HemisphereLight(0x6a4326, 0x100805, 0.6);
+    // cold slate ambient over deep shadow — the cool counterweight that makes the
+    // warm torch pools actually pop (all-amber ambient was the monochrome culprit)
+    this.hemiLight = new THREE.HemisphereLight(PAL.hemiSky, PAL.hemiGround, 0.55);
     this.scene.add(this.hemiLight);
 
     // warm low key (moonless, flame-lit) — pools of torchlight carry the scene
-    this.keyLight = new THREE.DirectionalLight(0xffb877, 1.05);
+    this.keyLight = new THREE.DirectionalLight(PAL.keyLight, 1.0);
     this.keyLight.position.set(14, 26, 8);
     this.keyLight.castShadow = true;
     this.keyLight.shadow.mapSize.set(2048, 2048);
@@ -122,11 +127,11 @@ export class Stage {
       env.background = new THREE.Color(0x0a0604);
       // warm torch-lit reflections — amber/ember panels so PBR surfaces catch firelight
       const panels: [number, [number, number, number]][] = [
-        [0xff7a2c, [0, 7, -22]],
-        [0xffae4a, [0, 7, 22]],
-        [0xff5022, [22, 5, 0]],
-        [0xffc878, [-22, 5, 0]],
-        [0x3a1a08, [0, 22, 0]],
+        [PAL.emberBright, [0, 7, -22]],
+        [0x2f5c58, [0, 7, 22]], // cool soulfire sheen from the arena direction
+        [PAL.emberDeep, [22, 5, 0]],
+        [PAL.goldPale, [-22, 5, 0]],
+        [0x241420, [0, 22, 0]],
       ];
       const tmp: THREE.Mesh[] = [];
       for (const [c, p] of panels) {
@@ -157,6 +162,18 @@ export class Stage {
     this.bloom = null;
     this.aberration = null;
 
+    if (this.quality === "high") {
+      // SSAO grounds the stone in its own shadow (high tier only; drop if the
+      // Phase-7 soak shows >2ms or it reads noisy under the fog)
+      const normalPass = new NormalPass(this.scene, this.camera);
+      this.composer.addPass(normalPass);
+      effects.push(new SSAOEffect(this.camera, normalPass.texture, {
+        worldDistanceThreshold: 60, worldDistanceFalloff: 10,
+        worldProximityThreshold: 0.4, worldProximityFalloff: 0.1,
+        radius: 0.08, intensity: 1.3, samples: 16, rings: 4,
+        luminanceInfluence: 0.6,
+      }));
+    }
     if (this.quality !== "low") {
       this.bloom = new BloomEffect({
         intensity: 1.05,

@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { Ctx } from "./ctx";
 import { clamp } from "../core/math";
+import { PAL } from "../core/palette";
 
 /**
  * The Rift Causeway — one long, wide path running down +Z that opens into a circular
@@ -30,8 +31,14 @@ export interface Gate {
   portcullis: THREE.Group;
 }
 
-// warm, flame-lit palette — torch orange, amber, ember-red, gold
-const EMBER = [0xff7a2c, 0xffb24a, 0xff5022, 0xffd480];
+// warm, flame-lit dressing tones (world background — signals live in PAL)
+const EMBER = [PAL.emberBright, PAL.amber, PAL.emberDeep, PAL.goldPale];
+
+/** Torches gutter as the causeway nears the Barrow King's arena (1 → dimmed). */
+function gutterAt(z: number): number {
+  const t = clamp((z - 90) / (ARENA_BLEND_Z - 6 - 90), 0, 1);
+  return 1 - 0.55 * t * t;
+}
 
 export class Level {
   readonly group = new THREE.Group();
@@ -46,7 +53,7 @@ export class Level {
   private floorMats: THREE.MeshStandardMaterial[] = [];
   private panes: THREE.MeshStandardMaterial[] = [];
   private starMats: THREE.ShaderMaterial[] = [];
-  private flames: { obj: THREE.Object3D; mat: THREE.MeshBasicMaterial; phase: number; light?: THREE.PointLight; lightBase: number }[] = [];
+  private flames: { obj: THREE.Object3D; mat: THREE.MeshBasicMaterial; phase: number; light?: THREE.PointLight; lightBase: number; dim: number }[] = [];
   private motes?: THREE.Points;
   private moteVel?: Float32Array;
 
@@ -64,7 +71,7 @@ export class Level {
     gridN.repeat.copy(grid.repeat);
     const floorMat = new THREE.MeshStandardMaterial({
       color: 0x141015, roughness: 0.62, metalness: 0.2,
-      map: grid, emissive: 0xff5a1e, emissiveMap: grid, emissiveIntensity: 0.85, envMapIntensity: 0.9,
+      map: grid, emissive: PAL.emberSeam, emissiveMap: grid, emissiveIntensity: 0.3, envMapIntensity: 0.9,
       normalMap: gridN, normalScale: new THREE.Vector2(0.85, 0.85),
     });
     this.floorMats.push(floorMat);
@@ -89,7 +96,7 @@ export class Level {
     this.group.add(arena);
 
     // --- molten central channel running the path (a seam of fire toward the boss) ---
-    const seam = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, pathLen), this.emissiveMat(0xff5a1e, 2.6));
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, pathLen), this.emissiveMat(PAL.emberSeam, 2.6));
     seam.position.set(0, 0.04, pathLen / 2 - 8);
     this.group.add(seam);
 
@@ -98,7 +105,7 @@ export class Level {
     wallTex.repeat.set(3, pathLen / 16);
     const wallMat = new THREE.MeshStandardMaterial({
       color: 0x2a221d, roughness: 0.92, metalness: 0.04,
-      map: wallTex, emissive: 0xff5a1e, emissiveMap: wallTex, emissiveIntensity: 0.32, envMapIntensity: 0.7,
+      map: wallTex, emissive: PAL.emberSeam, emissiveMap: wallTex, emissiveIntensity: 0.2, envMapIntensity: 0.7,
     });
     const ironMat = new THREE.MeshStandardMaterial({ color: 0x100c0a, roughness: 0.6, metalness: 0.7, envMapIntensity: 1.0 });
     const bannerTex = this.makeBannerTexture();
@@ -139,17 +146,21 @@ export class Level {
         rib.castShadow = true;
         this.group.add(rib);
       }
-      // wall sconce torches lining the causeway (emissive flame, bloom carries the glow)
+      // wall sconce torches lining the causeway (emissive flame, bloom carries the glow).
+      // Segment identity: the Grave Ward (gate1→gate2) lets half its torches die out.
       for (let z = 12; z < ARENA_BLEND_Z; z += 18) {
+        if (z > GATES_Z[0] && z < GATES_Z[1] && Math.round(z / 18) % 2 === 0) continue;
         const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.5, 0.5), ironMat);
         bracket.position.set(sx * (HALF_WIDTH - 0.3), 6.4, z);
         this.group.add(bracket);
-        const flame = this.makeFlame(0.85, false);
+        const flame = this.makeFlame(0.85, false, gutterAt(z));
         flame.position.set(sx * (HALF_WIDTH - 0.55), 6.7, z);
         this.group.add(flame);
       }
-      // hanging cloth banners with a sigil, between sconces
+      // hanging cloth banners — the proud Outer Ward and the Reliquary Approach keep
+      // their colors; none hang in the Grave Ward
       for (let z = 30; z < ARENA_BLEND_Z; z += 54) {
+        if (z > GATES_Z[0] && z < GATES_Z[1]) continue;
         const banner = new THREE.Mesh(
           new THREE.PlaneGeometry(2.4, 5.5),
           new THREE.MeshStandardMaterial({ map: bannerTex, emissive: 0xff5a1e, emissiveMap: bannerTex, emissiveIntensity: 0.5, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide }),
@@ -170,7 +181,7 @@ export class Level {
         pillar.castShadow = true;
         const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.45, 0.7, 10), ironMat);
         bowl.position.set(sx * (HALF_WIDTH - 0.6), 9.2, z);
-        const flame = this.makeFlame(1.15, li++ % 2 === 0); // alternate which braziers cast a real light
+        const flame = this.makeFlame(1.15, li++ % 2 === 0, gutterAt(z)); // alternate which braziers cast a real light
         flame.position.set(sx * (HALF_WIDTH - 0.6), 9.5, z);
         this.group.add(pillar, bowl, flame);
       }
@@ -181,7 +192,7 @@ export class Level {
       const z = GATES_Z[i];
       const color = EMBER[i % EMBER.length];
       const mat = new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.5, side: THREE.DoubleSide,
+        color, transparent: true, opacity: 0.36, side: THREE.DoubleSide,
         blending: THREE.AdditiveBlending, depthWrite: false,
       });
       this.barrierMat.push(mat);
@@ -233,7 +244,7 @@ export class Level {
     }
     const dais = new THREE.Mesh(
       new THREE.CylinderGeometry(8, 9, 0.6, 40),
-      this.emissiveMat(0xff5a1e, 0.8),
+      this.emissiveMat(PAL.soulfire, 0.7),
     );
     dais.position.set(BOSS_ANCHOR.x, 0.3, BOSS_ANCHOR.z);
     this.group.add(dais);
@@ -253,7 +264,7 @@ export class Level {
 
     // --- warm iron inlay strips across the flags (instanced — ~18 boxes → 1 draw) ---
     const rungN = Math.ceil((ARENA_BLEND_Z - 6) / 10);
-    const rungs = new THREE.InstancedMesh(new THREE.BoxGeometry(HALF_WIDTH * 2 - 1, 0.05, 0.16), this.emissiveMat(0xff5a1e, 0.5), rungN);
+    const rungs = new THREE.InstancedMesh(new THREE.BoxGeometry(HALF_WIDTH * 2 - 1, 0.05, 0.16), this.emissiveMat(PAL.emberSeam, 0.5), rungN);
     rungs.frustumCulled = false;
     const rMat = new THREE.Matrix4();
     let rI = 0;
@@ -286,13 +297,14 @@ export class Level {
       new THREE.BoxGeometry(0.16, 0.62, 0.16).translate(0, 1.72, 0),
       new THREE.BoxGeometry(0.46, 0.16, 0.16).translate(0, 1.64, 0),
     ]);
-    const graveN = 22;
+    const graveN = 26;
     const graves = new THREE.InstancedMesh(graveGeo, stoneMat, graveN);
     graves.frustumCulled = false;
     const gd = new THREE.Object3D();
     let gi = 0;
+    // the Grave Ward: headstones crowd the second stretch of the causeway
     for (const sx of [-1, 1]) {
-      for (let z = 14; z < ARENA_BLEND_Z && gi < graveN; z += 15) {
+      for (let z = GATES_Z[0] + 4; z < GATES_Z[1] && gi < graveN; z += 7) {
         const jit = Math.sin(gi * 12.9898); // deterministic lean/scatter, no RNG needed
         gd.position.set(sx * (HALF_WIDTH - 1.7) - sx * jit * 0.4, 0, z + (sx > 0 ? 7 : 0));
         gd.rotation.set(jit * 0.13, sx * 0.5 + jit * 0.6, Math.sin(gi * 7.13) * 0.14);
@@ -303,8 +315,35 @@ export class Level {
     graves.count = gi;
     graves.instanceMatrix.needsUpdate = true;
     this.group.add(graves);
-    // two hulking gargoyle sentinels flanking the arena mouth (guardians of the Warden)
+    // Meshy props: kneeling-knight relics line the Reliquary Approach (gate2 → arena)
     for (const sx of [-1, 1]) {
+      for (let z = GATES_Z[1] + 8; z < GATES_Z[2] + 24; z += 16) {
+        const knight = this.ctx.models.get("prop-knight");
+        if (!knight) break;
+        knight.position.set(sx * (HALF_WIDTH - 2.3), 0, z);
+        knight.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2; // kneel facing the path
+        this.group.add(knight);
+      }
+    }
+    // gargoyle guardians watch over the Grave Ward's entrance
+    for (const sx of [-1, 1]) {
+      const garg = this.ctx.models.get("prop-gargoyle");
+      if (!garg) break;
+      garg.position.set(sx * (HALF_WIDTH - 2.4), 0, GATES_Z[0] + 6);
+      garg.rotation.y = sx > 0 ? -Math.PI / 2 + 0.3 : Math.PI / 2 - 0.3;
+      this.group.add(garg);
+    }
+    // two hulking gargoyle sentinels flanking the arena mouth (guardians of the Warden)
+    const glbSentinel = !!this.ctx.models.get("prop-gargoyle");
+    for (const sx of [-1, 1]) {
+      if (glbSentinel) {
+        const st = this.ctx.models.get("prop-gargoyle")!;
+        st.scale.multiplyScalar(1.9); // hulking arena guardians, twice the ward pair
+        st.position.set(sx * (HALF_WIDTH - 2.6), 0, ARENA_BLEND_Z - 3);
+        st.rotation.y = (sx > 0 ? -0.5 : 0.5) + Math.PI; // turned in toward the path
+        this.group.add(st);
+        continue;
+      }
       const st = new THREE.Group();
       const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 2.2), stoneMat);
       plinth.position.y = 0.6; plinth.castShadow = true;
@@ -312,7 +351,7 @@ export class Level {
       torso.position.y = 2.4; torso.castShadow = true;
       const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6, 0), stoneMat);
       head.position.y = 4.0; head.castShadow = true;
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.14), this.emissiveMat(0xff5022, 1.6));
+      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.14), this.emissiveMat(PAL.soulfire, 1.6));
       eye.position.set(0, 4.05, 0.55);
       st.add(plinth, torso, head, eye);
       for (const wx of [-1, 1]) { // folded gargoyle wings
@@ -336,10 +375,10 @@ export class Level {
       new THREE.ShaderMaterial({
         side: THREE.BackSide, depthWrite: false, fog: false,
         uniforms: {
-          top: { value: new THREE.Color(0x140a06) },
-          mid: { value: new THREE.Color(0x0c0704) },
-          bot: { value: new THREE.Color(0x070403) },
-          horizon: { value: new THREE.Color(0x5a2308) },
+          top: { value: new THREE.Color(0x0d0810) },
+          mid: { value: new THREE.Color(0x0a0606) },
+          bot: { value: new THREE.Color(0x060304) },
+          horizon: { value: new THREE.Color(0x4a1e0a) },
         },
         vertexShader: "varying vec3 vp; void main(){ vp = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }",
         fragmentShader:
@@ -355,7 +394,7 @@ export class Level {
     // --- horizon fire-glow behind the arena (distant burning sky) ---
     const glow = new THREE.Mesh(
       new THREE.PlaneGeometry(210, 100),
-      new THREE.MeshBasicMaterial({ color: 0xff5a1e, transparent: true, opacity: 0.24, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+      new THREE.MeshBasicMaterial({ color: PAL.emberSeam, transparent: true, opacity: 0.2, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
     );
     glow.position.set(ARENA_CENTER.x, 26, ARENA_CENTER.y + 48);
     this.group.add(glow);
@@ -418,7 +457,7 @@ export class Level {
     // --- colossal rift maw behind the boss: a churning vortex the Warden was torn from ---
     const portal = new THREE.Group();
     // soft additive glow disc behind the rings (pulses in update)
-    this.portalGlowMat = new THREE.MeshBasicMaterial({ map: this.makeGlowTexture(), color: 0xff5a1e, transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    this.portalGlowMat = new THREE.MeshBasicMaterial({ map: this.makeGlowTexture(), color: 0x2fd8c2, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
     this.portalGlow = new THREE.Mesh(new THREE.PlaneGeometry(66, 66), this.portalGlowMat);
     this.portalGlow.position.z = -1.0;
     portal.add(this.portalGlow);
@@ -428,13 +467,13 @@ export class Level {
     this.portalSpin = new THREE.Group();
     this.portalSpin.position.z = -0.4;
     for (let i = 0; i < 12; i++) {
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.5, 30, 0.14), this.emissiveMat(i % 2 ? 0xff5022 : 0xffb24a, 1.3));
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.5, 30, 0.14), this.emissiveMat(i % 2 ? PAL.soulfire : PAL.emberDeep, 1.3));
       spoke.rotation.z = (i / 12) * Math.PI * 2;
       this.portalSpin.add(spoke);
     }
     portal.add(this.portalSpin);
     for (let i = 0; i < 8; i++) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(6 + i * 2.5, 0.5 - i * 0.04, 10, 56), this.emissiveMat(EMBER[i % EMBER.length], 2.6 - i * 0.22));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(6 + i * 2.5, 0.5 - i * 0.04, 10, 56), this.emissiveMat(i < 3 ? PAL.soulfire : EMBER[i % EMBER.length], 2.6 - i * 0.22));
       this.portalRings.push(ring);
       portal.add(ring);
     }
@@ -444,7 +483,8 @@ export class Level {
     // --- glowing arrow-slit windows high on the walls (inner firelight) ---
     for (const sx of [-1, 1]) {
       for (let z = 21; z < ARENA_BLEND_Z; z += 36) {
-        const slitMat = this.emissiveMat(0xff7a2c, 1.1);
+        const cold = z > GATES_Z[0] && z < GATES_Z[1]; // dead cold light in the Grave Ward
+        const slitMat = this.emissiveMat(cold ? PAL.soulfire : PAL.emberBright, cold ? 0.8 : 1.1);
         this.panes.push(slitMat);
         const slit = new THREE.Mesh(new THREE.BoxGeometry(0.2, 3, 0.5), slitMat);
         slit.position.set(sx * (HALF_WIDTH - 0.35), 8.6, z);
@@ -464,7 +504,7 @@ export class Level {
     }
     const mgeo = new THREE.BufferGeometry();
     mgeo.setAttribute("position", new THREE.BufferAttribute(mp, 3));
-    this.motes = new THREE.Points(mgeo, new THREE.PointsMaterial({ color: 0xff9a44, size: 0.16, sizeAttenuation: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.motes = new THREE.Points(mgeo, new THREE.PointsMaterial({ color: PAL.moteWarm, size: 0.16, sizeAttenuation: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     this.group.add(this.motes);
 
     scene.add(this.group);
@@ -486,16 +526,16 @@ export class Level {
     }
     if (this.portalSpin) this.portalSpin.rotation.z += dt * 0.28; // the maw churns
     // subtle floor + wall-panel breathing so the whole map feels alive
-    for (let i = 0; i < this.floorMats.length; i++) this.floorMats[i].emissiveIntensity = 0.95 + 0.22 * Math.sin(t * 0.8);
+    for (let i = 0; i < this.floorMats.length; i++) this.floorMats[i].emissiveIntensity = 0.32 + 0.1 * Math.sin(t * 0.8);
     for (let i = 0; i < this.panes.length; i++) this.panes[i].emissiveIntensity = 1.0 + 0.8 * (0.5 + 0.5 * Math.sin(t * 1.5 + i * 0.7));
     // twinkling / drifting stars
     for (let i = 0; i < this.starMats.length; i++) this.starMats[i].uniforms.uTime.value = t;
     // torch + brazier flicker (two incommensurate sines per flame = organic, not jitter)
     for (let i = 0; i < this.flames.length; i++) {
       const f = this.flames[i];
-      const fl = 0.78 + 0.16 * Math.sin(t * 13 + f.phase) + 0.1 * Math.sin(t * 23 + f.phase * 1.7);
+      const fl = (0.78 + 0.16 * Math.sin(t * 13 + f.phase) + 0.1 * Math.sin(t * 23 + f.phase * 1.7)) * (0.55 + 0.45 * f.dim);
       f.obj.scale.set(0.9 + 0.1 * fl, fl, 0.9 + 0.1 * fl);
-      f.mat.opacity = 0.6 + 0.35 * fl;
+      f.mat.opacity = (0.6 + 0.35 * fl) * f.dim;
       if (f.light) f.light.intensity = f.lightBase * (0.65 + 0.5 * fl);
     }
     if (this.motes && this.moteVel) {
@@ -567,25 +607,25 @@ export class Level {
   }
 
   /** Low-poly stylized flame (stacked additive cones) + optional flickering torch light. */
-  private makeFlame(scale: number, withLight: boolean): THREE.Group {
+  private makeFlame(scale: number, withLight: boolean, dim = 1): THREE.Group {
     const grp = new THREE.Group();
-    const mat = new THREE.MeshBasicMaterial({ color: 0xff7a1e, transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+    const mat = new THREE.MeshBasicMaterial({ color: PAL.emberBright, transparent: true, opacity: 0.92, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
     const outer = new THREE.Mesh(new THREE.ConeGeometry(0.34 * scale, 1.2 * scale, 7), mat);
     outer.position.y = 0.6 * scale;
     const inner = new THREE.Mesh(
       new THREE.ConeGeometry(0.17 * scale, 0.74 * scale, 7),
-      new THREE.MeshBasicMaterial({ color: 0xffe39a, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+      new THREE.MeshBasicMaterial({ color: PAL.flameCore, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
     );
     inner.position.y = 0.46 * scale;
     grp.add(outer, inner);
-    const lightBase = 15 * scale;
+    const lightBase = 15 * scale * dim;
     let light: THREE.PointLight | undefined;
     if (withLight) {
-      light = new THREE.PointLight(0xff7a2c, lightBase, 22, 2);
+      light = new THREE.PointLight(PAL.emberBright, lightBase, 22, 2);
       light.position.y = 0.9 * scale;
       grp.add(light);
     }
-    this.flames.push({ obj: grp, mat, phase: this.ctx.rng.range(0, Math.PI * 2), light, lightBase });
+    this.flames.push({ obj: grp, mat, phase: this.ctx.rng.range(0, Math.PI * 2), light, lightBase, dim });
     return grp;
   }
 
@@ -805,7 +845,7 @@ export class Level {
       g.light.intensity = 26;
       g.barrier.visible = true;
       g.portcullis.visible = true;
-      (g.barrier.material as THREE.MeshBasicMaterial).opacity = 0.5;
+      (g.barrier.material as THREE.MeshBasicMaterial).opacity = 0.36;
     }
   }
 
