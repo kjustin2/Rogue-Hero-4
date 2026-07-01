@@ -176,8 +176,8 @@ export class Stage {
     }
     if (this.quality !== "low") {
       this.bloom = new BloomEffect({
-        intensity: 1.05,
-        luminanceThreshold: 0.32,
+        intensity: 0.92,
+        luminanceThreshold: 0.45,
         luminanceSmoothing: 0.25,
         mipmapBlur: true,
         radius: 0.7,

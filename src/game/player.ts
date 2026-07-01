@@ -604,7 +604,7 @@ export class Player {
         const wx = this.pos.x + fx * a.range * 0.8, wz = this.pos.z + fz * a.range * 0.8;
         this.ctx.fx.ring(wx, wz, { radius: a.range + 2.5, color, duration: 0.5, y: 0.12, startRadius: 0.6 });
         this.ctx.fx.ring(wx, wz, { radius: a.range + 1, color: 0xffffff, duration: 0.32, y: 0.14, startRadius: 0.4 });
-        this.ctx.fx.burst({ x: wx, y: 0.5, z: wz, count: 28, color: [color, 0xffffff], speed: [5, 15], up: 0.9, size: [0.16, 0.42], life: [0.3, 0.7] });
+        this.ctx.fx.burst({ x: wx, y: 0.5, z: wz, count: 18, color, speed: [5, 13], up: 0.9, size: [0.14, 0.34], life: [0.3, 0.6] });
         this.ctx.cam.addTrauma(0.34);
         this.ctx.cam.pulseFov(0.3);
         this.ctx.stage.punch(0.3);
@@ -674,7 +674,7 @@ export class Player {
   /** Muzzle flash at the blade tip for ranged casts. */
   private muzzleFx(color: number, heavy: boolean): void {
     this.tipMarker.getWorldPosition(this.tip);
-    this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: heavy ? 22 : 14, color: [color, 0xffffff], speed: [3, 10], size: [0.1, 0.34], life: [0.12, 0.34] });
+    this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: heavy ? 14 : 9, color, speed: [3, 9], size: [0.09, 0.28], life: [0.12, 0.3] });
     this.ctx.fx.ring(this.tip.x, this.tip.z, { radius: 1.1, color, duration: 0.22, y: this.tip.y, startRadius: 0.2 });
     this.ctx.cam.pulseFov(0.12);
   }

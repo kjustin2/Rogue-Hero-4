@@ -29,6 +29,7 @@ import { weaponComboSelfCheck, WEAPONS } from "./game/weapons";
 import { Hud } from "./ui/hud";
 import { Menus } from "./ui/menus";
 import type { Ctx } from "./game/ctx";
+import { PerfMonitor } from "./debug/perfMonitor";
 import { PAL } from "./core/palette";
 import { pick3 } from "./game/boons";
 import { loadSave, writeSave, dailyStamp } from "./core/save";
@@ -75,6 +76,7 @@ ctx.slowmo = 0;
 ctx.stage.scene.add(ctx.stage.camera);
 
 ctx.level.build();
+const perf = new PerfMonitor(ctx, () => state); // rolling frame stats + spike classifier (F8 HUD, __rh4perf)
 const hud = new Hud(ctx);
 const menus = new Menus(ctx);
 menus.apply(); // push saved settings (audio/sensitivity/shake/quality/fov) into the live systems
@@ -377,6 +379,7 @@ function endBossCutscene(): void {
 
 // --------------------------------------------------------------------- loop
 function frame(dt: number): void {
+  perf.begin(performance.now());
   // hit-stop: briefly crunch the frame dt for impact (decremented in real time)
   if (ctx.hitstop > 0) { ctx.hitstop = Math.max(0, ctx.hitstop - dt); dt *= 0.08; }
   // perfect-dodge slow-mo: a longer, softer dilation than hit-stop
@@ -394,6 +397,7 @@ function frame(dt: number): void {
   ctx.stage.update(dt);
   if (state === "playing" || state === "paused") hud.update(dt);
   ctx.stage.render(dt);
+  perf.end(dt);
   ctx.input.endFrame();
 }
 
@@ -425,6 +429,7 @@ function scenario(name: string): void {
 const w = window as unknown as Record<string, unknown>;
 w.__rh4 = ctx;
 w.__rh4state = () => state;
+w.__rh4perf = perf;
 w.__rh4debug = {
   scenario,
   start: startRun,

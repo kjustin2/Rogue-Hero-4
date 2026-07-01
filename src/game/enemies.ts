@@ -259,7 +259,7 @@ export class Enemy implements Hittable {
     this.flash = Math.max(0, this.flash - dt * 4);
     this.flinch = Math.max(0, this.flinch - dt * 5);
     // ponytail: charge glow capped lower (2.0, was 3.5) — a clustered pack winding up at 5x emissive bloomed to a full-white frame
-    this.coreMat.emissiveIntensity = 1.6 + this.flash * 4 + this.atkCharge * 2.0;
+    this.coreMat.emissiveIntensity = 1.4 + this.flash * 2.2 + this.atkCharge * 1.2;
     if (this.core) { this.core.rotation.y += dt * 2.2; this.core.rotation.x += dt * 1.4; }
     if (this.crown?.visible) this.crown.rotation.y += dt * 3;
 
@@ -365,11 +365,11 @@ export class Enemy implements Hittable {
         const heavy = this.kind === "brute";
         const sy = this.cfg.bodyY + (heavy ? 1.8 : 1.2);
         this.ctx.fx.slash(this.pos.x + nx * 0.9, sy, this.pos.z + nz * 0.9, yaw, {
-          color: cfg.color, radius: heavy ? 3.4 : 2.3, tilt: heavy ? -0.05 : -0.6, duration: 0.26,
+          color: PAL.threat, radius: heavy ? 2.2 : 1.3, tilt: heavy ? -0.05 : -0.6, duration: 0.16,
         });
-        this.ctx.fx.burst({ x: this.pos.x + nx * 1.4, y: sy, z: this.pos.z + nz * 1.4, count: heavy ? 16 : 11, color: cfg.color, speed: [3, heavy ? 11 : 8], life: [0.2, 0.45] });
+        this.ctx.fx.burst({ x: this.pos.x + nx * 1.4, y: sy, z: this.pos.z + nz * 1.4, count: heavy ? 12 : 8, color: PAL.threat, speed: [3, heavy ? 10 : 7], life: [0.2, 0.4] });
         if (dist <= cfg.attackRange + 0.8) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
-        if (heavy) this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: cfg.attackRange, color: cfg.color, duration: 0.3 });
+        if (heavy) this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: cfg.attackRange, color: PAL.threat, duration: 0.3 });
         this.state = "recover";
         this.timer = (this.kind === "brute" ? 0.9 : 0.4) / this.speedMult;
         this.tele = null;
@@ -461,7 +461,7 @@ export class Enemy implements Hittable {
       if (!this.didHit && dist < this.radius + this.ctx.player.radius + 0.8) {
         this.didHit = true;
         this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
-        this.ctx.fx.slash(this.pos.x, 1.0, this.pos.z, Math.atan2(this.lungeDir.x, this.lungeDir.z), { color: cfg.color, radius: 2.4, tilt: -0.4, duration: 0.22 });
+        this.ctx.fx.slash(this.pos.x, 1.0, this.pos.z, Math.atan2(this.lungeDir.x, this.lungeDir.z), { color: PAL.threat, radius: 2.0, tilt: -0.4, duration: 0.2 });
       }
       if (this.timer <= 0) { this.state = "recover"; this.timer = 0.6; }
     } else {
@@ -625,6 +625,18 @@ export class EnemyManager {
   // ponytail: O(n²) push-apart, fine for the handful of enemies a wave spawns.
   private separate(): void {
     const live = this.living();
+    // personal space: bodies never overlap the player (they were walking into the
+    // camera's near plane); attack ranges all carry +0.8 slack so strikes still land
+    const p = this.ctx.player;
+    for (const e of live) {
+      const dx = e.pos.x - p.pos.x, dz = e.pos.z - p.pos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const min = e.radius + p.radius + 0.6;
+      if (d < min) {
+        e.pos.x = p.pos.x + (dx / d) * min;
+        e.pos.z = p.pos.z + (dz / d) * min;
+      }
+    }
     for (let i = 0; i < live.length; i++) {
       for (let j = i + 1; j < live.length; j++) {
         const a = live[i], b = live[j];

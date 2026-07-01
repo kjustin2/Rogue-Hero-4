@@ -24,8 +24,8 @@ type Attack = "slam" | "volley" | "sweep" | "collapse" | "beam" | "gravewave" | 
 export class Boss implements Hittable {
   pos = new THREE.Vector3().copy(BOSS_ANCHOR);
   radius = 2.6;
-  maxHp = 820;
-  hp = 820;
+  maxHp = 980;
+  hp = 980;
   alive = true;
   kind = "boss";
   hitColor = PAL.soulfire; // cold soul-fire — an undead warden, contrasting the firelit keep

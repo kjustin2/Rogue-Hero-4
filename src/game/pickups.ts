@@ -68,10 +68,10 @@ export class Pickups {
     const iconMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: w.color, emissiveIntensity: 2.6, roughness: 0.3, metalness: 0.4 });
     const icon = new THREE.Mesh(this.iconGeo(id), iconMat);
     icon.position.y = 1.5;
-    const pillarMat = new THREE.MeshBasicMaterial({ color: w.color, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const pillarMat = new THREE.MeshBasicMaterial({ color: PAL.gold, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }); // gold = the economy color; the icon keeps the weapon hue
     const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.85, 9, 14, 1, true), pillarMat);
     pillar.position.y = 4.5;
-    const ringMat = new THREE.MeshBasicMaterial({ color: w.color, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+    const ringMat = new THREE.MeshBasicMaterial({ color: PAL.gold, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     const ringGeo = new THREE.RingGeometry(1.1, 1.4, 36); ringGeo.rotateX(-Math.PI / 2);
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.position.y = 0.06;
@@ -79,7 +79,7 @@ export class Pickups {
     group.position.set(x, 0, z);
     this.ctx.stage.scene.add(group);
     this.drops.push({ group, icon, pillarMat, id, t: 0, alive: true });
-    this.ctx.fx.beam(x, z, w.color);
+    this.ctx.fx.beam(x, z, PAL.gold);
   }
 
   drop(x: number, z: number, heal = 16): void {

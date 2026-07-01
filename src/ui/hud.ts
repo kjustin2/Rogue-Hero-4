@@ -205,7 +205,7 @@ export class Hud {
     else this.dmgFlash.style.opacity = "0";
     if (frac < 0.35 && p.alive) {
       const sev = (0.35 - frac) / 0.35;
-      this.danger.style.opacity = (sev * (0.55 + 0.45 * Math.sin(this.t * 6))).toFixed(2);
+      this.danger.style.opacity = Math.min(1, 0.35 + sev * (0.7 + 0.3 * Math.sin(this.t * 6))).toFixed(2);
     } else {
       this.danger.style.opacity = "0";
     }

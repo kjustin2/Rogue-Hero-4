@@ -1,34 +1,36 @@
 # Rogue Hero 4 — Rift Causeway
 
-A first-person neon combo brawler. Walk down a long, wide arcane causeway, fight rift-born
-enemies at sealed gates, and bring down the **Rift Warden** at the far end. You wield a
-limited moveset of three glyphs and chain them into devastating combos.
+A first-person **dark-fantasy combo brawler**. Descend a torch-lit gothic causeway, break the
+undead waves at three sealed gates, claim a boon after each, and bring down **Mordrek, the
+Barrow King** in the arena at the far end. A swappable arsenal of five weapons — crossbow,
+greatsword, hand bombard, prism rod, storm caller — each with light/heavy attacks, chargeable
+heavies, and its own combo strings whose finishers fire forward.
 
 Built on **plain Three.js + Vite + strict TypeScript**, shipped as an Electron desktop app.
 No game engine, no UI framework, no test framework — the truth is screenshots + state asserts.
+Enemy/boss/weapon/prop models are Meshy-generated GLBs (committed, optimized, with full
+procedural fallbacks — `?noglb` runs the game without a single model file).
 
 ## Play
 | Input | Action |
 |-------|--------|
 | **WASD** | Move (camera-relative) |
 | **Mouse** | Look |
-| **LMB / J** | Strike — fast light slash |
-| **RMB / K** | Cleave — heavy arc, knockback |
-| **E** | Bolt — ranged arcane shot |
-| **Shift / Space** | Dash — quick lunge with i-frames |
+| **LMB / J** | Light attack — fast |
+| **RMB / K** | Heavy attack — strong; **hold to charge** (greatsword/bombard/rod) |
+| **E / wheel** | Swap weapon (the combo chain survives the swap — SWAP FINISH pays 1.25×) |
+| **Shift / Space** | Dash — i-frames; dodging *through* a hit is a PERFECT (slow-mo + refunds) |
 | **Esc** | Pause |
 
-Click to lock the mouse. Clear each gate's wave to open the way forward.
+Chain light/heavy per the codex (top right) to fire named combo finishers. Finishers build
+**FERVOR** — at full, the next heavy is free and empowered. Kills drop gold **rift shards**
+that heal. New weapons wait on the ground past each gate; clearing a gate offers **one of
+three boons**. Elites (gate 2+) are crowned: shielded (flank them), frenzied, or bursting
+(dodge the death blast). The Barrow King roams, reaps, and — in his final phase — burns the
+floor; dash *through* his gravewave ring.
 
-## Combos
-Chain glyphs within ~1.4s to resolve a named combo (a big AoE payoff with its own VFX):
-
-| Combo | Recipe | Effect |
-|-------|--------|--------|
-| **CRESCENDO** | Strike · Strike · Cleave | overhead slam, AoE |
-| **ARC LANCE** | Bolt · Bolt · Strike | piercing forward lance |
-| **QUAKE** | Cleave · Cleave | shockwave + stun |
-| **VOID NOVA** | Strike · Cleave · Bolt | radial nova (highest tier) |
+**DAILY RITE** on the title runs today's seed for score (kills×10 + shards×5 − seconds).
+Clearing the causeway unlocks starting with any weapon you held.
 
 ## Develop
 ```
@@ -37,9 +39,16 @@ npm run dev        # vite dev server
 npm run typecheck  # tsc --noEmit (static gate)
 npm run build      # typecheck + vite build
 npm run smoke      # build + Electron playthrough → shots/electron-*.png (READ them)
-npm start          # standalone Electron window
+npx electron scripts/soak-electron.cjs   # real-GPU boss-fight perf soak (after a build)
+npm start          # standalone Electron window (fixed port 41730 — saves survive)
 npm run package    # electron-builder portable .exe
 ```
 
-The smoke boots the built game in real Chromium, drives title → path → combat → combo → boss →
-victory → death, and fails on a black frame, a console error, a broken combo, or a missing boss.
+The smoke boots the built game in real Chromium and drives title → path → wave → boon →
+arsenal showcase → charged heavy / fervor / swap-combo / elite asserts → boss (phases,
+gravewave, killcam) → victory (meta save written) → death → a `?noglb` fallback pass. It
+fails on a black frame, a console error, a broken combo, a missing GLB, or > 700 draw calls.
+
+Asset regeneration (never needed to build): `scripts/gen-model.mjs` + `scripts/rig-model.mjs`
+with `MESHY_API_KEY` in a gitignored `.env` — see `public/models/*.meshy.json` sidecars for
+the audit trail of every committed model.

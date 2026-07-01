@@ -21,8 +21,8 @@ export function buildBossMesh(hitColor: number, coreMat: THREE.MeshStandardMater
     const group = new THREE.Group();
     group.add(glbBody);
     // weak-point core pokes out of the breastplate (isWeakHit tests a sphere at CORE_Y)
-    const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.0), coreMat);
-    core.position.set(0, 4.6, 1.0);
+    const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.15), coreMat);
+    core.position.set(0, 4.6, 1.5);
     group.add(core);
     const { blade, orbit } = buildBladeAndOrbit(hitColor, coreMat);
     group.add(blade, orbit);

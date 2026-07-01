@@ -106,7 +106,7 @@ export class Combat {
       x: t.pos.x, y: fy, z: t.pos.z, count: crit ? 18 : 9, color: weak ? [t.hitColor, 0xffd24a] : t.hitColor,
       speed: crit ? [4, 11] : [3, 7], size: [0.12, 0.34], life: [0.2, 0.5],
     });
-    if (crit) this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.4, color: t.hitColor, duration: 0.32, y: 1 });
+    if (crit) this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.2, color: 0xffd9b0, duration: 0.26, y: 1 });
     this.ctx.cam.addTrauma(crit ? 0.22 : 0.08);
     if (crit) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.05);
     // SOUL LEECH boon: a slice of every dealt hit comes back as vitality
@@ -117,10 +117,10 @@ export class Combat {
     if (killed) {
       this.ctx.events.emit("KILL", { x: t.pos.x, z: t.pos.z, kind: t.kind, elite: !!t.elite || !!t.guaranteedShard });
       this.ctx.fx.burst({
-        x: t.pos.x, y: 1.1, z: t.pos.z, count: 26, color: t.hitColor,
-        speed: [5, 14], size: [0.14, 0.4], life: [0.3, 0.7], gravity: -3,
+        x: t.pos.x, y: 1.1, z: t.pos.z, count: 16, color: t.hitColor,
+        speed: [5, 14], size: [0.12, 0.32], life: [0.3, 0.6], gravity: -3,
       });
-      this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 3.2, color: t.hitColor, duration: 0.45, y: 0.5 });
+      this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.4, color: 0xffd9b0, duration: 0.3, y: 0.5 });
     }
   }
 
@@ -234,7 +234,7 @@ export class Combat {
       case "barrage": {
         // a single colossal piercing comet along the look ray
         this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 3.4, pierce: true });
-        this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 18, color: [combo.color, 0xffffff], speed: [3, 10], size: [0.14, 0.4], life: [0.2, 0.5] });
+        this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 10, color: combo.color, speed: [3, 9], size: [0.12, 0.3], life: [0.18, 0.4] });
         break;
       }
       case "bolts": {
@@ -262,7 +262,7 @@ export class Combat {
       case "megabeam": {
         // one huge instant hitscan corridor
         this.beam(x, z, dirX, dirZ, 60, combo.radius, dmg, 8, combo.color);
-        this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 20, color: [combo.color, 0xffffff], speed: [3, 9], size: [0.12, 0.34], life: [0.18, 0.4] });
+        this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 12, color: combo.color, speed: [3, 8], size: [0.1, 0.28], life: [0.16, 0.34] });
         break;
       }
       case "airstrike": {
@@ -281,7 +281,7 @@ export class Combat {
         const ax = x + dirX * combo.radius * 0.55, az = z + dirZ * combo.radius * 0.55;
         this.ctx.fx.ring(ax, az, { radius: combo.radius, color: combo.color, duration: 0.5, y: 0.3, startRadius: 0.4 });
         this.ctx.fx.ring(ax, az, { radius: combo.radius * 0.6, color: 0xffffff, duration: 0.3, y: 0.35, startRadius: 0.3 });
-        this.ctx.fx.burst({ x: ax, y: 0.8, z: az, count: 36, color: [combo.color, 0xffffff], speed: [6, 16], up: 0.9, size: [0.16, 0.45], life: [0.3, 0.7] });
+        this.ctx.fx.burst({ x: ax, y: 0.8, z: az, count: 22, color: combo.color, speed: [6, 14], up: 0.9, size: [0.14, 0.36], life: [0.3, 0.6] });
         this.aoeDamage(ax, az, combo.radius, dmg, 12, true);
         break;
       }

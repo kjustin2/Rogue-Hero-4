@@ -74,7 +74,14 @@ function brightFraction(img) {
 
 async function shot(win, name, checkBright = true) {
   await sleep(160); // let the compositor recomposite DOM (menu) changes before capture
-  const img = await win.webContents.capturePage();
+  let img;
+  try {
+    img = await win.webContents.capturePage();
+  } catch (e) {
+    // UnknownVizError: a flaky Chromium GPU-compositor hiccup, not a game failure — retry once
+    await sleep(400);
+    img = await win.webContents.capturePage();
+  }
   const file = `electron-${String(++shotN).padStart(2, "0")}-${name}.png`;
   fs.writeFileSync(path.join(shotDir, file), img.toPNG());
   const bf = brightFraction(img);
@@ -204,7 +211,7 @@ app.whenReady().then(async () => {
       const calls = await js(`window.__rh4.stage.renderer.info.render.calls`);
       console.log(`  draw calls (gate-1 combat): ${calls}`);
       expect(calls > 0, "no draw calls (" + calls + ")");
-      expect(calls < 900, "draw-call regression: " + calls + " (gate-1 combat ~300-500; check level.ts instancing/merges)");
+      expect(calls < 700, "draw-call regression: " + calls + " (gate-1 combat measured ~480 incl. SSAO normal pass; check level.ts instancing/merges)");
       await frames(18); // let enemies close in
       await shot(win, "combat");
 
@@ -280,9 +287,9 @@ app.whenReady().then(async () => {
 
       await equip("greatsword");
       expect(await js(`window.__rh4.player.weapon.kind`) === "melee", "greatsword should be melee");
-      await fire("greatsword", "atk-sword-light", ["KeyJ"], 4, 4);
-      await fire("greatsword", "atk-sword-heavy", ["KeyK"], 8, 4);
-      await fire("greatsword", "atk-sword-combo", ["KeyJ", "KeyJ", "KeyK"], 10, 4); // CRESCENDO slam
+      await fire("greatsword", "atk-sword-light", ["KeyJ"], 4, 5.5);
+      await fire("greatsword", "atk-sword-heavy", ["KeyK"], 8, 5.5);
+      await fire("greatsword", "atk-sword-combo", ["KeyJ", "KeyJ", "KeyK"], 10, 5.5); // CRESCENDO slam
 
       await fire("rocketlance", "atk-rocket-light", ["KeyJ"], 12, 9);              // flat rocket → blast
       await fire("rocketlance", "atk-rocket-heavy", ["KeyK"], 14, 9);             // lobbed mortar
@@ -347,7 +354,7 @@ app.whenReady().then(async () => {
       //    half-swept for the capture.
       await js(`{const pz=window.__rh4.player.pos.z; window.__rh4.enemies.clear(); window.__rh4debug.spawn('archer', 6, pz+13); window.__rh4debug.spawn('spitter', -6, pz+11); 0;}`);
       await frames(50); // let them close to realistic mid-range first
-      await js(`{const p=window.__rh4.player; window.__rh4.enemies.living().forEach(e=>{ e.frozen=5; const dx=p.pos.x-e.pos.x, dz=p.pos.z-e.pos.z, d=Math.hypot(dx,dz)||1; window.__rh4.tele.line(e.pos.x, e.pos.z, Math.atan2(dz,dx), Math.min(d+2,18), 1.5, 1.2, e.cfg.color); }); 0;}`);
+      await js(`{const p=window.__rh4.player; window.__rh4.enemies.living().forEach(e=>{ e.frozen=5; const dx=p.pos.x-e.pos.x, dz=p.pos.z-e.pos.z, d=Math.hypot(dx,dz)||1; window.__rh4.tele.line(e.pos.x, e.pos.z, Math.atan2(dz,dx), Math.min(d+2,18), 1.5, 1.2, 0xff2b33); }); 0;}`);
       await frames(20); // sweep fills to ~half along the aim-lane, then hold for the shot
       await shot(win, "enemy-telegraph");
 
