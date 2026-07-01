@@ -1,5 +1,8 @@
 node_modules/
 dist/
+.env
+.env.*
+models-raw/
 release/
 shots/
 artifacts/

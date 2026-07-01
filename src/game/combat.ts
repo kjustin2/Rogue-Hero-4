@@ -35,10 +35,14 @@ export interface Hittable {
  * meleeSweep, every player wound through damagePlayer, and every chained combo
  * through resolveCombo. Centralizing it keeps feel + balance in one auditable place.
  */
+const COMBO_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies its dir
+const FAN_DIR = new THREE.Vector3();
+
 export class Combat {
   private aimEye = new THREE.Vector3();
   private aimDir = new THREE.Vector3(0, 0, 1);
   private wp = new THREE.Vector3();
+  private targetList: Hittable[] = []; // targets() scratch — consume immediately, never retain
 
   constructor(private ctx: Ctx) {}
 
@@ -64,8 +68,10 @@ export class Combat {
   }
 
   targets(): Hittable[] {
-    // living() returns a fresh array each call — push the boss onto it directly (no spread).
-    const list: Hittable[] = this.ctx.enemies.living();
+    // living() returns a reusable scratch — copy into our own scratch and add the boss.
+    const list = this.targetList;
+    list.length = 0;
+    for (const e of this.ctx.enemies.living()) list.push(e);
     const boss = this.ctx.boss;
     if (boss && boss.alive && !boss.dormant) list.push(boss);
     return list;
@@ -208,7 +214,7 @@ export class Combat {
     // the shots, so a barrage/volley flies exactly where the crosshair points.
     const glen = Math.hypot(aim.x, aim.z) || 1;
     const dirX = aim.x / glen, dirZ = aim.z / glen;
-    const dir = new THREE.Vector3(aim.x, aim.y, aim.z).normalize();
+    const dir = COMBO_DIR.set(aim.x, aim.y, aim.z).normalize();
     const my = 1.55;
     const muzzleX = x + dirX * 1.2, muzzleZ = z + dirZ * 1.2;
 
@@ -225,8 +231,8 @@ export class Combat {
         for (let i = 0; i < n; i++) {
           const off = (i - (n - 1) / 2) * 0.12;
           const ca = Math.cos(off), sa = Math.sin(off);
-          const d = new THREE.Vector3(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
-          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, d, 46, dmg / 3, true, combo.color, 3);
+          FAN_DIR.set(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
+          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, FAN_DIR, 46, dmg / 3, true, combo.color, 3);
         }
         break;
       }
@@ -236,8 +242,8 @@ export class Combat {
         for (let i = 0; i < n; i++) {
           const off = (i - (n - 1) / 2) * 0.16;
           const ca = Math.cos(off), sa = Math.sin(off);
-          const d = new THREE.Vector3(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
-          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, d, 26, dmg / 2, true, combo.color, 8, { explode: combo.radius });
+          FAN_DIR.set(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
+          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, FAN_DIR, 26, dmg / 2, true, combo.color, 8, { explode: combo.radius });
         }
         break;
       }

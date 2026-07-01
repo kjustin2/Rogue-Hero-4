@@ -4,6 +4,7 @@ import type { Hittable, HitOpts } from "./combat";
 import type { TelegraphHandle } from "../render/telegraphs";
 import { GATES_Z, HALF_WIDTH } from "./level";
 import { damp } from "../core/math";
+import { buildEnemyMesh } from "../render/enemyMeshes";
 
 export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer";
 
@@ -39,6 +40,7 @@ const WAVES: { kind: EnemyKind; count: number }[][] = [
 ];
 
 let NEXT_ID = 1;
+const SHOT_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
 
 export class Enemy implements Hittable {
   readonly id = NEXT_ID++;
@@ -50,7 +52,6 @@ export class Enemy implements Hittable {
   alive = true;
   kind: EnemyKind;
   hitColor: number;
-  frozen = 0;
 
   private state: "approach" | "windup" | "recover" | "lunge" = "approach";
   private timer = 0;
@@ -63,7 +64,7 @@ export class Enemy implements Hittable {
   private tele: TelegraphHandle | null = null;
   group = new THREE.Group();
   private coreMat: THREE.MeshStandardMaterial;
-  private core!: THREE.Mesh;
+  private core: THREE.Mesh;
   private weapon?: THREE.Group;     // held weapon, swung on the strike
   private weaponBase = new THREE.Euler();
   private vt = 0;
@@ -81,237 +82,46 @@ export class Enemy implements Hittable {
     this.radius = this.cfg.radius;
     this.hp = this.maxHp = this.cfg.hp;
     this.hitColor = this.cfg.color;
-    this.pos.set(x, 0, z);
-    this.prevX = x; this.prevZ = z;
 
     this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.cfg.color, emissiveIntensity: 1.6, roughness: 0.4, metalness: 0.2 });
-    this.buildMesh();
-    this.group.position.set(x, this.cfg.bodyY, z);
+    const parts = buildEnemyMesh(kind, this.cfg.color, this.coreMat);
+    this.group = parts.group;
+    this.core = parts.core;
+    this.weapon = parts.weapon;
+    if (this.weapon) this.weaponBase.copy(this.weapon.rotation);
     this.ctx.stage.scene.add(this.group);
+    this.reset(x, z);
   }
 
-  private buildMesh(): void {
-    const c = this.cfg.color;
-    const shellMat = new THREE.MeshStandardMaterial({ color: 0x0b0d18, roughness: 0.45, metalness: 0.72, emissive: c, emissiveIntensity: 0.28, envMapIntensity: 1.1 });
-    const plateMat = new THREE.MeshStandardMaterial({ color: 0x141826, roughness: 0.5, metalness: 0.8, emissive: c, emissiveIntensity: 0.2, envMapIntensity: 1.1 });
-    const edgeMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: c, emissiveIntensity: 1.7, roughness: 0.35, metalness: 0.3 });
+  /** Fresh combat state at (x,z) — called on construct AND on reuse from the pool. */
+  reset(x: number, z: number): void {
+    this.pos.set(x, 0, z);
+    this.prevX = x; this.prevZ = z;
+    this.hp = this.maxHp;
+    this.alive = true;
+    this.dying = false;
+    this.deathT = 0;
+    this.state = "approach";
+    this.timer = 0;
+    this.fireTimer = 1.5;
+    this.didHit = false;
+    this.flash = 0; this.flinch = 0;
+    this.atkCharge = 0; this.atkLunge = 0;
+    this.moveAmt = 0; this.vt = 0;
+    this.kb.set(0, 0, 0);
+    this.coreMat.emissiveIntensity = 1.6;
+    this.group.visible = true;
+    this.group.scale.setScalar(1);
+    this.group.rotation.set(0, 0, 0);
+    this.group.position.set(x, this.cfg.bodyY, z);
+  }
 
-    if (this.kind === "husk") {
-      // hooded shard-wraith: tapered body, cowl, cracked core behind it, crown + fins + tatters
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.72, 1.7, 6), shellMat);
-      body.position.y = 0.95; body.castShadow = true;
-      const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.0, 6), plateMat);
-      cowl.position.y = 1.7; cowl.castShadow = true;
-      this.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.32), this.coreMat);
-      this.core.position.y = 1.3;
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.1, 0.12), this.coreMat);
-      eye.position.set(0, 1.12, 0.46);
-      this.group.add(body, cowl, this.core, eye);
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2;
-        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.5, 4), edgeMat);
-        spike.position.set(Math.cos(a) * 0.42, 2.15, Math.sin(a) * 0.42);
-        this.group.add(spike);
-      }
-      for (let i = 0; i < 3; i++) {
-        const a = (i / 3) * Math.PI * 2 + 0.5;
-        const fin = new THREE.Mesh(new THREE.ConeGeometry(0.1, 1.0, 4), edgeMat);
-        fin.position.set(Math.cos(a) * 0.55, 1.4, Math.sin(a) * 0.55);
-        fin.rotation.set(-Math.sin(a) * 0.7, 0, Math.cos(a) * 0.7);
-        const tatter = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.16), edgeMat);
-        tatter.position.set(Math.cos(a) * 0.5, 0.4, Math.sin(a) * 0.5);
-        this.group.add(fin, tatter);
-      }
-      // a notched rusted falchion gripped at its side — a risen footman, not just a wisp
-      const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 6), plateMat);
-      const crossguard = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.07, 0.1), plateMat);
-      crossguard.position.y = 0.2;
-      const swordBlade = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 0.05), shellMat);
-      swordBlade.position.y = 0.78;
-      const swordEdge = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.1, 0.06), edgeMat);
-      swordEdge.position.set(0.085, 0.78, 0);
-      const sword = new THREE.Group();
-      sword.add(grip, crossguard, swordBlade, swordEdge);
-      sword.position.set(0.62, 0.92, 0.32);
-      sword.rotation.set(0.55, 0, -0.32);
-      this.group.add(sword);
-      this.weapon = sword; this.weaponBase.copy(sword.rotation);
-    } else if (this.kind === "spitter") {
-      // hooded witchfire caster: a drooping robe, a cowl over a dark void, an orb it conjures
-      const robe = new THREE.Mesh(new THREE.ConeGeometry(0.6, 1.7, 7, 1, true), shellMat);
-      robe.position.y = -0.2; robe.castShadow = true;
-      const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.85, 7), plateMat);
-      cowl.position.y = 0.7;
-      const voidHead = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshBasicMaterial({ color: 0x05060a }));
-      voidHead.position.y = 0.52;
-      this.core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), this.coreMat); // the witchfire orb it hurls
-      this.core.position.set(0, 0.15, 0.45);
-      this.group.add(robe, cowl, voidHead, this.core);
-      // two skeletal arms cupping the orb
-      for (const sx of [-1, 1]) {
-        const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.7, 5), edgeMat);
-        arm.position.set(sx * 0.28, 0.15, 0.28); arm.rotation.set(0.9, 0, sx * 0.5);
-        this.group.add(arm);
-      }
-      // ragged robe hem
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2;
-        const tatter = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.05), plateMat);
-        tatter.position.set(Math.cos(a) * 0.5, -0.85, Math.sin(a) * 0.5);
-        this.group.add(tatter);
-      }
-      // a gnarled bone staff crowned with a witchfire ring — the necromancer's focus
-      const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 1.9, 6), plateMat);
-      staff.position.set(0.46, 0.2, 0.06); staff.rotation.z = -0.12;
-      const finial = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 6, 10), edgeMat);
-      finial.position.set(0.34, 1.12, 0.06); finial.rotation.x = Math.PI / 2;
-      const ember = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), this.coreMat);
-      ember.position.set(0.34, 1.12, 0.06);
-      const focus = new THREE.Group();
-      focus.add(staff, finial, ember);
-      this.group.add(focus);
-      this.weapon = focus; this.weaponBase.copy(focus.rotation);
-    } else if (this.kind === "wraith") {
-      // hooded banshee: a cowl over a baleful eye, a tapering spectral body, trailing tatters + reaching arms
-      const body = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.6, 6, 1, true), shellMat);
-      body.position.y = -0.1; body.rotation.x = Math.PI; body.castShadow = true; // wide shoulders → wisp tail
-      const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.85, 6), plateMat);
-      cowl.position.y = 0.7;
-      this.core = new THREE.Mesh(new THREE.SphereGeometry(0.16, 10, 8), this.coreMat); // single baleful eye
-      this.core.position.set(0, 0.5, 0.28);
-      this.group.add(body, cowl, this.core);
-      for (let i = 0; i < 4; i++) {
-        const a = -0.5 + (i / 3) * 1.0;
-        const tatter = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.04), edgeMat);
-        tatter.position.set(Math.sin(a) * 0.35, -0.5, -0.3 + Math.cos(a) * 0.1); tatter.rotation.x = -0.3;
-        this.group.add(tatter);
-      }
-      for (const sx of [-1, 1]) {
-        const arm = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.8, 4), shellMat);
-        arm.position.set(sx * 0.5, 0.25, 0.2); arm.rotation.z = sx * 1.3;
-        this.group.add(arm);
-      }
-      // a spectral scythe — a long haft with a hooked, curved blade trailing the reaper
-      const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.8, 5), plateMat);
-      haft.position.set(0.5, 0.05, 0.12); haft.rotation.set(0.25, 0, 0.18);
-      const scytheBlade = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.045, 6, 12, Math.PI * 0.85), edgeMat);
-      scytheBlade.position.set(0.34, 0.86, 0.2); scytheBlade.rotation.set(Math.PI / 2, 0, 0.7);
-      const reaper = new THREE.Group();
-      reaper.add(haft, scytheBlade);
-      this.group.add(reaper);
-      this.weapon = reaper; this.weaponBase.copy(reaper.rotation);
-    } else if (this.kind === "ghoul") {
-      // feral flesh-eater: a hunched gaunt ghoul — lean ribbed torso, cracked skull, long raking claws
-      const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.5, 1.1, 6), shellMat);
-      torso.position.set(0, 0.85, 0.06); torso.rotation.x = 0.35; torso.castShadow = true; // hunched forward
-      const spine = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.9, 0.13), plateMat);
-      spine.position.set(0, 1.12, -0.26); spine.rotation.x = 0.4;
-      const skull = new THREE.Mesh(new THREE.IcosahedronGeometry(0.3, 0), plateMat);
-      skull.position.set(0, 1.5, 0.26); skull.castShadow = true;
-      const jaw = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.3, 4), plateMat);
-      jaw.position.set(0, 1.32, 0.36); jaw.rotation.x = Math.PI;
-      this.core = new THREE.Mesh(new THREE.OctahedronGeometry(0.15), this.coreMat); // hollow glowing eye-socket
-      this.core.position.set(0, 1.56, 0.42);
-      this.group.add(torso, spine, skull, jaw, this.core);
-      for (let i = 0; i < 3; i++) { // exposed ribs
-        const rib = new THREE.Mesh(new THREE.TorusGeometry(0.22 - i * 0.03, 0.028, 4, 8, Math.PI), edgeMat);
-        rib.position.set(0, 0.72 + i * 0.22, 0.18); rib.rotation.set(Math.PI / 2, 0, 0);
-        this.group.add(rib);
-      }
-      const larm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.9, 5), shellMat);
-      larm.position.set(-0.42, 0.9, 0.18); larm.rotation.set(0.5, 0, -0.5);
-      this.group.add(larm);
-      // the right claw-arm is the "weapon" — it rakes forward on the strike
-      const claws = new THREE.Group();
-      const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.9, 5), shellMat);
-      forearm.position.set(0, -0.3, 0); forearm.rotation.x = 0.4;
-      claws.add(forearm);
-      for (let i = 0; i < 3; i++) {
-        const claw = new THREE.Mesh(new THREE.ConeGeometry(0.038, 0.4, 4), edgeMat);
-        claw.position.set((i - 1) * 0.1, -0.72, 0.14); claw.rotation.x = -0.5;
-        claws.add(claw);
-      }
-      claws.position.set(0.44, 1.08, 0.2);
-      this.group.add(claws);
-      this.weapon = claws; this.weaponBase.copy(claws.rotation);
-    } else if (this.kind === "archer") {
-      // skeletal bowman: upright thin body, hooded skull, a recurve bow held out, a quiver on the back
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.42, 1.5, 6), shellMat);
-      body.position.y = 0.55; body.castShadow = true;
-      const hood = new THREE.Mesh(new THREE.ConeGeometry(0.38, 0.7, 6), plateMat);
-      hood.position.y = 1.32;
-      this.core = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 6), this.coreMat); // baleful eye under the hood
-      this.core.position.set(0, 1.18, 0.3);
-      this.group.add(body, hood, this.core);
-      const quiver = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.6, 6), plateMat);
-      quiver.position.set(-0.24, 0.9, -0.26); quiver.rotation.x = -0.4;
-      this.group.add(quiver);
-      for (let i = 0; i < 3; i++) { // arrow fletchings poking from the quiver
-        const fl = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.18, 4), edgeMat);
-        fl.position.set(-0.24 + (i - 1) * 0.06, 1.2, -0.34); fl.rotation.x = -0.4;
-        this.group.add(fl);
-      }
-      // a spectral recurve bow held forward — the "weapon", snaps on the loose
-      const bow = new THREE.Group();
-      const arc = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.035, 6, 14, Math.PI * 1.15), edgeMat);
-      arc.rotation.z = Math.PI * 0.42;
-      const string = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.9, 4), plateMat);
-      const knock = new THREE.Mesh(new THREE.OctahedronGeometry(0.08), this.coreMat); // nocked witch-bolt
-      knock.position.z = 0.03;
-      bow.add(arc, string, knock);
-      bow.position.set(0.3, 0.9, 0.32);
-      this.group.add(bow);
-      this.weapon = bow; this.weaponBase.copy(bow.rotation);
-    } else {
-      // brute: hulking golem — stacked torso plates, spiked pauldrons, grated chest core
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.1, 1.3), shellMat);
-      lower.position.y = 0.65; lower.castShadow = true;
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.0, 1.4), plateMat);
-      upper.position.y = 1.7; upper.castShadow = true;
-      const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), plateMat);
-      head.position.y = 2.6; head.castShadow = true;
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.1), this.coreMat);
-      eye.position.set(0, 2.62, 0.45);
-      this.core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.42), this.coreMat);
-      this.core.position.set(0, 1.55, 0.6);
-      this.group.add(lower, upper, head, eye, this.core);
-      for (let i = 0; i < 4; i++) { // chest grate bars over the core
-        const bar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.7, 0.08), shellMat);
-        bar.position.set(-0.3 + i * 0.2, 1.55, 0.72);
-        this.group.add(bar);
-      }
-      for (const sx of [-1, 1]) {
-        const pauld = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 1.3), plateMat);
-        pauld.position.set(sx * 1.15, 2.0, 0); pauld.castShadow = true;
-        for (let i = 0; i < 3; i++) {
-          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.5, 4), edgeMat);
-          spike.position.set(sx * 1.15, 2.45, -0.4 + i * 0.4); spike.rotation.x = -0.3;
-          this.group.add(spike);
-        }
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.45, 1.3, 0.5), shellMat);
-        arm.position.set(sx * 1.15, 1.1, 0); arm.castShadow = true;
-        const fist = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.6), plateMat);
-        fist.position.set(sx * 1.15, 0.4, 0);
-        this.group.add(pauld, arm, fist);
-      }
-      // jagged iron horns crowning the helm
-      for (const sx of [-1, 1]) {
-        const horn = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.7, 4), edgeMat);
-        horn.position.set(sx * 0.32, 3.05, 0); horn.rotation.z = sx * 0.7;
-        this.group.add(horn);
-      }
-      // a colossal notched cleaver hefted in the right fist — an executioner's blade
-      const cleaverHaft = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.5, 6), shellMat);
-      cleaverHaft.position.set(1.15, 1.1, 0.55); cleaverHaft.rotation.x = 0.55;
-      const cleaverHead = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.14), plateMat);
-      cleaverHead.position.set(1.15, 1.95, 1.05);
-      const cleaverEdge = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.1, 0.16), edgeMat);
-      cleaverEdge.position.set(1.5, 1.95, 1.05);
-      const cleaver = new THREE.Group();
-      cleaver.add(cleaverHaft, cleaverHead, cleaverEdge);
-      this.group.add(cleaver);
-      this.weapon = cleaver; this.weaponBase.copy(cleaver.rotation);
-    }
+  /** Hide + deactivate, keeping mesh in-scene (shaders stay warm) for pool reuse. */
+  park(): void {
+    this.tele?.cancel(); this.tele = null;
+    this.alive = false;
+    this.dying = false;
+    this.group.visible = false;
   }
 
   takeDamage(dmg: number, opts: HitOpts): boolean {
@@ -367,12 +177,6 @@ export class Enemy implements Hittable {
     this.pos.addScaledVector(this.kb, dt);
     this.kb.x = damp(this.kb.x, 0, 6, dt);
     this.kb.z = damp(this.kb.z, 0, 6, dt);
-
-    if (this.frozen > 0) {
-      this.frozen -= dt;
-      this.sync();
-      return;
-    }
 
     const p = this.ctx.player;
     const dx = p.pos.x - this.pos.x;
@@ -459,8 +263,8 @@ export class Enemy implements Hittable {
         this.flash = 0.9;  // iris/eye flares as it looses
         this.atkLunge = 1; // staff thrusts / bow snaps forward on the shot
         const p = this.ctx.player;
-        const dir = new THREE.Vector3(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
-        this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, dir, pj.speed, cfg.contactDmg, false, cfg.color, 2, { shape: pj.shape });
+        SHOT_DIR.set(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
+        this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, cfg.color, 2, { shape: pj.shape });
         this.tele = null;
         this.state = "recover";
         this.timer = 0.3;
@@ -551,18 +355,24 @@ export class Enemy implements Hittable {
     }
   }
 
+  /** Full teardown (not used by the pool — park() is). Body materials are shared; only
+   *  the per-instance coreMat is owned here. */
   dispose(): void {
     this.tele?.cancel();
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry) m.geometry.dispose();
     });
+    this.coreMat.dispose();
     this.ctx.stage.scene.remove(this.group);
   }
 }
 
 export class EnemyManager {
   private list: Enemy[] = [];
+  // parked instances per kind — reused instead of rebuilt (meshes stay in-scene, shaders warm)
+  private parked: Record<EnemyKind, Enemy[]> = { husk: [], spitter: [], brute: [], wraith: [], ghoul: [], archer: [] };
+  private live: Enemy[] = []; // living() scratch — refilled every call, never retained
 
   constructor(private ctx: Ctx) {}
 
@@ -581,14 +391,19 @@ export class EnemyManager {
   }
 
   spawn(kind: EnemyKind, x: number, z: number): Enemy {
-    const e = new Enemy(this.ctx, kind, x, z);
+    const pooled = this.parked[kind].pop();
+    const e = pooled ?? new Enemy(this.ctx, kind, x, z);
+    if (pooled) e.reset(x, z);
     this.list.push(e);
     return e;
   }
 
-  /** Alive, non-dying enemies — combat targets + wave-clear count. */
+  /** Alive, non-dying enemies — combat targets + wave-clear count.
+   *  Returns a reusable scratch array: consume immediately, never retain. */
   living(): Enemy[] {
-    return this.list.filter((e) => e.alive && !e.dying);
+    this.live.length = 0;
+    for (const e of this.list) if (e.alive && !e.dying) this.live.push(e);
+    return this.live;
   }
 
   aliveCount(): number {
@@ -598,18 +413,19 @@ export class EnemyManager {
   }
 
   clear(): void {
-    for (const e of this.list) e.dispose();
+    for (const e of this.list) { e.park(); this.parked[e.kind].push(e); }
     this.list.length = 0;
   }
 
   update(dt: number): void {
     for (const e of this.list) e.tick(dt);
     this.separate();
-    // reap finished death animations
+    // reap finished death animations back into the pool
     for (let i = this.list.length - 1; i >= 0; i--) {
       const e = this.list[i];
       if (e.dying && e.group.scale.x <= 0.02) {
-        e.dispose();
+        e.park();
+        this.parked[e.kind].push(e);
         this.list.splice(i, 1);
       }
     }

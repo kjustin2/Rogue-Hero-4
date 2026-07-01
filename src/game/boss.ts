@@ -4,8 +4,10 @@ import type { Hittable, HitOpts } from "./combat";
 import type { TelegraphHandle } from "../render/telegraphs";
 import { BOSS_ANCHOR, ARENA_CENTER, ARENA_RADIUS } from "./level";
 import { damp } from "../core/math";
+import { buildBossMesh } from "../render/bossMesh";
 
 const CORE_Y = 6.0; // world height of the weak-point core
+const VOLLEY_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
 
 type Attack = "slam" | "volley" | "sweep" | "collapse" | "beam" | null;
 
@@ -51,114 +53,27 @@ export class Boss implements Hittable {
    *  until activate(). Excluded from targeting/HUD/tick while true. */
   dormant = true;
 
-  group = new THREE.Group();
-  private orbit = new THREE.Group(); // rune shards circling the core (animated)
-  private cloak!: THREE.Mesh;        // ragged cloak — billows (animated)
-  private blade = new THREE.Group();  // hovering warblade — raised on wind-up, slammed on strike
+  group: THREE.Group;
+  private orbit: THREE.Group;  // rune shards circling the core (animated)
+  private cloak: THREE.Mesh;   // ragged cloak — billows (animated)
+  private blade: THREE.Group;  // hovering warblade — raised on wind-up, slammed on strike
   private bladeBase = new THREE.Euler();
   private readonly bladeY = 4.6;
-  private light!: THREE.PointLight;
+  private light: THREE.PointLight;
   private coreMat: THREE.MeshStandardMaterial;
 
   constructor(private ctx: Ctx) {
     this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.hitColor, emissiveIntensity: 2.0, roughness: 0.35, metalness: 0.2 });
-    this.buildMesh();
+    const parts = buildBossMesh(this.hitColor, this.coreMat);
+    this.group = parts.group;
+    this.cloak = parts.cloak;
+    this.blade = parts.blade;
+    this.orbit = parts.orbit;
+    this.blade.position.set(3.7, this.bladeY, 1.3);
+    this.bladeBase.copy(this.blade.rotation);
     this.group.position.copy(this.pos);
     this.group.scale.setScalar(0.001); // rises in on spawn (see tick)
     this.ctx.stage.scene.add(this.group);
-  }
-
-  private buildMesh(): void {
-    const shell = new THREE.MeshStandardMaterial({ color: 0x0a0b16, roughness: 0.55, metalness: 0.5, emissive: this.hitColor, emissiveIntensity: 0.3 });
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 2.4, 6.5, 8), shell);
-    body.position.y = 3.4; body.castShadow = true;
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(1.3, 0), shell);
-    head.position.y = 7.4; head.castShadow = true;
-    const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.0), this.coreMat);
-    core.position.y = 4.6;
-    this.group.add(body, head, core);
-
-    // ragged cloak/skirt flaring from the body — a looming warlord silhouette (billows in tick)
-    const cloak = new THREE.Mesh(new THREE.ConeGeometry(3.2, 5.8, 10, 1, true), shell);
-    cloak.position.y = 2.9; cloak.castShadow = true;
-    this.cloak = cloak;
-    this.group.add(cloak);
-
-    // pauldron spikes off the shoulders
-    for (const sx of [-1, 1]) {
-      const pauldron = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.2, 5), this.coreMat);
-      pauldron.position.set(sx * 2.0, 6.0, 0);
-      pauldron.rotation.z = sx * 0.9;
-      this.group.add(pauldron);
-    }
-
-    // glowing slit eyes on the head
-    for (const sx of [-1, 1]) {
-      const eye = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.22, 0.2), this.coreMat);
-      eye.position.set(sx * 0.5, 7.5, 1.05);
-      this.group.add(eye);
-    }
-
-    // tall jagged crown of shards (two tiers)
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * Math.PI * 2;
-      const shard = new THREE.Mesh(new THREE.ConeGeometry(0.34, 2.6, 4), this.coreMat);
-      shard.position.set(Math.cos(a) * 1.4, 8.7, Math.sin(a) * 1.4);
-      this.group.add(shard);
-      const inner = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.5, 4), this.coreMat);
-      inner.position.set(Math.cos(a + 0.39) * 0.8, 9.1, Math.sin(a + 0.39) * 0.8);
-      this.group.add(inner);
-    }
-
-    // knightly plate: a great-helm crest ridge, a gorget collar, a breastplate + heraldic sigil
-    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.1, 1.4), this.coreMat);
-    crest.position.set(0, 8.35, 0); // comb/plume ridge atop the helm
-    const gorget = new THREE.Mesh(new THREE.TorusGeometry(1.3, 0.24, 8, 16), shell);
-    gorget.position.y = 6.5; gorget.rotation.x = Math.PI / 2;
-    const breast = new THREE.Mesh(new THREE.BoxGeometry(2.7, 2.3, 1.0), shell);
-    breast.position.set(0, 4.5, 0.95); breast.castShadow = true;
-    const emblem = new THREE.Mesh(new THREE.OctahedronGeometry(0.55), this.coreMat);
-    emblem.position.set(0, 4.7, 1.55); emblem.scale.set(1, 1.5, 0.4); // sigil on the chest
-    this.group.add(crest, gorget, breast, emblem);
-    // tattered war-banners on iron poles planted behind the Warden (face the player)
-    for (const sx of [-1, 1]) {
-      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 12, 6), shell);
-      pole.position.set(sx * 3.7, 5, -2.0);
-      const banner = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 5.2), shell);
-      banner.position.set(sx * 3.7, 7.4, -2.05); banner.rotation.y = Math.PI;
-      const sigil = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 3.2), this.coreMat);
-      sigil.position.set(sx * 3.7, 7.4, -1.98); sigil.rotation.y = Math.PI;
-      this.group.add(pole, banner, sigil);
-    }
-
-    // a colossal soul-forged warblade hovering at the Warden's flank — raised on the
-    // wind-up, hammered down on the strike (animated in tick from charge/lunge)
-    const blade = this.blade;
-    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 1.3, 6), shell);
-    const guard = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.3, 0.42), this.coreMat);
-    guard.position.y = 0.78;
-    const blMesh = new THREE.Mesh(new THREE.BoxGeometry(0.62, 7.6, 0.2), shell);
-    blMesh.position.y = 4.6; blMesh.castShadow = true;
-    const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.16, 6.9, 0.26), this.coreMat); // glowing fuller down the blade
-    fuller.position.y = 4.45;
-    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.34, 1.4, 4), shell);
-    tip.position.y = 8.75;
-    const pommel = new THREE.Mesh(new THREE.OctahedronGeometry(0.26), this.coreMat);
-    pommel.position.y = -0.75;
-    blade.add(grip, guard, blMesh, fuller, tip, pommel);
-    blade.position.set(3.7, this.bladeY, 1.3);
-    blade.rotation.set(0, 0, -0.22);
-    this.bladeBase.copy(blade.rotation);
-    this.group.add(blade);
-
-    // rune shards orbiting the core (spun in tick) — menace + motion
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2;
-      const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.5), this.coreMat);
-      shard.position.set(Math.cos(a) * 3.6, 4.6 + Math.sin(a * 2) * 0.7, Math.sin(a) * 3.6);
-      this.orbit.add(shard);
-    }
-    this.group.add(this.orbit);
 
     // The soul-fire light lives on the SCENE (not the group) so it is counted from
     // boot and STAYS counted while the boss is hidden. Adding a light mid-scene is what
@@ -324,8 +239,8 @@ export class Boss implements Hittable {
     if (this.dying) {
       this.deathT += dt;
       this.group.scale.setScalar(1.3 * Math.max(0.001, 1 - this.deathT * 0.8));
-      if (this.deathT > 0.4 && Math.random() < 0.4) {
-        this.ctx.fx.burst({ x: this.pos.x + (Math.random() - 0.5) * 4, y: 1 + Math.random() * 6, z: this.pos.z + (Math.random() - 0.5) * 4, count: 18, color: this.hitColor, speed: [4, 12], life: [0.3, 0.7] });
+      if (this.deathT > 0.4 && this.ctx.rng.next() < 0.4) {
+        this.ctx.fx.burst({ x: this.pos.x + this.ctx.rng.range(-2, 2), y: 1 + this.ctx.rng.range(0, 6), z: this.pos.z + this.ctx.rng.range(-2, 2), count: 18, color: this.hitColor, speed: [4, 12], life: [0.3, 0.7] });
       }
       return;
     }
@@ -398,8 +313,8 @@ export class Boss implements Hittable {
       const base = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
       for (let i = 0; i < n; i++) {
         const ang = base + (i - (n - 1) / 2) * 0.18;
-        const dir = new THREE.Vector3(Math.sin(ang) * horiz, ty - sy, Math.cos(ang) * horiz);
-        this.ctx.projectiles.spawn(this.pos.x, sy, this.pos.z, dir, 24, 14, false, this.hitColor, 3);
+        VOLLEY_DIR.set(Math.sin(ang) * horiz, ty - sy, Math.cos(ang) * horiz);
+        this.ctx.projectiles.spawn(this.pos.x, sy, this.pos.z, VOLLEY_DIR, 24, 14, false, this.hitColor, 3);
       }
     } else if (a === "beam") {
       // a searing lance fires ALONG THE TELEGRAPHED LINE (locked at wind-up on this.aim),

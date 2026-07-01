@@ -14,8 +14,15 @@ const REBINDABLE: Action[] = ["up", "down", "left", "right", "light", "heavy", "
 export class Menus {
   private overlay = document.getElementById("overlay")!;
   settings: Settings = loadSettings();
+  private fs = false; // mirrored OS fullscreen state (Electron only)
 
-  constructor(private ctx: Ctx) {}
+  constructor(private ctx: Ctx) {
+    const nat = window.rh3native;
+    if (nat) {
+      void nat.isFullscreen().then((v) => { this.fs = v; });
+      nat.onFullscreenChange((v) => { this.fs = v; }); // stays true after F11 too
+    }
+  }
 
   /** Apply the current settings to the live systems + persist. Called at boot + on change. */
   apply(): void {
@@ -90,6 +97,7 @@ export class Menus {
         <div class="set-row"><span>FIELD OF VIEW</span><input type="range" min="68" max="100" step="1" value="${s.fov}" data-set="fov"></div>
         <div class="set-row"><span>REDUCE MOTION</span>${seg(s.reduceMotion, "ON", "OFF", "rm")}</div>
         <div class="set-row"><span>GRAPHICS QUALITY</span><div class="seg">${qbtns}</div></div>
+        ${window.rh3native ? `<div class="set-row"><span>DISPLAY</span>${seg(this.fs, "FULLSCREEN", "WINDOWED", "fs")}</div>` : ""}
       </div>
       <div class="menu-buttons">
         <button id="rebind">REBIND CONTROLS</button>
@@ -109,6 +117,10 @@ export class Menus {
     }));
     root.querySelectorAll<HTMLButtonElement>("[data-rm]").forEach((b) => b.addEventListener("click", () => {
       s.reduceMotion = b.dataset.rm === "1"; this.apply(); this.ctx.events.emit("UI_CLICK", {}); this.showSettings(back);
+    }));
+    root.querySelectorAll<HTMLButtonElement>("[data-fs]").forEach((b) => b.addEventListener("click", () => {
+      this.ctx.events.emit("UI_CLICK", {});
+      void window.rh3native?.setFullscreen(b.dataset.fs === "1").then((v) => { this.fs = v; this.showSettings(back); });
     }));
     this.wire("rebind", () => this.showControls(() => this.showSettings(back)));
     this.wire("back", back);

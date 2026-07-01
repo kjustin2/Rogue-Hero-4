@@ -207,6 +207,7 @@ function updatePlaying(dt: number): void {
       ctx.level.openGate(idx);
       hud.showBanner("WAY OPEN", 0x8affd0);
       ctx.sfx.critical();
+      ctx.music.combat(idx + 2); // each cleared gate advances the combat bed (set1→2→3…)
       // clearing a wave reveals a new weapon on the ground just past the gate
       const reward = GATE_WEAPONS[idx];
       if (reward) ctx.pickups.dropWeapon(reward, 0, GATES_Z[idx] + 4);
@@ -285,6 +286,7 @@ function startPhaseCutscene(phase: number): void {
   if (ctx.boss) ctx.boss.paused = true;
   ctx.sfx.bossRoar();
   ctx.cam.addTrauma(0.55);
+  if (phase >= 3) ctx.music.bossFinale(); // the driving theme gives way to the lament
   hud.showBanner(phase >= 3 ? "FINAL PHASE" : "PHASE II", phase >= 3 ? 0xff5530 : 0x9ff0e4);
 }
 
