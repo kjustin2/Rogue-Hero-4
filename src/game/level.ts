@@ -315,35 +315,8 @@ export class Level {
     graves.count = gi;
     graves.instanceMatrix.needsUpdate = true;
     this.group.add(graves);
-    // Meshy props: kneeling-knight relics line the Reliquary Approach (gate2 → arena)
-    for (const sx of [-1, 1]) {
-      for (let z = GATES_Z[1] + 8; z < GATES_Z[2] + 24; z += 16) {
-        const knight = this.ctx.models.get("prop-knight");
-        if (!knight) break;
-        knight.position.set(sx * (HALF_WIDTH - 2.3), 0, z);
-        knight.rotation.y = sx > 0 ? -Math.PI / 2 : Math.PI / 2; // kneel facing the path
-        this.group.add(knight);
-      }
-    }
-    // gargoyle guardians watch over the Grave Ward's entrance
-    for (const sx of [-1, 1]) {
-      const garg = this.ctx.models.get("prop-gargoyle");
-      if (!garg) break;
-      garg.position.set(sx * (HALF_WIDTH - 2.4), 0, GATES_Z[0] + 6);
-      garg.rotation.y = sx > 0 ? -Math.PI / 2 + 0.3 : Math.PI / 2 - 0.3;
-      this.group.add(garg);
-    }
     // two hulking gargoyle sentinels flanking the arena mouth (guardians of the Warden)
-    const glbSentinel = !!this.ctx.models.get("prop-gargoyle");
     for (const sx of [-1, 1]) {
-      if (glbSentinel) {
-        const st = this.ctx.models.get("prop-gargoyle")!;
-        st.scale.multiplyScalar(1.9); // hulking arena guardians, twice the ward pair
-        st.position.set(sx * (HALF_WIDTH - 2.6), 0, ARENA_BLEND_Z - 3);
-        st.rotation.y = (sx > 0 ? -0.5 : 0.5) + Math.PI; // turned in toward the path
-        this.group.add(st);
-        continue;
-      }
       const st = new THREE.Group();
       const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 2.2), stoneMat);
       plinth.position.y = 0.6; plinth.castShadow = true;

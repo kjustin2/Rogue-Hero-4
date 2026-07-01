@@ -31,7 +31,6 @@ const MIME = {
   ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
-  ".glb": "model/gltf-binary",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".woff": "font/woff",
@@ -134,11 +133,6 @@ app.whenReady().then(async () => {
       // combo matcher self-check (pure logic gate)
       const comboFails = await js(`window.__rh4debug.checkCombos()`);
       expect(Array.isArray(comboFails) && comboFails.length === 0, "combo self-check failed: " + JSON.stringify(comboFails));
-
-      // every committed GLB actually loaded (a 404/parse regression silently falls back)
-      const models = await js(`window.__rh4debug.models()`);
-      const modelCount = Object.keys(models).length;
-      expect(modelCount === 14, `expected 14 GLB models loaded, got ${modelCount}: ` + JSON.stringify(models));
 
       // --- title sub-menus: settings + controls
       await js(`document.querySelector('#settings')?.click()`);
@@ -453,18 +447,6 @@ app.whenReady().then(async () => {
       await frames(6);
       await shot(win, "resized");
 
-      // --- ?noglb: the procedural fallbacks must still carry a full slice (CI never
-      // depends on model downloads) — boot, run, spawn every kind, one lit frame.
-      await win.loadURL(`http://127.0.0.1:${port}/?noglb`);
-      await sleep(2600);
-      expect(await js(`Object.keys(window.__rh4debug.models()).length === 0`), "?noglb did not disable GLB loading");
-      await js(`window.__rh4debug.start(); window.__rh4debug.god(true); window.__rh4.input.pointerLocked = true;`);
-      for (const k of ["husk", "spitter", "brute", "wraith", "ghoul", "archer"]) {
-        await js(`window.__rh4debug.spawn('${k}', ${(Math.random() * 10 - 5).toFixed(1)}, window.__rh4.player.pos.z + 12); 0`);
-      }
-      await frames(8);
-      expect(await js(`window.__rh4state()==='playing'`), "?noglb run did not enter playing");
-      await shot(win, "noglb-fallback");
     } catch (e) {
       errors.push("EXCEPTION: " + (e && e.message ? e.message : String(e)));
     }

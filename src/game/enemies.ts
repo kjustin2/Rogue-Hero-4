@@ -5,8 +5,7 @@ import type { TelegraphHandle } from "../render/telegraphs";
 import { GATES_Z, HALF_WIDTH } from "./level";
 import { damp } from "../core/math";
 import { PAL } from "../core/palette";
-import { buildEnemyVisual } from "../render/enemyMeshes";
-import type { RiggedInstance } from "../render/models";
+import { buildEnemyMesh } from "../render/enemyMeshes";
 
 export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer";
 
@@ -25,12 +24,12 @@ interface KindCfg {
 
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
-  husk: { hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: PAL.soulfire, bodyY: 0 }, // bone-pale risen wight
-  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: PAL.soulfire, bodyY: 1.0, proj: { speed: 17, shape: "comet", interval: 1.45 } }, // witchfire caster: slow lobbed orb
-  brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: PAL.soulfire, bodyY: 0 }, // molten-iron ogre
-  wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: PAL.soulfire, bodyY: 0.7 }, // spectral banshee
-  ghoul: { hp: 20, radius: 0.5, speed: 15.5, contactDmg: 12, attackRange: 2.2, windup: 0.13, color: PAL.soulfire, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast
-  archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: PAL.soulfire, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
+  husk: { hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
+  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0, proj: { speed: 17, shape: "comet", interval: 1.45 } }, // witchfire caster: slow lobbed orb
+  brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
+  wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
+  ghoul: { hp: 20, radius: 0.5, speed: 15.5, contactDmg: 12, attackRange: 2.2, windup: 0.13, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast
+  archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: 0x8fb4ff, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
 };
 
 // Elite modifiers — a data catalog, rolled by the spawn director on gate 2+.
@@ -86,8 +85,6 @@ export class Enemy implements Hittable {
   private core: THREE.Mesh;
   private weapon?: THREE.Group;     // held weapon, swung on the strike
   private weaponBase = new THREE.Euler();
-  private rigged?: RiggedInstance;  // GLB skeleton — clips replace the scale-pulse body language
-  private clip = "";                // current animation clip label
   private vt = 0;
   private atkCharge = 0; // wind-up inflate (0→1 across the telegraph)
   private atkLunge = 0;  // strike snap forward (set to 1, decays)
@@ -99,7 +96,7 @@ export class Enemy implements Hittable {
 
   /** Death animation finished — the manager parks the body back into the pool. */
   reapReady(): boolean {
-    return this.dying && (this.rigged ? this.deathT > 1.6 : this.group.scale.x <= 0.02);
+    return this.dying && this.group.scale.x <= 0.02;
   }
 
   constructor(private ctx: Ctx, kind: EnemyKind, x: number, z: number) {
@@ -110,11 +107,10 @@ export class Enemy implements Hittable {
     this.hitColor = this.cfg.color;
 
     this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.cfg.color, emissiveIntensity: 1.6, roughness: 0.4, metalness: 0.2 });
-    const parts = buildEnemyVisual(ctx.models, kind, this.cfg.color, this.coreMat, this.cfg.bodyY);
+    const parts = buildEnemyMesh(kind, this.cfg.color, this.coreMat);
     this.group = parts.group;
     this.core = parts.core;
     this.weapon = parts.weapon;
-    this.rigged = parts.rigged;
     if (this.weapon) this.weaponBase.copy(this.weapon.rotation);
     this.ctx.stage.scene.add(this.group);
     this.reset(x, z);
@@ -148,32 +144,6 @@ export class Enemy implements Hittable {
     this.group.scale.setScalar(1);
     this.group.rotation.set(0, 0, 0);
     this.group.position.set(x, this.cfg.bodyY, z);
-    if (this.rigged) {
-      this.rigged.mixer.stopAllAction();
-      this.clip = "";
-      this.playClip("idle");
-    }
-  }
-
-  /** Crossfade to a clip; one-shots (attack/flinch/death) clamp at their last frame. */
-  private playClip(label: string, once = false): void {
-    const a = this.rigged?.actions[label];
-    if (!a || this.clip === label) return;
-    const prev = this.rigged!.actions[this.clip];
-    a.reset();
-    if (once) { a.setLoop(THREE.LoopOnce, 1); a.clampWhenFinished = true; }
-    else a.setLoop(THREE.LoopRepeat, Infinity);
-    if (prev) a.crossFadeFrom(prev, 0.18, false);
-    a.play();
-    this.clip = label;
-  }
-
-  /** Which clip the current AI state wants (priority: death > attack > flinch > locomotion). */
-  private desiredClip(): { label: string; once: boolean } {
-    if (this.dying) return { label: "death", once: true };
-    if (this.state === "windup" || this.state === "lunge" || this.atkLunge > 0.5) return { label: "attack", once: true };
-    if (this.flinch > 0.55) return { label: "flinch", once: true };
-    return this.moveAmt > 0.22 ? { label: "walk", once: false } : { label: "idle", once: false };
   }
 
   /** Promote to an elite: bigger, 2.5x hp, a gold crown, one twist per kind. */
@@ -277,14 +247,7 @@ export class Enemy implements Hittable {
           if (Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z) <= 3.6) this.ctx.combat.damagePlayer(20, this.pos.x, this.pos.z);
         }
       }
-      if (this.rigged) {
-        const want = this.desiredClip();
-        this.playClip(want.label, want.once);
-        this.rigged.mixer.update(dt);
-        if (this.deathT > 1.1) this.group.position.y -= dt * 1.5; // sink into the barrow
-      } else {
-        this.group.scale.setScalar(Math.max(0.001, 1 - this.deathT * 5));
-      }
+      this.group.scale.setScalar(Math.max(0.001, 1 - this.deathT * 5));
       return;
     }
 
@@ -323,13 +286,6 @@ export class Enemy implements Hittable {
     let fnx = nx, fnz = nz;
     if (this.kind === "wraith" && (this.state === "windup" || this.state === "lunge")) {
       fnx = this.lungeDir.x; fnz = this.lungeDir.z;
-    }
-    if (this.rigged) {
-      const want = this.desiredClip();
-      this.playClip(want.label, want.once);
-      const walk = this.rigged.actions.walk;
-      if (walk) walk.timeScale = 0.7 + this.moveAmt * 0.7; // stride pace tracks actual speed
-      this.rigged.mixer.update(dt);
     }
     this.sync(fnx, fnz);
   }
@@ -472,13 +428,6 @@ export class Enemy implements Hittable {
 
   private sync(nx = 0, nz = 0): void {
     const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
-    if (this.rigged) {
-      // real clips carry the body language — keep only facing, the strike shove and a hit snap
-      this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY, this.pos.z + nz * fwd);
-      if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
-      this.group.rotation.x = -this.flinch * 0.18;
-      return;
-    }
     // bob grows with movement so a charging wight reads as striding, not gliding
     const bob = Math.sin(this.vt * (2.5 + this.moveAmt * 3) + this.id) * (0.1 + this.moveAmt * 0.14);
     this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + bob, this.pos.z + nz * fwd);

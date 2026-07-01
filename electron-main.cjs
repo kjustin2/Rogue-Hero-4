@@ -37,7 +37,6 @@ const MIME = {
   ".webp": "image/webp",
   ".ico":  "image/x-icon",
   ".wasm": "application/wasm",
-  ".glb":  "model/gltf-binary",
   ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".ttf":  "font/ttf",

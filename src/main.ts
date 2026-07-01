@@ -10,7 +10,6 @@ import { EventBus } from "./core/events";
 import { Rng } from "./core/rng";
 import { Input } from "./core/input";
 import { Stage } from "./render/stage";
-import { Models, MODEL_SPECS } from "./render/models";
 import { Particles } from "./render/particles";
 import { SwordTrail } from "./render/trail";
 import { Telegraphs } from "./render/telegraphs";
@@ -45,10 +44,6 @@ ctx.events = new EventBus();
 ctx.rng = new Rng(20260629);
 ctx.stage = new Stage(canvas);
 if (lowfx) ctx.stage.applyQuality("low");
-// GLB models load FIRST (top-level await, under the boot loader) so every system that
-// builds meshes can swap in its model synchronously, and warmUp() compiles their shaders.
-ctx.models = new Models();
-await ctx.models.preload(MODEL_SPECS);
 ctx.input = new Input(canvas);
 ctx.fx = new Particles(ctx.stage.scene);
 ctx.trail = new SwordTrail(ctx.stage.scene);
@@ -445,15 +440,11 @@ w.__rh4debug = {
   tick: (dt = 0.033) => frame(dt),
   frames: (n: number, dt = 0.033) => { for (let i = 0; i < n; i++) frame(dt); },
   god: (on: boolean) => { ctx.player.god = on; },
-  models: () => ctx.models.status(),
   cineActive: () => cineT > 0,
   skipCutscene: () => { if (cineT > 0) endBossCutscene(); },
 };
 
 // --------------------------------------------------------------------- finish boot
-// One hidden clone of every loaded GLB (incl. a skinned one) so warmUp compiles their
-// programs now — compile() ignores `visible`, so the rack never draws.
-ctx.stage.scene.add(ctx.models.buildWarmRack());
 ctx.stage.warmUp(); // compiles the boss's shaders too (it's in the scene, visible, right now)
 ctx.boss?.reset();  // ...then hide it away, dormant, until the arena — shaders stay warm
 setState("title");

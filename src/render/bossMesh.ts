@@ -1,11 +1,9 @@
 import * as THREE from "three";
-import type { Models } from "./models";
 
 /**
- * The Barrow King's body — the Meshy GLB when loaded (procedural warblade/orbit/core
- * overlays kept on top: they carry the attack tells and the weak point), else the
- * full procedural build. The PointLight is NOT built here — it must stay scene-owned
- * in Boss (light-count relink fix). Animated parts are returned by name; Boss drives
+ * The Barrow King's procedural body, extracted from Boss so art and logic live
+ * apart. The PointLight is NOT built here — it must stay scene-owned in Boss
+ * (light-count relink fix). Animated parts are returned by name; Boss drives
  * them in tick().
  */
 export interface BossMeshParts {
@@ -15,22 +13,7 @@ export interface BossMeshParts {
   orbit: THREE.Group;
 }
 
-export function buildBossMesh(hitColor: number, coreMat: THREE.MeshStandardMaterial, models?: Models): BossMeshParts {
-  const glbBody = models?.get("boss-barrowking");
-  if (glbBody) {
-    const group = new THREE.Group();
-    group.add(glbBody);
-    // weak-point core pokes out of the breastplate (isWeakHit tests a sphere at CORE_Y)
-    const core = new THREE.Mesh(new THREE.OctahedronGeometry(1.15), coreMat);
-    core.position.set(0, 4.6, 1.5);
-    group.add(core);
-    const { blade, orbit } = buildBladeAndOrbit(hitColor, coreMat);
-    group.add(blade, orbit);
-    const cloak = new THREE.Mesh(); // GLB has its own cloak — tick()'s billow becomes a no-op
-    cloak.visible = false;
-    group.add(cloak);
-    return { group, cloak, blade, orbit };
-  }
+export function buildBossMesh(hitColor: number, coreMat: THREE.MeshStandardMaterial): BossMeshParts {
   return buildProcedural(hitColor, coreMat);
 }
 

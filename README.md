@@ -8,8 +8,8 @@ heavies, and its own combo strings whose finishers fire forward.
 
 Built on **plain Three.js + Vite + strict TypeScript**, shipped as an Electron desktop app.
 No game engine, no UI framework, no test framework — the truth is screenshots + state asserts.
-Enemy/boss/weapon/prop models are Meshy-generated GLBs (committed, optimized, with full
-procedural fallbacks — `?noglb` runs the game without a single model file).
+All content is procedural: primitive-built meshes, canvas-painted textures, synthesized SFX
+(music is the one streamed exception).
 
 ## Play
 | Input | Action |
@@ -46,9 +46,5 @@ npm run package    # electron-builder portable .exe
 
 The smoke boots the built game in real Chromium and drives title → path → wave → boon →
 arsenal showcase → charged heavy / fervor / swap-combo / elite asserts → boss (phases,
-gravewave, killcam) → victory (meta save written) → death → a `?noglb` fallback pass. It
-fails on a black frame, a console error, a broken combo, a missing GLB, or > 700 draw calls.
-
-Asset regeneration (never needed to build): `scripts/gen-model.mjs` + `scripts/rig-model.mjs`
-with `MESHY_API_KEY` in a gitignored `.env` — see `public/models/*.meshy.json` sidecars for
-the audit trail of every committed model.
+gravewave, killcam) → victory (meta save written) → death. It fails on a black frame, a
+console error, a broken combo, or > 700 draw calls.

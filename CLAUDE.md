@@ -12,33 +12,31 @@ Meta saves (localStorage `rh4-save`): clears, best time, starting-weapon unlocks
 seed + score.
 
 Stack: **plain Three.js + Vite + strict TypeScript, shipped as Electron** — no game engine, no UI
-framework, no test framework. Rebuilt from the Rogue-Hero-3 base, then remade (2026-07): Meshy GLB
-art, palette/color-hierarchy overhaul, spawn director + elites, boss overhaul, boons/meta/daily.
+framework, no test framework. Rebuilt from the Rogue-Hero-3 base, then remade (2026-07):
+palette/color-hierarchy overhaul, spawn director + elites, boss overhaul, boons/meta/daily.
+**All art is procedural** (primitives + canvas textures) — Meshy GLB assets were tried and
+REMOVED by user decision (they read worse than the stylized primitives); do not reintroduce.
 
 ## Architecture (sim → render → HUD, one composition root)
-- **`src/main.ts`** — the one composition root: builds the Ctx (top-level awaits
-  `models.preload()` FIRST, then systems, then adds the hidden GLB **warm rack** before
-  `stage.warmUp()`), owns the single loop (`frame(dt)`), the state machine
+- **`src/main.ts`** — the one composition root: builds the Ctx, owns the single loop (`frame(dt)`), the state machine
   (`title → playing → paused → boon → dead → victory`), run flow (gate waves → boon → boss →
   victory/death incl. killcam slow-mo), run stats, meta-save writes, and the **`window.__rh4`**
-  seam (`__rh4debug.scenario/frames/checkCombos/models/drainWave`, `__rh4perf`).
+  seam (`__rh4debug.scenario/frames/checkCombos/drainWave`, `__rh4perf`).
 - **`src/game/`** — sim: `ctx.ts` (type-only hub), `weapons.ts` (arsenal catalog + chargeable
   heavies + `matchWeaponCombo`/self-check), `player.ts` (FP controller, charge/fervor/swap-combo
-  buffer, PlayerMods read sites, viewmodels = Meshy GLBs via `glbWeapon` with procedural
-  fallbacks), `combat.ts` (the one damage funnel; `modifyIncoming` hook for shielded elites;
+  buffer, PlayerMods read sites, per-weapon procedural viewmodels), `combat.ts` (the one damage funnel; `modifyIncoming` hook for shielded elites;
   lifesteal/dmg-taken mods; `resolveCombo` forward finishers), `enemies.ts` (6 archetypes,
   **pooled** per kind, roles/flanking, **ELITES** catalog, **spawn director** — per-gate
   {budget,cap,pack,eliteChance}, trickle + hp-reading pacing, `waveDone()`), `boss.ts` (anchors +
   shift glide, slam/volley/beam/sweep/collapse/**gravewave**/**harvest**, phase-3 soulfire pools +
   recurring adds with guaranteed shards, per-phase telegraph colors), `boons.ts` (12 data boons →
   flat `PlayerMods`), `pickups.ts` (gold economy), `level.ts` (level-as-data causeway with segment
-  identity: Outer Ward → Grave Ward → Reliquary Approach; `gutterAt(z)` torch fade; GLB props),
+  identity: Outer Ward → Grave Ward → Reliquary Approach; `gutterAt(z)` torch fade),
   `projectiles.ts` (pooled).
 - **`src/render/`** — `stage.ts` (post chain: bloom(0.92/thr 0.45)/SSAO(high)/CA/grade/SMAA,
-  quality tiers, dual-composer warm-up), **`models.ts`** (Meshy GLB loader: preload-at-boot,
-  Box3-normalize, FrontSide fix, static clone / SkeletonUtils+AnimationMixer rigged instancing,
-  `?noglb` kill-switch, warm rack), `enemyMeshes.ts`/`bossMesh.ts` (procedural fallbacks + GLB
-  visual builders with core-glow overlays), `fpsCamera.ts`, `particles/trail/telegraphs/floaters`.
+  quality tiers, dual-composer warm-up), `enemyMeshes.ts`/`bossMesh.ts` (procedural body
+  factories, kept separate from the sim logic), `fpsCamera.ts`,
+  `particles/trail/telegraphs/floaters`.
 - **`src/core/`** — `events.ts` (typed bus incl. FERVOR), `input.ts` (rebindable; pointer-lock
   pause fires only on GENUINE lock loss — `realLocked` vs harness-faked `pointerLocked`),
   `palette.ts` (**the color authority**), `save.ts` (versioned meta), `math.ts`, `rng.ts`,
@@ -53,18 +51,15 @@ art, palette/color-hierarchy overhaul, spawn director + elites, boss overhaul, b
 - **One damage funnel** (`Combat`): all HP changes route through it (boon mods read there too).
 - **Typed event bus**; camera-relative movement; avoid per-frame allocation (scratch vectors,
   `living()` returns a reusable scratch — consume immediately).
-- **GLB assets are optional**: every model has a procedural fallback; `?noglb` must stay green.
-  New GLB materials must be in-scene before `stage.warmUp()` (the warm rack) or first use stalls.
-- Meshy regeneration is non-deterministic and costs credits — committed GLBs are permanent
-  artifacts; iterate with `scripts/probe-viewmodel.cjs` screenshots, never by regenerating.
+- New materials must be in-scene before `stage.warmUp()` or their first use stalls a frame.
 
 ## Harness (real renderer, never a mock)
 - `npm run typecheck` / `npm run build` — static gates.
 - `npm run smoke` — builds, boots the BUILT game hidden in Electron, drives the full slice
   (title → wave → **boon pick** → arsenal showcase → **charged-heavy/fervor/swap-combo/elite**
-  asserts → boss phases/gravewave/killcam → victory **meta-save assert** → death → **?noglb
-  fallback pass**), asserts non-black frames, zero console errors, all 14 GLBs loaded,
-  draw calls < 700. **Read the screenshots** (`shots/electron-*.png`).
+  asserts → boss phases/gravewave/killcam → victory **meta-save assert** → death), asserts
+  non-black frames, zero console errors, draw calls < 700. **Read the screenshots**
+  (`shots/electron-*.png`).
 - `npx electron scripts/soak-electron.cjs` — real-GPU boss-fight soak: p95 ≤ 20ms budget,
   freeze-class frames = 0, classified spikes (compile vs gc).
 - `npm start` — standalone window (fixed port 41730 keeps origin-keyed saves alive).
@@ -76,9 +71,6 @@ art, palette/color-hierarchy overhaul, spawn director + elites, boss overhaul, b
   and menu-requested unlocks can land a state later — pause only on genuine lock loss.
 - A never-shown Electron window suspends rAF — the smoke drives `__rh4debug.frames(n,dt)` and
   uses `showInactive()`; real-time waits (screenshots) DO advance the game (window paints).
-- Meshy rigging/animation GLB urls live at `task.result.rigged_character_glb_url` /
-  `animation_glb_url` (not `model_urls.glb`); clip carrier GLBs are optimized with 16px textures
-  (only their `animations[0]` is used).
 - `tsc` flags unused private class methods (TS6133) — delete dead ones.
 - The wave director keeps trickling by design — tests fast-forwarding a gate must
   `__rh4debug.drainWave()` before mass-killing.
