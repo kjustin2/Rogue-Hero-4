@@ -1,0 +1,19 @@
+{
+  "name": "wpn-greatsword",
+  "prompt": "gothic two-handed greatsword, fullered steel blade, bronze crossguard, leather-wrapped grip, weathered, symmetrical design, game asset",
+  "aiModel": "meshy-6",
+  "character": false,
+  "previewId": "019f1faf-0d9c-7919-bf14-eac8aa9ce39e",
+  "refineId": "019f1fb0-0cb3-7cb7-97b2-01a63ee34beb",
+  "topology": "triangle",
+  "polycount": 16000,
+  "lowpoly": false,
+  "pbr": true,
+  "removeLighting": true,
+  "pose": null,
+  "consumed_credits": 240,
+  "balance_after": 2611,
+  "bytes": 10788540,
+  "seconds": 241,
+  "generatedAt": "2026-07-01T22:00:33.995Z"
+}

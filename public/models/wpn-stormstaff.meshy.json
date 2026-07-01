@@ -1,0 +1,19 @@
+{
+  "name": "wpn-stormstaff",
+  "prompt": "gnarled iron-shod war staff, clawed triple-pronged finial, dark wood and wrought iron, ancient, game asset",
+  "aiModel": "meshy-6",
+  "character": false,
+  "previewId": "019f1faf-0d97-769e-8f38-c8f62fbfaf36",
+  "refineId": "019f1faf-f81c-75ca-ba11-5d86d02d22c9",
+  "topology": "triangle",
+  "polycount": 16000,
+  "lowpoly": false,
+  "pbr": true,
+  "removeLighting": true,
+  "pose": null,
+  "consumed_credits": 240,
+  "balance_after": 2611,
+  "bytes": 10958604,
+  "seconds": 220,
+  "generatedAt": "2026-07-01T22:00:13.160Z"
+}

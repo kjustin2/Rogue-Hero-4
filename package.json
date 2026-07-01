@@ -22,10 +22,24 @@
   "build": {
     "appId": "com.roguehero.causeway",
     "productName": "Rogue Hero 4",
-    "files": ["electron-main.cjs", "electron-ipc.cjs", "preload.cjs", "dist/**/*", "package.json"],
-    "directories": { "output": "release" },
-    "win": { "target": ["nsis"] },
-    "portable": { "artifactName": "Rogue-Hero-4-${version}-portable.exe" },
+    "files": [
+      "electron-main.cjs",
+      "electron-ipc.cjs",
+      "preload.cjs",
+      "dist/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "portable": {
+      "artifactName": "Rogue-Hero-4-${version}-portable.exe"
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
@@ -41,6 +55,7 @@
     "three": "^0.170.0"
   },
   "devDependencies": {
+    "@gltf-transform/cli": "^4.4.0",
     "@types/three": "^0.170.0",
     "electron": "^42.4.0",
     "electron-builder": "^25.1.8",

@@ -1,0 +1,19 @@
+{
+  "name": "enm-wraith",
+  "prompt": "spectral banshee wraith, trailing tapered shroud instead of legs, torn flowing cloth, hollow cowl, reaching clawed arms, bilateral symmetry, game asset",
+  "aiModel": "meshy-6",
+  "character": false,
+  "previewId": "019f1fb2-f898-7719-934a-36678a4154ac",
+  "refineId": "019f1fb4-349d-7675-9abb-08cd51cd4917",
+  "topology": "triangle",
+  "polycount": 12000,
+  "lowpoly": false,
+  "pbr": true,
+  "removeLighting": true,
+  "pose": null,
+  "consumed_credits": 150,
+  "balance_after": 2461,
+  "bytes": 9538584,
+  "seconds": 183,
+  "generatedAt": "2026-07-01T22:03:52.798Z"
+}

@@ -277,8 +277,40 @@ export class Player {
     return new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
   }
 
+  /**
+   * GLB viewmodel: the Meshy weapon laid forward down -Z plus a glowing accent at the
+   * business end (the pulse target the attack flash drives). Returns null when the
+   * model didn't load — the caller keeps its procedural build.
+   */
+  private glbWeapon(file: string, color: number, tip: [number, number, number], base: [number, number, number], opts?: { rot?: [number, number, number]; pos?: [number, number, number] }): ModelEntry | null {
+    const m = this.ctx.models.get(file);
+    if (!m) return null;
+    const g = new THREE.Group();
+    if (opts?.rot) m.rotation.set(...opts.rot);
+    else {
+      // auto-orient: lay the longest axis down -Z (Meshy props usually stand upright +Y)
+      const box = new THREE.Box3().setFromObject(m);
+      const d = new THREE.Vector3();
+      box.getSize(d);
+      if (d.y >= d.x && d.y >= d.z) m.rotation.x = -Math.PI / 2;
+      else if (d.x >= d.z) m.rotation.y = Math.PI / 2;
+    }
+    m.position.set(...(opts?.pos ?? [0, 0, -0.45]));
+    g.add(m);
+    const glow = this.glowMat(color);
+    const halo = this.addMat(color);
+    const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.06), glow);
+    gem.position.set(tip[0], tip[1], tip[2] + 0.1);
+    const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(0.1, 0), halo);
+    orb.position.copy(gem.position);
+    g.add(gem, orb);
+    return { group: g, glow: [glow], add: [{ mat: halo, mesh: orb }], tip, base };
+  }
+
   /** boltcaster → a heavy crossbow: stock, recurved prod + string, a glowing loaded bolt. */
   private buildCrossbow(): ModelEntry {
+    const glb = this.glbWeapon("wpn-crossbow", 0xffc24a, [0, 0.09, -1.1], [0, 0.05, -0.2], { rot: [-Math.PI / 2, 0, Math.PI / 2] });
+    if (glb) return glb;
     const g = new THREE.Group();
     const C = 0xffc24a;
     const glow = this.glowMat(C);
@@ -303,6 +335,8 @@ export class Player {
 
   /** greatsword → the steel two-hander: gauntlet, crossguard + quillons, glowing rune blade. */
   private buildGreatsword(): ModelEntry {
+    const glb = this.glbWeapon("wpn-greatsword", 0xff7a2c, [0, 0.02, -1.5], [0, 0.02, -0.25], { rot: [0, -Math.PI / 2, 0], pos: [0, 0, -0.6] });
+    if (glb) return glb;
     const g = new THREE.Group();
     const blade = new THREE.Group();
     const bladeMat = this.glowMat(0xff7a2c, 1.7);
@@ -327,6 +361,8 @@ export class Player {
 
   /** rocketlance → a hand bombard: thick iron barrel, brass bands, flared muzzle, ember bore. */
   private buildBombard(): ModelEntry {
+    const glb = this.glbWeapon("wpn-bombard", 0xff5530, [0, 0.05, -1.0], [0, 0, 0.05], { rot: [0, -Math.PI / 2, 0] });
+    if (glb) return glb;
     const g = new THREE.Group();
     const C = 0xff5530;
     const glow = this.glowMat(C, 2.0);
@@ -345,6 +381,8 @@ export class Player {
 
   /** arclaser → a prism rod: a slim haft tipped with a faceted glowing crystal in steel claws. */
   private buildPrismRod(): ModelEntry {
+    const glb = this.glbWeapon("wpn-prismrod", 0x49f0ff, [0, 0.04, -1.3], [0, 0, 0.1], { pos: [0, 0, -0.55] });
+    if (glb) return glb;
     const g = new THREE.Group();
     const C = 0x49f0ff;
     const glow = this.glowMat(C, 2.4);
@@ -367,6 +405,8 @@ export class Player {
 
   /** stormcaller → a storm staff: a long shaft, a clawed finial cupping a crackling orb. */
   private buildStormStaff(): ModelEntry {
+    const glb = this.glbWeapon("wpn-stormstaff", 0xb46cff, [0, 0.06, -1.3], [0, 0, 0.06], { pos: [0, 0, -0.55] });
+    if (glb) return glb;
     const g = new THREE.Group();
     const C = 0xb46cff;
     const glow = this.glowMat(C, 2.5);

@@ -1,0 +1,19 @@
+{
+  "name": "wpn-crossbow",
+  "prompt": "medieval heavy crossbow, dark oak stock, iron fittings, steel prod, worn engraved metal, game asset",
+  "aiModel": "meshy-6",
+  "character": false,
+  "previewId": "019f1faf-0d98-7c82-8d4f-4613deb329e0",
+  "refineId": "019f1faf-e336-7938-a873-7dd0b0221c21",
+  "topology": "triangle",
+  "polycount": 16000,
+  "lowpoly": false,
+  "pbr": true,
+  "removeLighting": true,
+  "pose": null,
+  "consumed_credits": 240,
+  "balance_after": 2611,
+  "bytes": 10434140,
+  "seconds": 215,
+  "generatedAt": "2026-07-01T22:00:07.865Z"
+}

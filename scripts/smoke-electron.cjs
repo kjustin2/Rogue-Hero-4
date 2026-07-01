@@ -31,6 +31,7 @@ const MIME = {
   ".js": "application/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".json": "application/json; charset=utf-8",
+  ".glb": "model/gltf-binary",
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".woff": "font/woff",

@@ -1,0 +1,42 @@
+{
+  "name": "enm-archer",
+  "prompt": "skeletal archer, tattered hood, weathered bone, cracked leather quiver on back, holding a recurve bone bow in left hand, game asset",
+  "aiModel": "meshy-6",
+  "character": true,
+  "previewId": "019f1fb7-237b-7de0-9fa8-f403b3cb49c8",
+  "refineId": "019f1fb9-2fa9-7781-a819-7c9ee3c4c234",
+  "topology": "quad",
+  "polycount": 12000,
+  "lowpoly": false,
+  "pbr": true,
+  "removeLighting": true,
+  "pose": "t-pose",
+  "consumed_credits": 120,
+  "balance_after": 2341,
+  "bytes": 10950964,
+  "seconds": 220,
+  "generatedAt": "2026-07-01T22:09:03.543Z",
+  "rigTaskId": "019f1fc0-e7f4-78cf-9e96-558ef295d818",
+  "clips": {
+    "walk": {
+      "taskId": "019f1fc1-7f76-7f37-a08b-cb7ce34ca833",
+      "actionId": 112
+    },
+    "attack": {
+      "taskId": "019f1fc1-acdd-78f6-bbde-7537d0355d83",
+      "actionId": 4
+    },
+    "flinch": {
+      "taskId": "019f1fc1-ef3d-7c2f-b6bf-7c25e5bc9261",
+      "actionId": 178
+    },
+    "death": {
+      "taskId": "019f1fc2-1e2e-7c3e-a073-c5e7141e27fa",
+      "actionId": 8
+    },
+    "idle": {
+      "taskId": "019f1fc2-60fa-7912-a5c2-60acc56e87d4",
+      "actionId": 0
+    }
+  }
+}

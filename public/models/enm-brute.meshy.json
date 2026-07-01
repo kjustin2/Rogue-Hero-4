@@ -1,0 +1,42 @@
+{
+  "name": "enm-brute",
+  "prompt": "hulking undead ogre knight, cracked plate armor, spiked pauldrons, blackened iron and dead flesh, massive fists, game asset",
+  "aiModel": "meshy-6",
+  "character": true,
+  "previewId": "019f1fb7-235e-7de0-9874-166d1c24374c",
+  "refineId": "019f1fb9-ff31-77cd-a807-dc28d1e5f6e9",
+  "topology": "quad",
+  "polycount": 12000,
+  "lowpoly": false,
+  "pbr": true,
+  "removeLighting": true,
+  "pose": "t-pose",
+  "consumed_credits": 120,
+  "balance_after": 2341,
+  "bytes": 10694664,
+  "seconds": 310,
+  "generatedAt": "2026-07-01T22:10:33.582Z",
+  "rigTaskId": "019f1fc0-e7c0-791e-8f66-28c7d1058684",
+  "clips": {
+    "walk": {
+      "taskId": "019f1fc2-62f1-7f5a-9e95-8a5116a34a60",
+      "actionId": 119
+    },
+    "attack": {
+      "taskId": "019f1fc2-a5a6-7f62-9191-d7d27232035e",
+      "actionId": 4
+    },
+    "flinch": {
+      "taskId": "019f1fc2-fd47-7934-9bb8-02b8a354fd35",
+      "actionId": 178
+    },
+    "death": {
+      "taskId": "019f1fc3-2ba0-797b-8e99-2392913e97b3",
+      "actionId": 8
+    },
+    "idle": {
+      "taskId": "019f1fc3-8429-7955-b267-c9e71c56c0ca",
+      "actionId": 0
+    }
+  }
+}

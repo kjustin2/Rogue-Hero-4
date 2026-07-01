@@ -1,0 +1,42 @@
+{
+  "name": "enm-ghoul",
+  "prompt": "feral gaunt ghoul, desiccated grey flesh, exposed ribs, long raking claws, hunched, game asset",
+  "aiModel": "meshy-6",
+  "character": true,
+  "previewId": "019f1fb7-237c-7ab3-bb67-fa346f90d412",
+  "refineId": "019f1fb9-2faa-77be-8c6f-113b683d8d36",
+  "topology": "quad",
+  "polycount": 12000,
+  "lowpoly": false,
+  "pbr": true,
+  "removeLighting": true,
+  "pose": "t-pose",
+  "consumed_credits": 120,
+  "balance_after": 2341,
+  "bytes": 11005292,
+  "seconds": 215,
+  "generatedAt": "2026-07-01T22:08:58.135Z",
+  "rigTaskId": "019f1fc0-e7fa-791f-82d6-403eca1487b4",
+  "clips": {
+    "walk": {
+      "taskId": "019f1fc1-561f-7c26-89f2-2eb8348ad843",
+      "actionId": 112
+    },
+    "attack": {
+      "taskId": "019f1fc1-8451-78e8-80af-a9002c373353",
+      "actionId": 4
+    },
+    "flinch": {
+      "taskId": "019f1fc1-dc24-794a-a1f5-165fde9e351e",
+      "actionId": 178
+    },
+    "death": {
+      "taskId": "019f1fc2-09aa-7c30-a214-b919ea4716e9",
+      "actionId": 8
+    },
+    "idle": {
+      "taskId": "019f1fc2-614d-7913-b73a-1e3789edb06e",
+      "actionId": 0
+    }
+  }
+}

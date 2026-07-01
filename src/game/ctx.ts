@@ -4,6 +4,7 @@
  * no runtime import cycles. `main.ts` fills the Ctx during boot.
  */
 import type { Stage } from "../render/stage";
+import type { Models } from "../render/models";
 import type { FpsCamera } from "../render/fpsCamera";
 import type { Particles } from "../render/particles";
 import type { SwordTrail } from "../render/trail";
@@ -24,6 +25,8 @@ import type { Boss } from "./boss";
 
 export interface Ctx {
   stage: Stage;
+  /** Preloaded GLB models (Meshy) — every get() is nullable; callers keep procedural fallbacks. */
+  models: Models;
   cam: FpsCamera;
   input: Input;
   events: EventBus;

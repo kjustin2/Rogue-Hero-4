@@ -1,0 +1,42 @@
+{
+  "name": "enm-husk",
+  "prompt": "risen skeletal footman, rusted scale hauberk, tattered hooded cloak, bone and corroded iron, battle-worn, game asset",
+  "aiModel": "meshy-6",
+  "character": true,
+  "previewId": "019f1fb7-2376-771a-839c-602fe891b764",
+  "refineId": "019f1fb9-8276-7e2a-b1a5-60520c8ebe50",
+  "topology": "quad",
+  "polycount": 12000,
+  "lowpoly": false,
+  "pbr": true,
+  "removeLighting": true,
+  "pose": "t-pose",
+  "consumed_credits": 120,
+  "balance_after": 2341,
+  "bytes": 11005356,
+  "seconds": 279,
+  "generatedAt": "2026-07-01T22:10:02.009Z",
+  "rigTaskId": "019f1fc0-e7c2-78ce-9a53-03919641d20c",
+  "clips": {
+    "walk": {
+      "taskId": "019f1fc1-aa10-78f5-9ed8-9b12ce65e3e7",
+      "actionId": 112
+    },
+    "attack": {
+      "taskId": "019f1fc1-d82b-794a-8fd7-6d22735cba5f",
+      "actionId": 97
+    },
+    "flinch": {
+      "taskId": "019f1fc2-0671-78fe-bac8-0f452ab561f6",
+      "actionId": 178
+    },
+    "death": {
+      "taskId": "019f1fc2-3511-7f56-b09b-f356319c973d",
+      "actionId": 8
+    },
+    "idle": {
+      "taskId": "019f1fc2-77a7-7f5d-aec1-ddc77bed1f83",
+      "actionId": 0
+    }
+  }
+}
