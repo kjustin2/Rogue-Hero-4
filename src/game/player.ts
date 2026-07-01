@@ -143,7 +143,7 @@ function samplePose(keys: SwingKey[], p: number): { pose: Pose; flash: number; s
   return { pose, flash, stretch };
 }
 
-interface ActiveAttack { a: AttackDef; slot: Slot; color: number; pose: PoseId }
+interface ActiveAttack { a: AttackDef; slot: Slot; color: number; pose: PoseId; dmgMult: number }
 
 /** A built first-person weapon model: its group, the emissive/additive bits to pulse on
  * attack, where its tip/base sit (trail + muzzle), and an optional stretch mesh (blade). */
@@ -180,13 +180,21 @@ export class Player {
 
   /** Recent light/heavy casts (combo buffer) — HUD reads this for the chain readout. */
   buffer: Slot[] = [];
+  /** Which weapon cast each buffered attack — a chain that spans a swap earns the SWAP FINISH bonus. */
+  private bufferWeapons: string[] = [];
   cooldowns: { light: number; heavy: number } = { light: 0, heavy: 0 };
   private cur: ActiveAttack | null = null;
   lastCombo = "";
   lastComboT = 0;
   moveAmount = 0;
+  /** Combo momentum 0..1 — fills on combo finishers, decays; full = next heavy free + empowered. */
+  fervor = 0;
+  /** Seconds of held-heavy charge (chargeable weapons); -1 = not charging. */
+  private chargeT = -1;
+  private selfSlow = 0; // brief stagger after a full overcharge release
 
   private moveT = 0;
+  private lastDt = 0.016; // update() dt, reused by the charge draw inside handleActions
   private hitDone = false;
   private bufferTimer = 0;
   private dashTime = 0;
@@ -226,6 +234,11 @@ export class Player {
     this.hp = this.maxHp;
     this.alive = true;
     this.iframes = 0;
+    this.fervor = 0;
+    this.chargeT = -1;
+    this.selfSlow = 0;
+    this.ctx.events.emit("FERVOR", { value: 0 });
+    this.bufferWeapons.length = 0;
     this.buffer.length = 0;
     this.cur = null;
     this.moveT = 0;
@@ -449,10 +462,16 @@ export class Player {
     this.lastComboT = Math.max(0, this.lastComboT - dt);
     this.cooldowns.light = Math.max(0, this.cooldowns.light - dt);
     this.cooldowns.heavy = Math.max(0, this.cooldowns.heavy - dt);
+    this.lastDt = dt;
+    this.selfSlow = Math.max(0, this.selfSlow - dt);
+    if (this.fervor > 0 && this.fervor < 1) {
+      this.fervor = Math.max(0, this.fervor - dt * 0.06);
+      this.ctx.events.emit("FERVOR", { value: this.fervor });
+    }
 
     if (this.buffer.length) {
       this.bufferTimer += dt;
-      if (this.bufferTimer > COMBO_WINDOW) this.buffer.length = 0;
+      if (this.bufferTimer > COMBO_WINDOW) { this.buffer.length = 0; this.bufferWeapons.length = 0; }
     }
 
     if (this.alive && !this.frozen) {
@@ -471,27 +490,69 @@ export class Player {
     const wheel = input.consumeWheelStep();
     if (wheel && this.weapons.length > 1) this.cycleWeapon(wheel > 0 ? 1 : -1);
     if (this.cur) return; // committed to an attack
+
+    // charged heavy: press starts the draw, release fires (1x → chargeMult at full draw).
+    // A same-frame tap releases immediately at ~1x, so quick heavies still feel snappy.
+    const hv = this.weapon.heavy;
+    if (this.chargeT >= 0) {
+      if (input.actionDown("heavy")) {
+        this.chargeT = Math.min(hv.chargeMax, this.chargeT + this.lastDt);
+      } else {
+        const t = hv.chargeMax > 0 ? this.chargeT / hv.chargeMax : 0;
+        const overcharged = t >= 0.999;
+        this.chargeT = -1;
+        if (overcharged) this.selfSlow = 0.5; // full draw staggers you on the release
+        this.startAttack("heavy", 1 + (hv.chargeMult - 1) * t);
+        if (overcharged) this.ctx.cam.addTrauma(0.2);
+      }
+      return;
+    }
     if (input.actionPressed("light") && this.cooldowns.light <= 0) this.startAttack("light");
-    else if (input.actionPressed("heavy") && this.cooldowns.heavy <= 0) this.startAttack("heavy");
+    else if (input.actionPressed("heavy") && this.cooldowns.heavy <= 0) {
+      if (hv.chargeMax > 0) this.chargeT = 0;
+      else this.startAttack("heavy");
+    }
+  }
+
+  /** 0..1 held-heavy draw (HUD + viewmodel glow). */
+  charge01(): number {
+    const hv = this.weapon.heavy;
+    return this.chargeT >= 0 && hv.chargeMax > 0 ? this.chargeT / hv.chargeMax : 0;
+  }
+
+  /** 0..1 dash cooldown remaining (crosshair ring). */
+  dashCd01(): number {
+    return this.dashCd / DASH_CD;
   }
 
   cycleWeapon(dir = 1): void {
     this.wi = (this.wi + dir + this.weapons.length) % this.weapons.length;
     this.cooldowns.light = this.cooldowns.heavy = 0;
-    this.buffer.length = 0;
+    // the combo buffer SURVIVES the swap — chaining into the new weapon's finisher
+    // is the reward for swapping mid-string (SWAP FINISH, 1.25x)
+    this.chargeT = -1;
     this.cur = null;
     this.applyWeaponLook();
     this.ctx.sfx.cardReady();
     this.ctx.events.emit("WEAPON_SWITCH", { id: this.weapon.id, name: this.weapon.name });
   }
 
-  private startAttack(slot: Slot): void {
+  private startAttack(slot: Slot, dmgMult = 1): void {
     const a = this.weapon[slot];
     const pose = poseFor(this.weapon.id, slot, a.type === "melee");
-    this.cur = { a, slot, color: this.weapon.color, pose };
+    // full fervor: the heavy is FREE (no cooldown) and empowered, then the meter resets
+    let fervorFree = false;
+    if (slot === "heavy" && this.fervor >= 1) {
+      fervorFree = true;
+      dmgMult *= 1.5;
+      this.fervor = 0;
+      this.ctx.events.emit("FERVOR", { value: 0 });
+      this.ctx.floaters.spawn(this.pos.x, 1.9, this.pos.z, "FERVOR", "label", "#ffc24a");
+    }
+    this.cur = { a, slot, color: this.weapon.color, pose, dmgMult };
     this.moveT = 0;
     this.hitDone = false;
-    this.cooldowns[slot] = a.cooldown;
+    this.cooldowns[slot] = fervorFree ? 0 : a.cooldown;
   }
 
   private advanceMove(dt: number): void {
@@ -507,6 +568,7 @@ export class Player {
 
   private fireHit(c: ActiveAttack): void {
     const a = c.a;
+    const dmg = a.damage * c.dmgMult;
     const color = c.color;
     this.ctx.cam.worldForward(this.fwd);
     const fx = this.fwd.x, fz = this.fwd.z;
@@ -516,11 +578,11 @@ export class Player {
     const heavy = c.slot === "heavy";
 
     // weapon-feel self-shove: + recoil kicks you BACKWARD (rocket/beam), - lunges you FORWARD (melee)
-    if (a.recoil) { this.kb.x += -fx * a.recoil; this.kb.z += -fz * a.recoil; }
+    if (a.recoil) { this.kb.x += -fx * a.recoil * c.dmgMult; this.kb.z += -fz * a.recoil * c.dmgMult; }
 
     if (a.type === "melee") {
       this.ctx.sfx.meleeSwing(heavy);
-      this.ctx.combat.meleeSweep(this.pos.x, this.pos.z, fx, fz, a.arc, a.range, a.damage, a.knockback, heavy);
+      this.ctx.combat.meleeSweep(this.pos.x, this.pos.z, fx, fz, a.arc, a.range, dmg, a.knockback, heavy);
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.5 : 0.2);
       const reach = a.range * 0.55;
       const sx = this.pos.x + fx * reach, sz = this.pos.z + fz * reach;
@@ -543,7 +605,7 @@ export class Player {
     } else if (a.mode === "laser") {
       // instant hitscan beam down the look ray
       this.ctx.sfx.boltCast();
-      this.ctx.combat.beam(this.pos.x, this.pos.z, fx, fz, a.beamRange, a.beamWidth, a.damage, a.knockback, color);
+      this.ctx.combat.beam(this.pos.x, this.pos.z, fx, fz, a.beamRange, a.beamWidth, dmg, a.knockback, color);
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
       this.muzzleFx(color, heavy);
     } else if (a.mode === "airstrike") {
@@ -554,7 +616,7 @@ export class Player {
         const ang = this.ctx.rng.range(0, Math.PI * 2);
         // scatter multi-strikes on a wide ring so they pepper a zone instead of stacking on one spot
         const r = a.strikeCount > 1 ? a.strikeRadius * (1.0 + this.ctx.rng.range(0, 0.8)) : 0;
-        this.ctx.combat.scheduleStrike(cx + Math.cos(ang) * r, cz + Math.sin(ang) * r, a.strikeRadius, a.damage, a.strikeDelay, color, a.knockback);
+        this.ctx.combat.scheduleStrike(cx + Math.cos(ang) * r, cz + Math.sin(ang) * r, a.strikeRadius, dmg, a.strikeDelay, color, a.knockback);
       }
       this.ctx.cam.kick(-fx, -fz, 0.15);
       this.muzzleFx(color, heavy);
@@ -574,7 +636,7 @@ export class Player {
         const ca = Math.cos(off), sa = Math.sin(off);
         this.dir.set(this.aim.x * ca - this.aim.z * sa, this.aim.y, this.aim.x * sa + this.aim.z * ca);
         if (a.gravity > 0) this.dir.y += 0.5; // mortar: launch upward, then arc down
-        this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.dir, a.speed, a.damage, true, color, a.knockback, opts);
+        this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.dir, a.speed, dmg, true, color, a.knockback, opts);
       }
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
       this.muzzleFx(color, heavy);
@@ -582,15 +644,23 @@ export class Player {
 
     // record the attack + test the combo for THIS weapon (fired forward from the player)
     this.buffer.push(c.slot);
-    if (this.buffer.length > BUFFER_MAX) this.buffer.shift();
+    this.bufferWeapons.push(this.weapon.id);
+    if (this.buffer.length > BUFFER_MAX) { this.buffer.shift(); this.bufferWeapons.shift(); }
     this.bufferTimer = 0;
 
     const combo = matchWeaponCombo(this.buffer, this.weapon);
     if (combo) {
-      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, this.aim, a.damage);
+      // a chain that spans a weapon swap finishes 1.25x harder — the swap reward
+      const swapped = this.bufferWeapons.some((id) => id !== this.weapon.id);
+      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, this.aim, a.damage * (swapped ? 1.25 : 1));
+      if (swapped) this.ctx.floaters.spawn(this.pos.x, 2.1, this.pos.z, "SWAP FINISH", "label", "#ffc24a");
       this.lastCombo = combo.name;
       this.lastComboT = 2.4;
       this.buffer.length = 0;
+      this.bufferWeapons.length = 0;
+      // fervor builds on every finisher; at full the next heavy is free + empowered
+      this.fervor = Math.min(1, this.fervor + 0.34);
+      this.ctx.events.emit("FERVOR", { value: this.fervor });
     }
   }
 
@@ -651,6 +721,8 @@ export class Player {
     if (this.dashTime > 0) {
       this.dashTime -= dt;
       this.vel.copy(this.dashDir).multiplyScalar(DASH_SPEED);
+      // after-image streak — sells the burst of speed
+      this.ctx.fx.burst({ x: this.pos.x, y: 0.9, z: this.pos.z, count: 2, color: 0xffd9a0, speed: [0.2, 1], size: [0.2, 0.45], life: [0.14, 0.3], gravity: 0, drag: 5 });
     } else {
       const mv = this.ctx.input.moveVector();
       this.ctx.cam.worldForward(this.fwd);
@@ -664,7 +736,8 @@ export class Player {
       const len = Math.hypot(this.vel.x, this.vel.z);
       if (len > 1) this.vel.multiplyScalar(1 / len);
       let speed = WALK_SPEED;
-      if (this.cur) speed *= this.weapon.moveMult; // committing to an attack sets your mobility (weapon identity)
+      if (this.cur || this.chargeT >= 0) speed *= this.weapon.moveMult; // committing (or drawing a charge) sets your mobility
+      if (this.selfSlow > 0) speed *= 0.55; // overcharge stagger
       this.vel.multiplyScalar(this.alive ? speed : 0);
     }
     this.pos.addScaledVector(this.vel, dt);
@@ -692,6 +765,12 @@ export class Player {
       pose[1] += -this.moveAmount * 0.03;
       pose[2] += this.moveAmount * 0.04 * Math.sin(t * 11);
       pose[3] += Math.sin(t * 1.3) * 0.02;
+      const ch = this.charge01();
+      if (ch > 0) {
+        flash = ch * 5; // the draw glows brighter as it fills
+        pose[2] += ch * 0.14; // pulled back into the shoulder
+        pose[0] += Math.sin(t * 40) * ch * 0.01; // full-draw tremble
+      }
     } else {
       const p = clamp(this.moveT / attackDuration(c.a), 0, 1);
       const s = samplePose(SWINGS[c.pose], p);

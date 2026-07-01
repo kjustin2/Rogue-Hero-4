@@ -42,6 +42,9 @@ export interface AttackDef {
   // laser (hitscan): beam half-width + reach
   beamWidth: number;
   beamRange: number;
+  /** >0 → the heavy can be HELD: damage/recoil scale up to chargeMult over chargeMax seconds. */
+  chargeMax: number;
+  chargeMult: number;
   // airstrike: N strikes, each radius, fired this far ahead, after this delay
   strikeCount: number;
   strikeRadius: number;
@@ -81,7 +84,7 @@ const BASE: AttackDef = {
   mode: "bolt", type: "projectile", damage: 10, knockback: 3, recoil: 0,
   windup: 0.05, active: 0.05, recovery: 0.08, cooldown: 0.2,
   arc: 0, range: 0, speed: 38, pellets: 1, spread: 0, big: false, pierce: false, shape: "comet",
-  explodeRadius: 0, gravity: 0, beamWidth: 0, beamRange: 0,
+  explodeRadius: 0, gravity: 0, beamWidth: 0, beamRange: 0, chargeMax: 0, chargeMult: 1,
   strikeCount: 0, strikeRadius: 0, strikeRange: 0, strikeDelay: 0,
 };
 function bolt(o: Partial<AttackDef> & { damage: number; cooldown: number }): AttackDef {
@@ -119,7 +122,7 @@ export const WEAPONS: WeaponDef[] = [
     // the one melee — roots you mid-swing but LUNGES you into range; heavy hits, shockwaves
     id: "greatsword", name: "EMBER GREATSWORD", kind: "melee", color: EMBER, moveMult: 0.4,
     light: melee({ damage: 13, cooldown: 0.22, arc: 1.9, range: 3.3, active: 0.12, recovery: 0.07, knockback: 4, recoil: -5 }),
-    heavy: melee({ damage: 28, cooldown: 0.55, arc: 2.8, range: 3.9, windup: 0.1, active: 0.18, recovery: 0.15, knockback: 12, recoil: -9 }),
+    heavy: melee({ damage: 28, cooldown: 0.55, arc: 2.8, range: 3.9, windup: 0.1, active: 0.18, recovery: 0.15, knockback: 12, recoil: -9, chargeMax: 0.9, chargeMult: 2.0 }),
     combos: [
       { name: "SUNDERSTRIKE", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.6, effect: "slam", radius: 5.0, color: EMBER },
       { name: "EARTHSHAKER", recipe: ["heavy", "heavy"], tier: 2, damageMult: 2.2, effect: "slam", radius: 6.5, color: 0xffd24a },
@@ -131,7 +134,7 @@ export const WEAPONS: WeaponDef[] = [
     id: "rocketlance", name: "HAND BOMBARD", kind: "projectile", color: RED, moveMult: 0.6,
     // light: a flat-fired iron shell, small blast. heavy: a lobbed MORTAR that arcs + big blast.
     light: rocket({ damage: 16, cooldown: 0.5, explodeRadius: 3.4, speed: 30 }),
-    heavy: rocket({ damage: 36, cooldown: 1.05, explodeRadius: 6.0, speed: 22, gravity: 26, windup: 0.2, recovery: 0.18, knockback: 12, recoil: 16 }),
+    heavy: rocket({ damage: 36, cooldown: 1.05, explodeRadius: 6.0, speed: 22, gravity: 26, windup: 0.2, recovery: 0.18, knockback: 12, recoil: 16, chargeMax: 0.9, chargeMult: 1.8 }),
     combos: [
       { name: "CANNONADE", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 1.8, effect: "rocketvolley", radius: 3.6, color: RED },
       { name: "SIEGEBREAKER", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.2, effect: "rocketvolley", radius: 4.6, color: RED },
@@ -142,7 +145,7 @@ export const WEAPONS: WeaponDef[] = [
     id: "arclaser", name: "PRISM ROD", kind: "projectile", color: CYAN, moveMult: 0.5,
     // light: a quick thin zap. heavy: a slow-charged WIDE lance-beam you can feel wind up.
     light: laser({ damage: 13, cooldown: 0.26, beamWidth: 0.8, beamRange: 46, windup: 0.04 }),
-    heavy: laser({ damage: 34, cooldown: 1.0, beamWidth: 3.0, beamRange: 56, windup: 0.32, recovery: 0.2, knockback: 6, recoil: 8 }),
+    heavy: laser({ damage: 34, cooldown: 1.0, beamWidth: 3.0, beamRange: 56, windup: 0.32, recovery: 0.2, knockback: 6, recoil: 8, chargeMax: 0.9, chargeMult: 2.0 }),
     combos: [
       { name: "RADIANT LANCE", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.0, effect: "megabeam", radius: 3.2, color: CYAN },
       { name: "PRISM WRATH", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.4, effect: "megabeam", radius: 4.2, color: CYAN },

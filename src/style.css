@@ -78,6 +78,29 @@ html, body {
 #crosshair.weak span:nth-child(3) { border-left-color: #ffd24a; }
 #crosshair.weak span:nth-child(4) { border-right-color: #ffd24a; }
 
+/* dash cooldown: a thin conic ring around the reticle that refills as the dash returns */
+#dashring { position: absolute; left: 50%; top: 50%; width: 46px; height: 46px; transform: translate(-50%, -50%);
+  border-radius: 50%; opacity: 0; transition: opacity 0.15s;
+  -webkit-mask: radial-gradient(circle, transparent 20px, #000 21px); mask: radial-gradient(circle, transparent 20px, #000 21px); }
+
+/* damage direction: a red arc on a screen-centered wheel, rotated toward the attacker */
+#dmgdir { position: absolute; left: 50%; top: 50%; width: min(46vh, 420px); height: min(46vh, 420px);
+  transform: translate(-50%, -50%); opacity: 0; pointer-events: none; }
+#dmgdir::before { content: ""; position: absolute; left: 50%; top: -6px; transform: translateX(-50%);
+  width: 120px; height: 26px; border-radius: 50% 50% 0 0;
+  background: radial-gradient(60% 100% at 50% 100%, transparent 40%, rgba(255, 43, 51, 0.85) 100%);
+  filter: blur(1px); }
+
+/* fervor: combo momentum — at full the next heavy is free + empowered */
+#fervor { position: relative; width: 200px; height: 7px; border: 1px solid rgba(255, 194, 74, 0.35);
+  border-radius: 4px; background: rgba(20, 12, 6, 0.6); opacity: 0; transition: opacity 0.3s; }
+#fervor .fv-fill { height: 100%; width: 0%; border-radius: 4px;
+  background: linear-gradient(90deg, #b8641e, #ffc24a); transition: width 0.12s linear; }
+#fervor .fv-lbl { position: absolute; right: -58px; top: -3px; font-size: 10px; letter-spacing: 0.22em;
+  color: rgba(255, 194, 74, 0.75); }
+#fervor.full { box-shadow: 0 0 14px rgba(255, 194, 74, 0.8); animation: fervor-throb 0.8s ease-in-out infinite; }
+@keyframes fervor-throb { 0%, 100% { filter: brightness(1); } 50% { filter: brightness(1.5); } }
+
 #boss-bar { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); width: min(620px, 64vw); text-align: center; opacity: 0; transition: opacity 0.4s ease; }
 .boss-name { font-family: var(--font-display); font-size: 18px; letter-spacing: 4px; color: #9ff0e4; text-shadow: 0 0 14px rgba(79, 224, 208, 0.6); margin-bottom: 6px; }
 .boss-track { height: 12px; border: 1px solid rgba(120, 224, 208, 0.5); border-radius: 7px; background: rgba(8, 18, 16, 0.7); overflow: hidden; }

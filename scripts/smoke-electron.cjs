@@ -238,7 +238,9 @@ app.whenReady().then(async () => {
       const hpHealed = await js(`window.__rh4.player.hp`);
       expect(hpHealed > hpLow, `health shard did not heal (${hpLow} -> ${hpHealed})`);
 
-      // --- clear the wave → the gate opens
+      // --- clear the wave → the gate opens (drain the director's remaining budget
+      // first, or it would keep trickling reinforcements — by design)
+      await js(`window.__rh4debug.drainWave()`);
       await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
       await frames(10);
       expect(await js(`window.__rh4.level.gates[0].open === true`), "gate did not open after clearing the wave");
@@ -285,6 +287,47 @@ app.whenReady().then(async () => {
       await fire("stormcaller", "atk-storm-light", ["KeyJ"], 20, 16);             // single called strike
       await fire("stormcaller", "atk-storm-heavy", ["KeyK"], 24, 18);             // 3-strike barrage
       await fire("stormcaller", "atk-storm-combo", ["KeyJ", "KeyJ", "KeyK"], 28, 18); // TEMPEST cluster
+
+      // ---------- phase-4 combat depth: charge, fervor, swap combo, elite ----------
+      // charged heavy: holding RMB fills the draw; releasing fires and clears it
+      await equip("greatsword");
+      await key("KeyK", "keydown");
+      await frames(14);
+      const drawn = await js(`window.__rh4.player.charge01()`);
+      expect(drawn > 0.3, `held heavy did not charge (charge01=${drawn})`);
+      await shot(win, "charged-heavy");
+      await key("KeyK", "keyup");
+      await frames(4);
+      expect((await js(`window.__rh4.player.charge01()`)) === 0, "charge did not clear on release");
+
+      // fervor: at full, the next heavy consumes the meter (free + empowered)
+      await frames(24); // let the charged heavy's cooldown expire first
+      await js(`window.__rh4.player.fervor = 1`);
+      await tap("KeyK");
+      await frames(30);
+      // consumed to 0 — the empowered heavy may itself finish a combo and refill +0.34
+      const fervorAfter = await js(`window.__rh4.player.fervor`);
+      expect(fervorAfter < 0.5, `full fervor was not consumed by the heavy (still ${fervorAfter})`);
+
+      // swap combo: L,L on the greatsword then swap → L on the boltcaster finishes
+      // ARROWSTORM across the swap (the buffer survives cycleWeapon)
+      await frames(30); // let cooldowns settle
+      await tap("KeyJ"); await frames(11);
+      await tap("KeyJ"); await frames(11);
+      await equip("boltcaster");
+      await tap("KeyJ"); await frames(8);
+      expect((await js(`window.__rh4.player.lastCombo`)) === "ARROWSTORM", "swap combo did not resolve ARROWSTORM");
+
+      // elite: promoted enemy is tougher and always drops a shard on death
+      await js(`{const p=window.__rh4.player; const e=window.__rh4debug.spawn('husk', 0, p.pos.z + 8); e.makeElite('frenzied'); 0;}`);
+      await frames(2);
+      const eliteHp = await js(`window.__rh4.enemies.living()[0]?.maxHp ?? 0`);
+      expect(eliteHp > 60, `elite husk should have ~75 hp (got ${eliteHp})`);
+      await shot(win, "elite");
+      await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
+      await frames(60); // death anim + guaranteed shard drop
+      expect(await js(`window.__rh4.pickups.count() > 0 || window.__rh4.player.shards > 0`), "elite kill did not drop a shard");
+      await js(`window.__rh4.enemies.clear()`);
 
       // ---------- enemy telegraph + hit-reaction pass (fairness/juice) ----------
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0); p.hp=p.maxHp;}`);

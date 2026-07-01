@@ -25,6 +25,10 @@ export interface Hittable {
   hitTop?: number;
   /** True if (x,y,z) lands inside this thing's weak point (boss core). */
   isWeakHit?(x: number, y: number, z: number): boolean;
+  /** Optional incoming-damage hook (shielded elites reduce frontal hits). */
+  modifyIncoming?(dmg: number, opts: HitOpts): number;
+  /** Elite tag — killed elites always drop a shard. */
+  elite?: string | null;
   /** Returns true if this hit killed it. */
   takeDamage(dmg: number, opts: HitOpts): boolean;
 }
@@ -82,6 +86,7 @@ export class Combat {
     const isBoss = t.kind === "boss";
     // Boss body is armored — chip damage unless you land the core (vertical aim matters).
     if (isBoss && !weak) dmg *= 0.45;
+    if (t.modifyIncoming) dmg = t.modifyIncoming(dmg, opts);
     dmg = Math.max(1, Math.round(dmg));
     const killed = t.takeDamage(dmg, opts);
     const heavy = !!opts.heavy;
@@ -103,7 +108,7 @@ export class Combat {
     this.ctx.cam.addTrauma(crit ? 0.22 : 0.08);
     if (crit) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.05);
     if (killed) {
-      this.ctx.events.emit("KILL", { x: t.pos.x, z: t.pos.z, kind: t.kind });
+      this.ctx.events.emit("KILL", { x: t.pos.x, z: t.pos.z, kind: t.kind, elite: !!t.elite });
       this.ctx.fx.burst({
         x: t.pos.x, y: 1.1, z: t.pos.z, count: 26, color: t.hitColor,
         speed: [5, 14], size: [0.14, 0.4], life: [0.3, 0.7], gravity: -3,
@@ -286,6 +291,7 @@ export class Combat {
       // rewards you — impact freeze, glyph cooldowns refunded for an instant counter.
       this.ctx.events.emit("DODGE", {});
       this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.1);
+      this.ctx.slowmo = Math.max(this.ctx.slowmo, 0.35); // the world hangs — counterattack window
       this.ctx.cam.pulseFov(0.22);
       this.ctx.floaters.spawn(p.pos.x, 1.9, p.pos.z, "PERFECT", "label", "#ffc24a");
       this.ctx.sfx.critical();

@@ -33,13 +33,23 @@ const KIND: Record<EnemyKind, KindCfg> = {
   archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: PAL.soulfire, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
 };
 
-// Waves, one per gate (see level.ts GATES_Z). Cleared → the gate opens. Escalating:
-// fodder + rushers → a ranged line + lungers → an elite brute with a full support pack.
-const WAVES: { kind: EnemyKind; count: number }[][] = [
-  [{ kind: "husk", count: 3 }, { kind: "ghoul", count: 2 }, { kind: "wraith", count: 1 }],
-  [{ kind: "husk", count: 3 }, { kind: "spitter", count: 2 }, { kind: "archer", count: 2 }, { kind: "wraith", count: 2 }, { kind: "ghoul", count: 2 }],
-  [{ kind: "brute", count: 1 }, { kind: "wraith", count: 2 }, { kind: "spitter", count: 2 }, { kind: "archer", count: 2 }, { kind: "ghoul", count: 3 }, { kind: "husk", count: 2 }],
+// Elite modifiers — a data catalog, rolled by the spawn director on gate 2+.
+export type EliteKind = "shielded" | "frenzied" | "bursting";
+const ELITE_NAMES: Record<EliteKind, string> = { shielded: "SHIELDED", frenzied: "FRENZIED", bursting: "BURSTING" };
+const ELITE_KINDS: EliteKind[] = ["shielded", "frenzied", "bursting"];
+const crownMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: 0xffc24a, emissiveIntensity: 2.2, roughness: 0.3, metalness: 0.4 });
+crownMat.userData.shared = true;
+
+// Spawn-director budgets, one per gate (replaces the old fixed wave tables): each
+// wave spends `budget` on a weighted pack, trickling reinforcements while under
+// `cap` — pacing reads the player (dominating → pour it on, hurting → ease off).
+interface GateWaveCfg { budget: number; cap: number; eliteChance: number; pack: [EnemyKind, number][] }
+const GATE_WAVES: GateWaveCfg[] = [
+  { budget: 12, cap: 5, eliteChance: 0, pack: [["husk", 3], ["ghoul", 2], ["wraith", 1]] },
+  { budget: 22, cap: 6, eliteChance: 0.2, pack: [["husk", 3], ["spitter", 2], ["archer", 2], ["wraith", 2], ["ghoul", 2]] },
+  { budget: 34, cap: 7, eliteChance: 0.28, pack: [["brute", 2], ["wraith", 2], ["spitter", 2], ["archer", 2], ["ghoul", 3], ["husk", 2]] },
 ];
+const COST: Record<EnemyKind, number> = { husk: 2, ghoul: 2, wraith: 3, spitter: 3, archer: 3, brute: 6 };
 
 let NEXT_ID = 1;
 const SHOT_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
@@ -54,6 +64,11 @@ export class Enemy implements Hittable {
   alive = true;
   kind: EnemyKind;
   hitColor: number;
+  elite: EliteKind | null = null;
+  private speedMult = 1;
+  private baseScale = 1;
+  private crown?: THREE.Mesh;
+  private burstT = -1; // bursting elite: fuse after death (-1 = none)
 
   private state: "approach" | "windup" | "recover" | "lunge" = "approach";
   private timer = 0;
@@ -119,6 +134,12 @@ export class Enemy implements Hittable {
     this.atkCharge = 0; this.atkLunge = 0;
     this.moveAmt = 0; this.vt = 0;
     this.kb.set(0, 0, 0);
+    this.elite = null;
+    this.speedMult = 1;
+    this.baseScale = 1;
+    this.burstT = -1;
+    if (this.crown) this.crown.visible = false;
+    this.radius = this.cfg.radius;
     this.coreMat.emissiveIntensity = 1.6;
     this.group.visible = true;
     this.group.scale.setScalar(1);
@@ -152,6 +173,38 @@ export class Enemy implements Hittable {
     return this.moveAmt > 0.22 ? { label: "walk", once: false } : { label: "idle", once: false };
   }
 
+  /** Promote to an elite: bigger, 2.5x hp, a gold crown, one twist per kind. */
+  makeElite(kind: EliteKind): void {
+    this.elite = kind;
+    this.hp = this.maxHp = Math.round(this.cfg.hp * 2.5);
+    this.baseScale = 1.3;
+    this.radius = this.cfg.radius * 1.25;
+    if (kind === "frenzied") this.speedMult = 1.45;
+    this.group.scale.setScalar(this.baseScale);
+    if (!this.crown) {
+      this.crown = new THREE.Mesh(new THREE.OctahedronGeometry(0.22), crownMat);
+      this.group.add(this.crown);
+    }
+    // hover the crown above whatever body this kind has
+    this.crown.position.set(0, this.kind === "brute" ? 3.6 : 2.3 - this.cfg.bodyY, 0);
+    this.crown.visible = true;
+    this.ctx.floaters.spawn(this.pos.x, this.cfg.bodyY + 2.2, this.pos.z, ELITE_NAMES[kind], "label", "#ffc24a");
+  }
+
+  /** Damage-funnel hook: a shielded elite shrugs off frontal hits — flank it. */
+  modifyIncoming(dmg: number, opts: HitOpts): number {
+    if (this.elite !== "shielded" || opts.fromX === undefined || opts.fromZ === undefined) return dmg;
+    const fy = this.group.rotation.y; // facing (toward the player, usually)
+    const hx = opts.fromX - this.pos.x, hz = opts.fromZ - this.pos.z;
+    const d = Math.hypot(hx, hz) || 1;
+    const frontal = (hx / d) * Math.sin(fy) + (hz / d) * Math.cos(fy) > 0.25;
+    if (frontal) {
+      this.ctx.fx.burst({ x: this.pos.x, y: this.cfg.bodyY + 1.3, z: this.pos.z, count: 6, color: 0xcfd6e4, speed: [2, 5], size: [0.08, 0.2], life: [0.1, 0.25] });
+      return dmg * 0.3;
+    }
+    return dmg;
+  }
+
   /** Hide + deactivate, keeping mesh in-scene (shaders stay warm) for pool reuse. */
   park(): void {
     this.tele?.cancel(); this.tele = null;
@@ -176,6 +229,10 @@ export class Enemy implements Hittable {
       this.alive = false;
       this.dying = true;
       this.tele?.cancel();
+      if (this.elite === "bursting") {
+        this.burstT = 0.7;
+        this.ctx.tele.circle(this.pos.x, this.pos.z, 3.6, 0.7, PAL.threat);
+      }
       return true;
     }
     // hit-reaction stagger: a solid hit CANCELS a winding-up attack — the payoff for
@@ -201,9 +258,22 @@ export class Enemy implements Hittable {
     // ponytail: charge glow capped lower (2.0, was 3.5) — a clustered pack winding up at 5x emissive bloomed to a full-white frame
     this.coreMat.emissiveIntensity = 1.6 + this.flash * 4 + this.atkCharge * 2.0;
     if (this.core) { this.core.rotation.y += dt * 2.2; this.core.rotation.x += dt * 1.4; }
+    if (this.crown?.visible) this.crown.rotation.y += dt * 3;
 
     if (this.dying) {
       this.deathT += dt;
+      if (this.burstT > 0) {
+        this.burstT -= dt;
+        if (this.burstT <= 0) {
+          // the bursting elite detonates — telegraphed at death, dodgeable
+          const p = this.ctx.player;
+          this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 3.6, color: PAL.threat, duration: 0.4, y: 0.3 });
+          this.ctx.fx.burst({ x: this.pos.x, y: 1, z: this.pos.z, count: 30, color: [PAL.threat, 0xffffff], speed: [5, 14], up: 0.8, life: [0.3, 0.6] });
+          this.ctx.sfx.explosion();
+          this.ctx.cam.addTrauma(0.2);
+          if (Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z) <= 3.6) this.ctx.combat.damagePlayer(20, this.pos.x, this.pos.z);
+        }
+      }
       if (this.rigged) {
         const want = this.desiredClip();
         this.playClip(want.label, want.once);
@@ -265,8 +335,16 @@ export class Enemy implements Hittable {
     const cfg = this.cfg;
     if (this.state === "approach") {
       if (dist > cfg.attackRange) {
-        this.pos.x += nx * cfg.speed * dt;
-        this.pos.z += nz * cfg.speed * dt;
+        // ghouls flank: their approach bends into a curving arc that straightens close-in
+        let mx = nx, mz = nz;
+        if (this.kind === "ghoul" && dist > 5) {
+          const bend = (this.id % 2 === 0 ? 1 : -1) * 0.8 * Math.min(1, (dist - 5) / 12);
+          const cb = Math.cos(bend), sb = Math.sin(bend);
+          mx = nx * cb - nz * sb;
+          mz = nx * sb + nz * cb;
+        }
+        this.pos.x += mx * cfg.speed * this.speedMult * dt;
+        this.pos.z += mz * cfg.speed * this.speedMult * dt;
       } else {
         this.state = "windup";
         this.timer = cfg.windup;
@@ -290,7 +368,7 @@ export class Enemy implements Hittable {
         if (dist <= cfg.attackRange + 0.8) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
         if (heavy) this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: cfg.attackRange, color: cfg.color, duration: 0.3 });
         this.state = "recover";
-        this.timer = this.kind === "brute" ? 0.9 : 0.4;
+        this.timer = (this.kind === "brute" ? 0.9 : 0.4) / this.speedMult;
         this.tele = null;
       }
     } else {
@@ -326,9 +404,16 @@ export class Enemy implements Hittable {
       if (this.timer <= 0) this.state = "approach";
     }
 
-    // keep mid-range
-    if (dist < 8) { this.pos.x -= nx * cfg.speed * dt; this.pos.z -= nz * cfg.speed * dt; }
-    else if (dist > cfg.attackRange) { this.pos.x += nx * cfg.speed * dt; this.pos.z += nz * cfg.speed * dt; }
+    // keep mid-range; in the band, strafe perpendicular so the ranged line drifts
+    // apart and flanks instead of stacking into one lane
+    const sp = cfg.speed * this.speedMult;
+    if (dist < 8) { this.pos.x -= nx * sp * dt; this.pos.z -= nz * sp * dt; }
+    else if (dist > cfg.attackRange) { this.pos.x += nx * sp * dt; this.pos.z += nz * sp * dt; }
+    else {
+      const sdir = this.id % 2 === 0 ? 1 : -1;
+      this.pos.x += -nz * sdir * sp * 0.45 * dt;
+      this.pos.z += nx * sdir * sp * 0.45 * dt;
+    }
 
     this.fireTimer -= dt;
     if (this.state === "approach" && this.fireTimer <= 0 && dist < cfg.attackRange + 2) {
@@ -346,8 +431,8 @@ export class Enemy implements Hittable {
     const cfg = this.cfg;
     if (this.state === "approach") {
       if (dist > cfg.attackRange) {
-        this.pos.x += nx * cfg.speed * 0.7 * dt;
-        this.pos.z += nz * cfg.speed * 0.7 * dt;
+        this.pos.x += nx * cfg.speed * this.speedMult * 0.7 * dt;
+        this.pos.z += nz * cfg.speed * this.speedMult * 0.7 * dt;
       } else {
         this.state = "windup";
         this.timer = cfg.windup;
@@ -366,8 +451,8 @@ export class Enemy implements Hittable {
     } else if (this.state === "lunge") {
       this.timer -= dt;
       this.atkLunge = 1; // stay stretched through the dash
-      this.pos.x += this.lungeDir.x * 42 * dt;
-      this.pos.z += this.lungeDir.z * 42 * dt;
+      this.pos.x += this.lungeDir.x * 42 * this.speedMult * dt;
+      this.pos.z += this.lungeDir.z * 42 * this.speedMult * dt;
       // streak trail behind the blur
       this.ctx.fx.burst({ x: this.pos.x, y: 0.8, z: this.pos.z, count: 2, color: cfg.color, speed: [0.5, 2], size: [0.16, 0.36], life: [0.12, 0.28], gravity: 0, drag: 4 });
       if (!this.didHit && dist < this.radius + this.ctx.player.radius + 0.8) {
@@ -394,7 +479,7 @@ export class Enemy implements Hittable {
     // bob grows with movement so a charging wight reads as striding, not gliding
     const bob = Math.sin(this.vt * (2.5 + this.moveAmt * 3) + this.id) * (0.1 + this.moveAmt * 0.14);
     this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + bob, this.pos.z + nz * fwd);
-    this.group.scale.setScalar(1 + this.atkCharge * 0.14 - this.atkLunge * 0.12 - this.flinch * 0.1);
+    this.group.scale.setScalar(this.baseScale * (1 + this.atkCharge * 0.14 - this.atkLunge * 0.12 - this.flinch * 0.1));
     if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
     // lean into the advance (toward the player), faint living sway, recoil on strike, snap back on a hit
     this.group.rotation.x = this.moveAmt * 0.17 - this.atkLunge * 0.1 - this.flinch * 0.4;
@@ -429,20 +514,54 @@ export class EnemyManager {
   // parked instances per kind — reused instead of rebuilt (meshes stay in-scene, shaders warm)
   private parked: Record<EnemyKind, Enemy[]> = { husk: [], spitter: [], brute: [], wraith: [], ghoul: [], archer: [] };
   private live: Enemy[] = []; // living() scratch — refilled every call, never retained
+  // spawn-director state for the active gate wave
+  private waveCfg: GateWaveCfg | null = null;
+  private waveBudget = 0;
+  private waveGate = 0;
+  private waveElite = false;
+  private trickleT = 0;
 
   constructor(private ctx: Ctx) {}
 
+  /** Arm the director for a gate: spend part of the budget up front, trickle the rest. */
   spawnWave(gateIndex: number): void {
-    const wave = WAVES[gateIndex];
-    if (!wave) return;
-    const z0 = GATES_Z[gateIndex] - 22;
-    const z1 = GATES_Z[gateIndex] - 6;
-    for (const entry of wave) {
-      for (let i = 0; i < entry.count; i++) {
-        const x = this.ctx.rng.range(-HALF_WIDTH + 2, HALF_WIDTH - 2);
-        const z = this.ctx.rng.range(z0, z1);
-        this.spawn(entry.kind, x, z);
-      }
+    const cfg = GATE_WAVES[Math.min(gateIndex, GATE_WAVES.length - 1)];
+    this.waveCfg = cfg;
+    this.waveBudget = cfg.budget;
+    this.waveGate = gateIndex;
+    this.waveElite = gateIndex >= 1; // elites only past the first gate
+    this.trickleT = 0;
+    const burst = Math.min(cfg.cap, 4);
+    for (let i = 0; i < burst && this.waveBudget > 0; i++) this.directorSpawn();
+  }
+
+  /** Test seam: dump the remaining wave budget (smoke fast-forwards a gate). */
+  drainBudget(): void {
+    this.waveBudget = 0;
+  }
+
+  /** All budget spent AND the field cleared — the gate may open. */
+  waveDone(): boolean {
+    return this.waveBudget <= 0 && this.aliveCount() === 0;
+  }
+
+  private directorSpawn(): void {
+    const cfg = this.waveCfg;
+    if (!cfg || this.waveBudget <= 0) return;
+    // weighted pick among what the remaining budget can afford
+    const affordable = cfg.pack.filter(([k]) => COST[k] <= this.waveBudget);
+    if (!affordable.length) { this.waveBudget = 0; return; }
+    let total = 0;
+    for (const [, w] of affordable) total += w;
+    let roll = this.ctx.rng.range(0, total);
+    let kind = affordable[0][0];
+    for (const [k, w] of affordable) { roll -= w; if (roll <= 0) { kind = k; break; } }
+    this.waveBudget -= COST[kind];
+    const x = this.ctx.rng.range(-HALF_WIDTH + 2, HALF_WIDTH - 2);
+    const z = this.ctx.rng.range(GATES_Z[this.waveGate] - 22, GATES_Z[this.waveGate] - 6);
+    const e = this.spawn(kind, x, z);
+    if (this.waveElite && this.ctx.rng.next() < cfg.eliteChance) {
+      e.makeElite(ELITE_KINDS[this.ctx.rng.int(0, ELITE_KINDS.length - 1)]);
     }
   }
 
@@ -471,9 +590,22 @@ export class EnemyManager {
   clear(): void {
     for (const e of this.list) { e.park(); this.parked[e.kind].push(e); }
     this.list.length = 0;
+    this.waveCfg = null;
+    this.waveBudget = 0;
   }
 
   update(dt: number): void {
+    // director trickle: pour on reinforcements while under cap — the cap reads the
+    // player (healthy → +1 pressure, hurting → back off two)
+    if (this.waveCfg && this.waveBudget > 0) {
+      this.trickleT -= dt;
+      const hpFrac = this.ctx.player.hp / this.ctx.player.maxHp;
+      const cap = this.waveCfg.cap + (hpFrac > 0.7 ? 1 : hpFrac < 0.35 ? -2 : 0);
+      if (this.trickleT <= 0 && this.aliveCount() < cap) {
+        this.directorSpawn();
+        this.trickleT = 0.5;
+      }
+    }
     for (const e of this.list) e.tick(dt);
     this.separate();
     // reap finished death animations back into the pool

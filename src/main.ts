@@ -66,6 +66,7 @@ ctx.player = new Player(ctx);
 ctx.boss = new Boss(ctx);
 ctx.playing = false;
 ctx.hitstop = 0;
+ctx.slowmo = 0;
 
 // The weapon viewmodel is parented to the camera, so the camera must live in the
 // scene graph for its children to render.
@@ -100,7 +101,7 @@ ctx.events.on("KILL", (e) => {
   streak++;
   streakTimer = 3;
   ctx.events.emit("KILL_STREAK", { count: streak });
-  ctx.pickups.maybeDrop(e.x, e.z);
+  ctx.pickups.maybeDrop(e.x, e.z, e.elite ? 1 : undefined);
 });
 ctx.events.on("PLAYER_HIT", () => { streak = 0; });
 ctx.events.on("PLAYER_DIED", () => setState("dead"));
@@ -153,6 +154,7 @@ function startRun(): void {
   ctx.pickups.clear();
   ctx.combat.reset();
   ctx.hitstop = 0;
+  ctx.slowmo = 0;
   ctx.boss?.reset(); // back to hidden/dormant — reused, never rebuilt (keeps shaders + light warm)
   triggered = ctx.level.gates.map(() => false);
   bossSpawned = false;
@@ -209,7 +211,7 @@ function updatePlaying(dt: number): void {
       triggered[idx] = true;
       hud.showBanner("RIFT-BORN", PAL.threat);
       ctx.sfx.bossIntroSting();
-    } else if (triggered[idx] && ctx.enemies.aliveCount() === 0) {
+    } else if (triggered[idx] && ctx.enemies.waveDone()) {
       ctx.level.openGate(idx);
       hud.showBanner("WAY OPEN", PAL.gold);
       ctx.sfx.critical();
@@ -310,6 +312,8 @@ function endBossCutscene(): void {
 function frame(dt: number): void {
   // hit-stop: briefly crunch the frame dt for impact (decremented in real time)
   if (ctx.hitstop > 0) { ctx.hitstop = Math.max(0, ctx.hitstop - dt); dt *= 0.08; }
+  // perfect-dodge slow-mo: a longer, softer dilation than hit-stop
+  else if (ctx.slowmo > 0) { ctx.slowmo = Math.max(0, ctx.slowmo - dt); dt *= 0.42; }
 
   ctx.input.pollGamepad();
   if (state === "playing") updatePlaying(dt);
@@ -360,6 +364,7 @@ w.__rh4debug = {
   setState: (s: State) => setState(s),
   checkCombos: weaponComboSelfCheck,
   spawn: (k: EnemyKind, x: number, z: number) => ctx.enemies.spawn(k, x, z),
+  drainWave: () => ctx.enemies.drainBudget(),
   // grant the full arsenal (screenshot/manual showcase of weapon swapping)
   unlockAll: () => { for (const w of WEAPONS) if (!ctx.player.weapons.includes(w.id)) ctx.player.weapons.push(w.id); },
   swapWeapon: () => ctx.player.cycleWeapon(1),

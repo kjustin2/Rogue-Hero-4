@@ -44,6 +44,12 @@ export class Hud {
   private dmgFlash!: HTMLElement;
   private danger!: HTMLElement;
   private crosshair!: HTMLElement;
+  private dashRing!: HTMLElement;
+  private dmgDir!: HTMLElement;
+  private fervorEl!: HTMLElement;
+  private fervorFill!: HTMLElement;
+  private fervorV = 0;
+  private dmgDirT = 0;
   private dmgT = 0;
   private t = 0;
   private lastChain = "";
@@ -55,7 +61,16 @@ export class Hud {
       this.showComboSplash(e.name, def?.color ?? 0xffffff, def?.recipe ?? []);
     });
     ctx.events.on("KILL_STREAK", (e) => { this.streakCount = e.count; this.streakT = 2; });
-    ctx.events.on("PLAYER_HIT", () => { this.streakCount = 0; this.dmgT = 0.4; });
+    ctx.events.on("PLAYER_HIT", (e) => {
+      this.streakCount = 0;
+      this.dmgT = 0.4;
+      // red edge arc pointing at the attacker (screen-relative: source yaw vs look yaw)
+      const world = Math.atan2(e.srcX - ctx.player.pos.x, e.srcZ - ctx.player.pos.z);
+      const rel = world - ctx.cam.yaw + Math.PI; // 0 = dead ahead
+      this.dmgDir.style.transform = `translate(-50%,-50%) rotate(${rel.toFixed(3)}rad)`;
+      this.dmgDirT = 0.55;
+    });
+    ctx.events.on("FERVOR", (e) => { this.fervorV = e.value; });
     ctx.events.on("SHARD", (e) => { this.shardN.textContent = String(e.total); });
     ctx.events.on("WEAPON_SWITCH", () => this.rebuildWeapon());
     ctx.events.on("WEAPON_UNLOCK", (e) => { this.rebuildWeapon(); this.showBanner("UNLOCKED · " + e.name, 0x9ff0e4); });
@@ -65,7 +80,9 @@ export class Hud {
     this.hud.innerHTML = `
       <div id="danger"></div>
       <div id="dmgflash"></div>
+      <div id="dmgdir"></div>
       <div id="crosshair"><span></span><span></span><span></span><span></span></div>
+      <div id="dashring"></div>
 
       <div id="boss-bar"><div class="boss-name">MORDREK · BARROW KING</div><div class="boss-track"><div class="boss-fill"></div></div></div>
 
@@ -84,6 +101,7 @@ export class Hud {
 
       <div id="bottom">
         <div id="chain"></div>
+        <div id="fervor"><div class="fv-fill"></div><span class="fv-lbl">FERVOR</span></div>
         <div id="weapon"></div>
       </div>
 
@@ -118,6 +136,10 @@ export class Hud {
     this.dmgFlash = this.hud.querySelector("#dmgflash")!;
     this.danger = this.hud.querySelector("#danger")!;
     this.crosshair = this.hud.querySelector("#crosshair")!;
+    this.dashRing = this.hud.querySelector("#dashring")!;
+    this.dmgDir = this.hud.querySelector("#dmgdir")!;
+    this.fervorEl = this.hud.querySelector("#fervor")!;
+    this.fervorFill = this.hud.querySelector("#fervor .fv-fill")!;
     this.rebuildWeapon();
   }
 
@@ -207,6 +229,17 @@ export class Hud {
     if (chainHtml !== this.lastChain) { this.chain.innerHTML = chainHtml; this.lastChain = chainHtml; }
 
     this.crosshair.classList.toggle("weak", this.ctx.combat.isAimingWeak());
+    // dash cooldown ring: a conic sweep that empties as the dash returns
+    const cd = p.dashCd01();
+    this.dashRing.style.opacity = cd > 0 ? "0.85" : "0";
+    if (cd > 0) this.dashRing.style.background = `conic-gradient(rgba(255,194,74,0.9) ${((1 - cd) * 360).toFixed(0)}deg, rgba(255,255,255,0.12) 0deg)`;
+    // damage-direction arc
+    if (this.dmgDirT > 0) { this.dmgDirT -= dt; this.dmgDir.style.opacity = Math.min(1, this.dmgDirT / 0.3).toFixed(2); }
+    else this.dmgDir.style.opacity = "0";
+    // fervor meter
+    this.fervorFill.style.width = (this.fervorV * 100).toFixed(1) + "%";
+    this.fervorEl.classList.toggle("full", this.fervorV >= 1);
+    this.fervorEl.style.opacity = this.fervorV > 0.01 ? "1" : "0";
     this.lockHint.style.opacity = this.ctx.playing && !this.ctx.input.pointerLocked && p.alive ? "1" : "0";
 
     const boss = this.ctx.boss && !this.ctx.boss.dormant ? this.ctx.boss : null;

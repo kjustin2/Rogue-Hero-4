@@ -8,7 +8,7 @@ export interface EventMap {
   /** An enemy/boss took damage. Drives hit sfx, sparks, floaters. */
   ENEMY_HIT: { x: number; y: number; z: number; dmg: number; heavy: boolean; killed: boolean };
   /** An enemy died. */
-  KILL: { x: number; z: number; kind: string };
+  KILL: { x: number; z: number; kind: string; elite?: boolean };
   /** Running kill streak count (resets when the player is idle/hit). */
   KILL_STREAK: { count: number };
   /** The player was hit. */
@@ -19,6 +19,8 @@ export interface EventMap {
   HEAL: { amount: number };
   /** A named weapon combo resolved (chained light/heavy). `tier` 1..3 scales the fanfare. */
   COMBO_RESOLVE: { name: string; tier: number };
+  /** Combo-momentum meter 0..1 (1 = next heavy is free + empowered). */
+  FERVOR: { value: number };
   /** A rift shard was collected — drives the HUD shard counter. `total` is the running count. */
   SHARD: { total: number };
   /** A new weapon unlocked at a shard threshold. */

@@ -42,6 +42,13 @@ export class Pickups {
     if (this.ctx.rng.chance(chance)) this.drop(x, z, heal);
   }
 
+  /** Active (uncollected) shards on the field — test seam. */
+  count(): number {
+    let n = 0;
+    for (const s of this.list) if (s.alive) n++;
+    return n;
+  }
+
   /** A distinct floating silhouette per weapon type so a drop reads at a glance. */
   private iconGeo(id: string): THREE.BufferGeometry {
     switch (id) {

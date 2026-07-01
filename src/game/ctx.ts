@@ -51,4 +51,6 @@ export interface Ctx {
   playing: boolean;
   /** Remaining hit-stop time (seconds). main scales the frame dt while > 0. */
   hitstop: number;
+  /** Remaining slow-motion time (seconds, real time) — perfect-dodge reward. */
+  slowmo: number;
 }
