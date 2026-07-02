@@ -182,15 +182,29 @@ export class Projectiles {
       // living-bolt animation: pulsing glow + core, rune shards orbiting the travel axis
       const age = 3.2 - s.life;
       const ball = s.shape === "cannonball"; // heavy iron shot reads bigger + smokier
-      s.glow.scale.setScalar((ball ? 1.5 : 0.85) + Math.sin(age * 30) * 0.15);
-      s.head.scale.setScalar((ball ? 1.7 : 0.9) + Math.sin(age * 46) * 0.22);
+      const bomb = s.explodeRadius > 0;      // explosive: strobes hot + spits fuse sparks
+      if (bomb) {
+        const strobe = 0.5 + 0.5 * Math.sin(age * 26);
+        s.glow.scale.setScalar(1.6 + strobe * 0.8);
+        s.head.scale.setScalar(1.7 + strobe * 0.5);
+        s.glowMat.color.setHex(strobe > 0.5 ? 0xff8830 : s.color); // fuse flicker
+      } else {
+        s.glow.scale.setScalar((ball ? 1.5 : 0.85) + Math.sin(age * 30) * 0.15);
+        s.head.scale.setScalar((ball ? 1.7 : 0.9) + Math.sin(age * 46) * 0.22);
+      }
       s.runes.rotation.z += dt * 9;
       if (s.shape === "dart") s.dart.rotation.z += dt * 16; // fletched bolt spins in flight
-      // throttled trailing sparks (a thicker, sootier trail behind a cannonball)
+      // throttled trailing sparks (fuse embers on a bomb, a sootier smear on a cannonball)
       s.trailT -= dt;
       if (s.trailT <= 0) {
-        s.trailT = ball ? 0.022 : 0.035;
-        this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: ball ? 2 : 1, color: ball ? [s.color, 0x442018] : s.color, speed: [0.2, 1.2], size: ball ? [0.2, 0.42] : [0.12, 0.26], life: [0.18, 0.36], gravity: 0, drag: 3 });
+        s.trailT = bomb ? 0.018 : ball ? 0.022 : 0.035;
+        this.ctx.fx.burst({
+          x: p.x, y: p.y, z: p.z, count: bomb ? 3 : ball ? 2 : 1,
+          color: bomb ? [0xffd070, 0xff5020] : ball ? [s.color, 0x442018] : s.color,
+          speed: bomb ? [0.5, 2.2] : [0.2, 1.2], up: bomb ? 0.6 : 0,
+          size: bomb ? [0.14, 0.3] : ball ? [0.2, 0.42] : [0.12, 0.26],
+          life: [0.18, 0.36], gravity: 0, drag: 3,
+        });
       }
 
       // out of bounds / expired (squared-distance arena test — no sqrt)
@@ -237,21 +251,27 @@ export class Projectiles {
     s.group.visible = false;
   }
 
-  /** Explosive shot detonation: an AoE blast (friendly only) + a punchy boom. */
+  /** Explosive shot detonation: a REAL boom — fireball, shockwaves, debris column. */
   private detonate(s: Shot): void {
     const p = s.group.position;
     const rad = s.explodeRadius;
     if (s.friendly) this.ctx.combat.aoeDamage(p.x, p.z, rad, s.dmg, s.knockback, true);
     this.ctx.fx.ring(p.x, p.z, { radius: rad, color: s.color, duration: 0.4, y: 0.3, startRadius: 0.4 });
+    this.ctx.fx.ring(p.x, p.z, { radius: rad * 1.4, color: s.color, duration: 0.5, y: 0.2, startRadius: rad * 0.5 });
     this.ctx.fx.ring(p.x, p.z, { radius: rad * 0.55, color: 0xffffff, duration: 0.26, y: 0.35, startRadius: 0.3 });
-    this.ctx.fx.burst({ x: p.x, y: 0.6, z: p.z, count: 30, color: [s.color, 0xffffff], speed: [5, 16], up: 0.8, size: [0.16, 0.5], life: [0.3, 0.7] });
-    this.ctx.cam.addTrauma(0.18);
+    this.ctx.fx.burst({ x: p.x, y: 0.6, z: p.z, count: 34, color: [s.color, 0xffd070], speed: [5, 17], up: 0.8, size: [0.16, 0.5], life: [0.3, 0.7] });
+    this.ctx.fx.burst({ x: p.x, y: 0.4, z: p.z, count: 14, color: 0xffb060, speed: [3, 9], up: 2.2, size: [0.2, 0.5], life: [0.4, 0.8] }); // debris column
+    this.ctx.cam.addTrauma(0.26);
+    this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.03);
     this.ctx.sfx.explosion();
     this.kill(s);
   }
 
+  /** Blunt (non-explosive) impact: a dull THUNK + dust — clearly a dud, not a boom. */
   private impact(p: THREE.Vector3, color: number): void {
-    this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: 18, color: [color, 0xffffff], speed: [3, 11], size: [0.12, 0.36], life: [0.2, 0.5] });
-    this.ctx.fx.ring(p.x, p.z, { radius: 1.0, color, duration: 0.18, y: p.y, startRadius: 0.2 }); // a snappy contact ring at the wound
+    this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: 9, color, speed: [2, 7], size: [0.1, 0.26], life: [0.14, 0.32] });
+    this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: 6, color: 0x9a8a78, speed: [1, 4], size: [0.14, 0.3], life: [0.2, 0.42], gravity: -2 }); // dust
+    this.ctx.fx.ring(p.x, p.z, { radius: 0.8, color, duration: 0.15, y: p.y, startRadius: 0.2 });
+    this.ctx.sfx.thud();
   }
 }

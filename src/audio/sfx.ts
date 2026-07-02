@@ -238,6 +238,42 @@ export class Sfx {
     this.tone({ f: 1100, f2: 200, dur: 0.2, type: "sawtooth", gain: 0.12 });
   }
 
+  /** Blunt, non-explosive projectile impact — a dull thunk, clearly NOT a boom. */
+  thud(): void {
+    this.tone({ f: 130, f2: 55, dur: 0.09, type: "sine", gain: 0.16 });
+    this.noise({ dur: 0.06, freq: 500, freq2: 180, q: 0.8, gain: 0.09, type: "lowpass" });
+  }
+
+  /**
+   * Distinct wind-up cue per boss attack family — the EAR tells you what's coming
+   * even when the floor telegraph is behind you.
+   */
+  tell(kind: string): void {
+    switch (kind) {
+      case "volley": // three quick ascending ticks — bolts incoming
+        for (let i = 0; i < 3; i++) this.tone({ f: 620 + i * 160, dur: 0.06, type: "triangle", gain: 0.09, delay: i * 0.09 });
+        break;
+      case "beam": // rising saw sweep — get off the line
+        this.tone({ f: 180, f2: 950, dur: 0.6, type: "sawtooth", gain: 0.08 });
+        break;
+      case "sweep":
+      case "harvest": // metallic shing — the blade is coming around
+        this.noise({ dur: 0.35, freq: 3600, freq2: 5200, q: 3, gain: 0.1 });
+        this.tone({ f: 1150, f2: 1500, dur: 0.28, type: "triangle", gain: 0.07 });
+        break;
+      case "gravewave": // deep pulsing rumble — ready the dash
+        for (let i = 0; i < 3; i++) this.tone({ f: 52, f2: 40, dur: 0.16, type: "sine", gain: 0.24, delay: i * 0.18 });
+        this.noise({ dur: 0.55, freq: 160, q: 0.6, gain: 0.1, type: "lowpass" });
+        break;
+      case "shift": // airy whoosh — he is moving
+        this.noise({ dur: 0.3, freq: 300, freq2: 1400, q: 1.2, gain: 0.12 });
+        break;
+      default: // slam / collapse: low double-thump
+        this.tone({ f: 90, f2: 60, dur: 0.12, type: "sine", gain: 0.2 });
+        this.tone({ f: 110, f2: 70, dur: 0.14, type: "sine", gain: 0.22, delay: 0.16 });
+    }
+  }
+
   // ---------------------------------------------------------------- boss
   bossRoar(): void {
     this.tone({ f: 85, f2: 58, dur: 0.85, type: "sawtooth", gain: 0.22 });

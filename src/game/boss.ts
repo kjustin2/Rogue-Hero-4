@@ -40,6 +40,8 @@ export class Boss implements Hittable {
   private shiftT = -1; // >0 = mid-glide
   private waveR = -1;  // >0 = a gravewave ring is expanding
   private waveHit = false;
+  private waveHinted = false; // "DASH THROUGH" teaching floater, once per fight
+  private waveFxT = 0; // gravewave wall-ring emit throttle
   private summonT = 25; // phase-3 recurring adds timer
   /** Phase-3 soulfire pools left by collapses — the safe floor shrinks. */
   private pools: { x: number; z: number; r: number; t: number; tick: number }[] = [];
@@ -119,6 +121,7 @@ export class Boss implements Hittable {
     this.anchorIdx = 0;
     this.shiftT = -1;
     this.waveR = -1;
+    this.waveHinted = false;
     this.summonT = 25;
     this.pools.length = 0;
     this.light.position.set(BOSS_ANCHOR.x, 5, BOSS_ANCHOR.z);
@@ -275,6 +278,15 @@ export class Boss implements Hittable {
 
     // the soul-fire light rides with the Warden now that he roams
     this.light.position.set(this.pos.x, 5, this.pos.z);
+    // eye-level attack tell: his light burns the telegraph color through every wind-up
+    const baseInt = this.phase >= 3 ? 55 : this.phase === 2 ? 42 : 30;
+    if (this.attack && this.windup > 0) {
+      this.light.color.setHex(this.teleColor());
+      this.light.intensity = baseInt * 1.6;
+    } else {
+      this.light.color.setHex(this.phase >= 3 ? 0xa0fff0 : this.hitColor);
+      this.light.intensity = baseInt;
+    }
 
     // mid-glide shift: sweep to the target anchor, shockwave on arrival
     if (this.shiftT > 0) {
@@ -301,11 +313,15 @@ export class Boss implements Hittable {
 
     // expanding gravewave ring — dash THROUGH it (i-frames) or take the hit
     if (this.waveR > 0) {
-      this.waveR += dt * 16;
+      this.waveR += dt * 12;
       const p2 = this.ctx.player;
       const d = Math.hypot(p2.pos.x - this.pos.x, p2.pos.z - this.pos.z);
-      if (Math.floor(this.waveR * 2) % 2 === 0) {
-        this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: this.waveR, color: this.teleColor(), duration: 0.16, y: 0.3, startRadius: this.waveR - 0.5 });
+      // a continuous two-tier wall of light — unmistakable, not a flickering floor line
+      this.waveFxT -= dt;
+      if (this.waveFxT <= 0) {
+        this.waveFxT = 0.05;
+        this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: this.waveR, color: this.teleColor(), duration: 0.14, y: 0.25, startRadius: this.waveR - 0.3 });
+        this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: this.waveR, color: this.teleColor(), duration: 0.14, y: 1.4, startRadius: this.waveR - 0.3 });
       }
       if (!this.waveHit && Math.abs(d - this.waveR) < 1.3) {
         this.waveHit = true; // one chance to hit — a dash's i-frames carry you through
@@ -371,6 +387,7 @@ export class Boss implements Hittable {
       this.anchorIdx = next;
       const [ax, az] = ANCHORS[next];
       this.tele = this.ctx.tele.circle(ax, az, 7, this.windupMax, this.teleColor());
+      this.ctx.sfx.tell("shift");
       return;
     }
     const pool: Attack[] =
@@ -378,9 +395,10 @@ export class Boss implements Hittable {
         : this.phase === 2 ? ["slam", "volley", "sweep", "beam", "sweep", "gravewave", "harvest"]
           : ["collapse", "sweep", "volley", "beam", "collapse", "gravewave", "harvest"];
     this.attack = this.ctx.rng.pick(pool);
-    this.windupMax = this.attack === "collapse" ? 0.95 : this.attack === "beam" ? 0.85 : this.attack === "sweep" || this.attack === "harvest" ? 0.8 : this.attack === "gravewave" ? 0.7 : this.attack === "slam" ? 0.65 : 0.52;
-    if (this.phase === 2) this.windupMax *= 0.8;
-    if (this.phase === 3) this.windupMax *= 0.65;
+    this.ctx.sfx.tell(this.attack as string);
+    this.windupMax = this.attack === "collapse" ? 1.0 : this.attack === "gravewave" ? 0.95 : this.attack === "beam" ? 0.9 : this.attack === "sweep" || this.attack === "harvest" ? 0.85 : this.attack === "slam" ? 0.78 : 0.72;
+    if (this.phase === 2) this.windupMax *= 0.85;
+    if (this.phase === 3) this.windupMax *= 0.75;
     this.windup = this.windupMax;
 
     const p = this.ctx.player;
@@ -392,6 +410,17 @@ export class Boss implements Hittable {
     else if (this.attack === "beam") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 60, 4, this.windupMax, c);
     else if (this.attack === "gravewave") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, 8, this.windupMax, c);
     else if (this.attack === "harvest") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, 9, this.windupMax, c);
+    else if (this.attack === "volley") {
+      // the bolt fan is telegraphed as its actual lanes — no more untelegraphed volleys
+      const n = this.phase === 2 ? 7 : 5;
+      const base = Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x);
+      for (const t of this.teles) t.cancel();
+      this.teles = [];
+      for (let i = 0; i < n; i++) {
+        // volley aims by atan2(x,z); tele.line wants atan2(z,x) — mirror the offset
+        this.teles.push(this.ctx.tele.line(this.pos.x, this.pos.z, base - (i - (n - 1) / 2) * 0.18, 26, 1.1, this.windupMax, c));
+      }
+    }
     else if (this.attack === "collapse") {
       // rift collapse: several slam zones bloom across the arena at once — keep moving
       for (const t of this.teles) t.cancel();
@@ -426,6 +455,8 @@ export class Boss implements Hittable {
       this.ctx.cam.addTrauma(0.3);
       if (Math.hypot(p.pos.x - this.aim.x, p.pos.z - this.aim.z) <= 5) this.ctx.combat.damagePlayer(28, this.aim.x, this.aim.z);
     } else if (a === "volley") {
+      for (const t of this.teles) t.cancel();
+      this.teles = [];
       const n = this.phase === 2 ? 7 : 5;
       // aim DOWN to the player's torso so bolts arrive at chest height, not over the head
       const sy = 4.4, ty = 1.3;
@@ -480,6 +511,11 @@ export class Boss implements Hittable {
       this.ctx.sfx.bossSlam();
       this.ctx.cam.addTrauma(0.25);
       this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 6, color: this.teleColor(), duration: 0.3, y: 0.3 });
+      // teach the counter the first time each fight — the dash's i-frames carry you through
+      if (!this.waveHinted) {
+        this.waveHinted = true;
+        this.ctx.floaters.spawn(p.pos.x, 2.4, p.pos.z, "DASH THROUGH THE WAVE", "label", "#ff5a4a");
+      }
     } else if (a === "harvest") {
       // a full-circle reap that punishes hugging the Warden
       this.ctx.fx.slash(this.pos.x, 2.2, this.pos.z, this.ctx.rng.range(0, Math.PI * 2), { color: this.hitColor, radius: 9.5, tilt: -0.02, duration: 0.32, spin: 6 });
