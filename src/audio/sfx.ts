@@ -238,6 +238,12 @@ export class Sfx {
     this.tone({ f: 1100, f2: 200, dur: 0.2, type: "sawtooth", gain: 0.12 });
   }
 
+  /** A stooping flyer's stone screech — the gargoyle dive tell. */
+  enemyDive(): void {
+    this.tone({ f: 1400, f2: 480, dur: 0.34, type: "sawtooth", gain: 0.09 });
+    this.noise({ dur: 0.3, freq: 2600, freq2: 700, q: 2.2, gain: 0.08 });
+  }
+
   /** Blunt, non-explosive projectile impact — a dull thunk, clearly NOT a boom. */
   thud(): void {
     this.tone({ f: 130, f2: 55, dur: 0.09, type: "sine", gain: 0.16 });
@@ -339,6 +345,33 @@ export class Sfx {
   boltCast(): void {
     this.tone({ f: 620, f2: 1500, dur: 0.16, type: "sawtooth", gain: 0.09 });
     this.noise({ dur: 0.12, freq: 1200, freq2: 400, q: 2, gain: 0.05 });
+  }
+
+  /** Crossbow loose: taut string SNAP + a woody thwock. */
+  crossbowSnap(): void {
+    this.noise({ dur: 0.05, freq: 3400, freq2: 900, q: 2.5, gain: 0.13 });
+    this.tone({ f: 300, f2: 150, dur: 0.07, type: "triangle", gain: 0.12 });
+  }
+
+  /** Hand bombard: black-powder THUMP + muzzle hiss. */
+  cannonFire(): void {
+    this.tone({ f: 95, f2: 34, dur: 0.32, type: "sine", gain: 0.3 });
+    this.noise({ dur: 0.28, freq: 900, freq2: 140, q: 0.6, gain: 0.2, type: "lowpass" });
+    this.noise({ dur: 0.12, freq: 3800, freq2: 1400, q: 1.2, gain: 0.07 });
+  }
+
+  /** Prism rod: crystalline zap, glassy and precise. */
+  prismZap(): void {
+    this.tone({ f: 1700, f2: 850, dur: 0.12, type: "sine", gain: 0.11 });
+    this.tone({ f: 2550, f2: 1300, dur: 0.09, type: "sine", gain: 0.06, delay: 0.01 });
+    this.noise({ dur: 0.08, freq: 5200, q: 4, gain: 0.05 });
+  }
+
+  /** Storm caller: a sky-tearing crackle rolling into thunder. */
+  stormCall(): void {
+    this.noise({ dur: 0.16, freq: 4200, freq2: 1600, q: 3, gain: 0.1 });
+    this.tone({ f: 70, f2: 44, dur: 0.4, type: "sine", gain: 0.17, delay: 0.08 });
+    this.noise({ dur: 0.3, freq: 300, freq2: 120, q: 0.7, gain: 0.1, type: "lowpass", delay: 0.1 });
   }
 
   /** Dash whoosh. */

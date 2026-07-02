@@ -294,6 +294,7 @@ function startBossCutscene(name: string): void {
   cineT = CINE_LEN;
   cineBeatT = 0;
   ctx.player.frozen = true;
+  hud.setLetterbox(true);
   ctx.cam.setCinematic(true);
   ctx.events.emit("BOSS_INTRO", { name });
   ctx.music.boss(1);
@@ -317,7 +318,7 @@ function updateBossCutscene(dt: number): void {
   cineBeatT -= dt;
   if (cineBeatT <= 0) {
     cineBeatT = 0.4;
-    const bx = BOSS_ANCHOR.x, bz = BOSS_ANCHOR.z;
+    const bx = ctx.boss?.pos.x ?? BOSS_ANCHOR.x, bz = ctx.boss?.pos.z ?? BOSS_ANCHOR.z;
     ctx.fx.ring(bx, bz, { radius: 7 + k * 16, color: BOSS_TEAL, duration: 0.7, y: 0.2, startRadius: 1 });
     const n = 2 + Math.round(k * 3);
     for (let i = 0; i < n; i++) {
@@ -338,22 +339,26 @@ function updateBossCutscene(dt: number): void {
 // A short cutscene when the boss breaks a phase threshold: freeze, frame the boss as
 // it surges with power (the rising-ripple beats), reveal the phase, then hand control back.
 function startPhaseCutscene(phase: number): void {
-  cineT = 1.6;
+  // a real beat, not a flash: letterbox in, camera locks to the King, his blade
+  // rises in a soulfire surge, then the fight resumes harder
+  cineT = phase >= 3 ? 2.2 : 2.8;
   cineBeatT = 0;
   ctx.player.frozen = true;
+  hud.setLetterbox(true);
   ctx.cam.setCinematic(true);
-  if (ctx.boss) ctx.boss.paused = true;
+  if (ctx.boss) { ctx.boss.paused = true; ctx.boss.cineSurge = 1; }
   ctx.sfx.bossRoar();
   ctx.cam.addTrauma(0.55);
   if (phase >= 3) ctx.music.bossFinale(); // the driving theme gives way to the lament
-  hud.showBanner(phase >= 3 ? "FINAL PHASE" : "PHASE II", phase >= 3 ? 0xff5530 : 0x9ff0e4);
+  hud.showBanner(phase >= 3 ? "FINAL PHASE" : "PHASE II · THE SOUL IGNITES", phase >= 3 ? 0xff5530 : 0x9ff0e4);
 }
 
 function endBossCutscene(): void {
   cineT = 0;
   ctx.player.frozen = false;
+  hud.setLetterbox(false);
   ctx.cam.setCinematic(false);
-  if (ctx.boss) ctx.boss.paused = false;
+  if (ctx.boss) { ctx.boss.paused = false; ctx.boss.cineSurge = 0; }
   ctx.cam.addTrauma(0.5);
   ctx.stage.punch(0.4);
   ctx.sfx.bossRoar();

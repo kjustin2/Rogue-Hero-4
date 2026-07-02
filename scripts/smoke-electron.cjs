@@ -185,7 +185,7 @@ app.whenReady().then(async () => {
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the starter
 
       // --- enemy lineup showcase (clean look at the upgraded models at distance)
-      await js(`['husk','spitter','brute','wraith','ghoul','archer'].forEach((k,i)=>window.__rh4debug.spawn(k, -14 + i*5.6, window.__rh4.player.pos.z + 15))`);
+      await js(`['husk','spitter','brute','wraith','ghoul','archer','gargoyle','bomber'].forEach((k,i)=>window.__rh4debug.spawn(k, -15 + i*4.4, window.__rh4.player.pos.z + 15))`);
       await frames(4);
       await shot(win, "enemies");
       await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);

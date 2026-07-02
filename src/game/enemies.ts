@@ -7,7 +7,7 @@ import { damp } from "../core/math";
 import { PAL } from "../core/palette";
 import { buildEnemyMesh } from "../render/enemyMeshes";
 
-export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer";
+export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer" | "gargoyle" | "bomber";
 
 interface KindCfg {
   hp: number;
@@ -19,7 +19,7 @@ interface KindCfg {
   color: number;
   bodyY: number;
   /** Ranged kinds only: what they hurl and how often (tickRanged reads this). */
-  proj?: { speed: number; shape: "dart" | "cannonball" | "comet"; interval: number };
+  proj?: { speed: number; shape: "dart" | "cannonball" | "comet"; interval: number; gravity?: number; explode?: number };
 }
 
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
@@ -30,6 +30,8 @@ const KIND: Record<EnemyKind, KindCfg> = {
   wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
   ghoul: { hp: 20, radius: 0.5, speed: 15.5, contactDmg: 12, attackRange: 2.2, windup: 0.13, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast
   archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: 0x8fb4ff, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
+  gargoyle: { hp: 24, radius: 0.6, speed: 11, contactDmg: 15, attackRange: 11, windup: 0.55, color: 0xffa24a, bodyY: 0 }, // stone flyer: circles high, telegraphed dive
+  bomber: { hp: 60, radius: 0.95, speed: 4.2, contactDmg: 18, attackRange: 17, windup: 0.6, color: 0xff8038, bodyY: 0, proj: { speed: 15, shape: "cannonball", interval: 2.6, gravity: 15, explode: 3.4 } }, // crypt bombard: lobbed exploding skulls
 };
 
 // Elite modifiers — a data catalog, rolled by the spawn director on gate 2+.
@@ -45,10 +47,10 @@ crownMat.userData.shared = true;
 interface GateWaveCfg { budget: number; cap: number; eliteChance: number; pack: [EnemyKind, number][] }
 const GATE_WAVES: GateWaveCfg[] = [
   { budget: 12, cap: 5, eliteChance: 0, pack: [["husk", 3], ["ghoul", 2], ["wraith", 1]] },
-  { budget: 22, cap: 6, eliteChance: 0.2, pack: [["husk", 3], ["spitter", 2], ["archer", 2], ["wraith", 2], ["ghoul", 2]] },
-  { budget: 34, cap: 7, eliteChance: 0.28, pack: [["brute", 2], ["wraith", 2], ["spitter", 2], ["archer", 2], ["ghoul", 3], ["husk", 2]] },
+  { budget: 22, cap: 6, eliteChance: 0.2, pack: [["husk", 3], ["spitter", 2], ["archer", 2], ["wraith", 2], ["ghoul", 2], ["gargoyle", 2]] },
+  { budget: 36, cap: 7, eliteChance: 0.28, pack: [["brute", 2], ["wraith", 2], ["spitter", 2], ["archer", 2], ["ghoul", 3], ["husk", 2], ["gargoyle", 2], ["bomber", 2]] },
 ];
-const COST: Record<EnemyKind, number> = { husk: 2, ghoul: 2, wraith: 3, spitter: 3, archer: 3, brute: 6 };
+const COST: Record<EnemyKind, number> = { husk: 2, ghoul: 2, wraith: 3, spitter: 3, archer: 3, brute: 6, gargoyle: 3, bomber: 5 };
 
 let NEXT_ID = 1;
 const SHOT_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
@@ -85,6 +87,12 @@ export class Enemy implements Hittable {
   private core: THREE.Mesh;
   private weapon?: THREE.Group;     // held weapon, swung on the strike
   private weaponBase = new THREE.Euler();
+  private wings?: { l: THREE.Object3D; r: THREE.Object3D };
+  /** Flyer altitude (gargoyle) — cruise high, dive to strike. */
+  private alt = 0;
+  /** Vertical hit column (projectiles) — flyers move theirs with altitude. */
+  hitTop?: number;
+  hitBottom?: number;
   private vt = 0;
   private atkCharge = 0; // wind-up inflate (0→1 across the telegraph)
   private atkLunge = 0;  // strike snap forward (set to 1, decays)
@@ -111,6 +119,7 @@ export class Enemy implements Hittable {
     this.group = parts.group;
     this.core = parts.core;
     this.weapon = parts.weapon;
+    this.wings = parts.wings;
     if (this.weapon) this.weaponBase.copy(this.weapon.rotation);
     this.ctx.stage.scene.add(this.group);
     this.reset(x, z);
@@ -131,6 +140,9 @@ export class Enemy implements Hittable {
     this.flash = 0; this.flinch = 0;
     this.atkCharge = 0; this.atkLunge = 0;
     this.moveAmt = 0; this.vt = 0;
+    this.alt = this.kind === "gargoyle" ? 4.5 : 0;
+    this.hitTop = undefined;
+    this.hitBottom = undefined;
     this.kb.set(0, 0, 0);
     this.elite = null;
     this.guaranteedShard = false;
@@ -265,8 +277,9 @@ export class Enemy implements Hittable {
 
     switch (this.kind) {
       case "husk": case "brute": case "ghoul": this.tickMelee(dt, dist, nx, nz); break;
-      case "spitter": case "archer": this.tickRanged(dt, dist, nx, nz); break;
+      case "spitter": case "archer": case "bomber": this.tickRanged(dt, dist, nx, nz); break;
       case "wraith": this.tickLunge(dt, dist, nx, nz); break;
+      case "gargoyle": this.tickFly(dt, dist, nx, nz); break;
     }
     this.ctx.level.clampPosition(this.pos, this.radius);
 
@@ -284,7 +297,7 @@ export class Enemy implements Hittable {
     // a winding-up / lunging wraith commits to its telegraphed line — face + shove along
     // THAT, not the live player angle (the mismatch read as "dashing sideways").
     let fnx = nx, fnz = nz;
-    if (this.kind === "wraith" && (this.state === "windup" || this.state === "lunge")) {
+    if ((this.kind === "wraith" || this.kind === "gargoyle") && (this.state === "windup" || this.state === "lunge")) {
       fnx = this.lungeDir.x; fnz = this.lungeDir.z;
     }
     this.sync(fnx, fnz);
@@ -349,8 +362,14 @@ export class Enemy implements Hittable {
         this.flash = 0.9;  // iris/eye flares as it looses
         this.atkLunge = 1; // staff thrusts / bow snaps forward on the shot
         const p = this.ctx.player;
-        SHOT_DIR.set(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
-        this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape });
+        if (pj.gravity) {
+          // mortar lob: launch up-and-out; gravity brings it down on the player
+          SHOT_DIR.set(p.pos.x - this.pos.x, dist * 0.55, p.pos.z - this.pos.z);
+          this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 1.6, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape, gravity: pj.gravity, explode: pj.explode });
+        } else {
+          SHOT_DIR.set(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
+          this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape });
+        }
         this.tele = null;
         this.state = "recover";
         this.timer = 0.3;
@@ -426,11 +445,70 @@ export class Enemy implements Hittable {
     }
   }
 
+  // Gargoyle: circle HIGH over the fight → telegraph a dive lane → swoop through the
+  // player (dodge with a dash) → climb back to cruise. Its hit column rides its altitude.
+  private tickFly(dt: number, dist: number, nx: number, nz: number): void {
+    const cfg = this.cfg;
+    const cruise = 4.5 + Math.sin(this.vt * 1.3 + this.id) * 0.5;
+    if (this.state === "approach") {
+      this.alt = damp(this.alt, cruise, 3, dt);
+      // spiral in: approach with a sideways bias so it ORBITS rather than hovers
+      const sdir = this.id % 2 === 0 ? 1 : -1;
+      const mx = nx * 0.75 + -nz * sdir * 0.65;
+      const mz = nz * 0.75 + nx * sdir * 0.65;
+      this.pos.x += mx * cfg.speed * this.speedMult * dt;
+      this.pos.z += mz * cfg.speed * this.speedMult * dt;
+      if (dist < cfg.attackRange && dist > 4) {
+        this.state = "windup";
+        this.timer = cfg.windup;
+        this.lungeDir.set(nx, 0, nz);
+        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), dist + 6, 1.7, cfg.windup, PAL.threat);
+      }
+    } else if (this.state === "windup") {
+      this.alt = damp(this.alt, cruise + 1.2, 4, dt); // rears up before the stoop
+      this.timer -= dt;
+      if (this.timer <= 0) {
+        this.state = "lunge";
+        this.timer = 0.55;
+        this.didHit = false;
+        this.tele = null;
+        this.ctx.sfx.enemyDive();
+      }
+    } else if (this.state === "lunge") {
+      this.timer -= dt;
+      this.atkLunge = 1;
+      this.alt = damp(this.alt, 1.1, 9, dt); // the stoop
+      this.pos.x += this.lungeDir.x * 26 * this.speedMult * dt;
+      this.pos.z += this.lungeDir.z * 26 * this.speedMult * dt;
+      this.ctx.fx.burst({ x: this.pos.x, y: this.alt, z: this.pos.z, count: 2, color: PAL.threat, speed: [0.5, 2], size: [0.12, 0.28], life: [0.1, 0.24], gravity: 0, drag: 4 });
+      if (!this.didHit && this.alt < 2.4 && dist < this.radius + this.ctx.player.radius + 0.9) {
+        this.didHit = true;
+        this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
+        this.ctx.fx.slash(this.pos.x, 1.4, this.pos.z, Math.atan2(this.lungeDir.x, this.lungeDir.z), { color: PAL.threat, radius: 1.6, tilt: -0.3, duration: 0.18 });
+      }
+      if (this.timer <= 0) { this.state = "recover"; this.timer = 1.0; }
+    } else {
+      this.alt = damp(this.alt, cruise, 2.5, dt); // climb out
+      this.timer -= dt;
+      if (this.timer <= 0) this.state = "approach";
+    }
+    // the hit column rides the body so grounded swings miss a cruising flyer
+    this.hitTop = this.alt + 1.2;
+    this.hitBottom = Math.max(0.2, this.alt - 1.3);
+  }
+
   private sync(nx = 0, nz = 0): void {
     const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
     // bob grows with movement so a charging wight reads as striding, not gliding
     const bob = Math.sin(this.vt * (2.5 + this.moveAmt * 3) + this.id) * (0.1 + this.moveAmt * 0.14);
-    this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + bob, this.pos.z + nz * fwd);
+    this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + this.alt + bob, this.pos.z + nz * fwd);
+    if (this.wings) {
+      // wingbeat: deep slow strokes on the cruise, swept tight in the stoop
+      const diving = this.state === "lunge";
+      const flap = diving ? -0.55 : Math.sin(this.vt * (this.state === "windup" ? 16 : 9) + this.id) * 0.55;
+      this.wings.l.rotation.z = -flap - 0.15;
+      this.wings.r.rotation.z = flap + 0.15;
+    }
     this.group.scale.setScalar(this.baseScale * (1 + this.atkCharge * 0.14 - this.atkLunge * 0.12 - this.flinch * 0.1));
     if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
     // lean into the advance (toward the player), faint living sway, recoil on strike, snap back on a hit
@@ -464,7 +542,7 @@ export class Enemy implements Hittable {
 export class EnemyManager {
   private list: Enemy[] = [];
   // parked instances per kind — reused instead of rebuilt (meshes stay in-scene, shaders warm)
-  private parked: Record<EnemyKind, Enemy[]> = { husk: [], spitter: [], brute: [], wraith: [], ghoul: [], archer: [] };
+  private parked: Record<EnemyKind, Enemy[]> = { husk: [], spitter: [], brute: [], wraith: [], ghoul: [], archer: [], gargoyle: [], bomber: [] };
   private live: Enemy[] = []; // living() scratch — refilled every call, never retained
   // spawn-director state for the active gate wave
   private waveCfg: GateWaveCfg | null = null;

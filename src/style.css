@@ -278,6 +278,14 @@ html, body {
 .keybtn:hover { background: rgba(60, 42, 24, 0.9); }
 .keybtn.listening { color: #2a1606; background: linear-gradient(180deg, #ffe2a0, #e79a36); }
 
+/* cinematic letterbox — slides in over boss cutscenes */
+#letterbox .lb-top, #letterbox .lb-bot { position: absolute; left: 0; right: 0; height: 11vh; background: #000;
+  transition: transform 0.45s cubic-bezier(0.3, 0, 0.2, 1); pointer-events: none; }
+#letterbox .lb-top { top: 0; transform: translateY(-100%); }
+#letterbox .lb-bot { bottom: 0; transform: translateY(100%); }
+#letterbox.on .lb-top { transform: translateY(0); }
+#letterbox.on .lb-bot { transform: translateY(0); }
+
 /* ---------------- run structure (phase 6) ---------------- */
 .meta-line { margin-top: 10px; font-size: 12px; letter-spacing: 0.3em; color: #a8907a; }
 

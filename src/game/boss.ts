@@ -64,6 +64,8 @@ export class Boss implements Hittable {
   private risen = false;
   /** Held during a phase-transition cutscene — animates but does not attack. */
   paused = false;
+  /** 0..1 cutscene surge — drives the blade-raise/orbit-gather pose while paused. */
+  cineSurge = 0;
   /** Staged-but-not-yet-fighting: built + shader-warmed at boot, hidden and inert
    *  until activate(). Excluded from targeting/HUD/tick while true. */
   dormant = true;
@@ -79,7 +81,7 @@ export class Boss implements Hittable {
 
   constructor(private ctx: Ctx) {
     this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.hitColor, emissiveIntensity: 2.0, roughness: 0.35, metalness: 0.2 });
-    const parts = buildBossMesh(this.hitColor, this.coreMat);
+    const parts = buildBossMesh(this.coreMat);
     this.group = parts.group;
     this.cloak = parts.cloak;
     this.blade = parts.blade;
@@ -93,7 +95,7 @@ export class Boss implements Hittable {
     // The soul-fire light lives on the SCENE (not the group) so it is counted from
     // boot and STAYS counted while the boss is hidden. Adding a light mid-scene is what
     // forces a synchronous whole-scene material relink — the "boss cutscene lag" freeze.
-    this.light = new THREE.PointLight(this.hitColor, 30, 40, 2);
+    this.light = new THREE.PointLight(this.hitColor, 42, 44, 2);
     this.light.position.set(this.pos.x, 5, this.pos.z);
     this.ctx.stage.scene.add(this.light);
   }
@@ -130,8 +132,8 @@ export class Boss implements Hittable {
     this.phase = 1; this.summoned = false;
     this.rise = 0; this.risen = false;
     this.charge = 0; this.lunge = 0; this.flash = 0; this.t = 0;
-    this.attack = null; this.windup = 0; this.cd = 1.3; this.paused = false;
-    this.light.intensity = 30; this.light.color.setHex(this.hitColor);
+    this.attack = null; this.windup = 0; this.cd = 1.3; this.paused = false; this.cineSurge = 0;
+    this.light.intensity = 42; this.light.color.setHex(this.hitColor);
     this.coreMat.emissiveIntensity = 2.0;
     this.pos.copy(BOSS_ANCHOR);
     this.group.position.copy(this.pos);
@@ -250,7 +252,7 @@ export class Boss implements Hittable {
     } else if (!this.dying) {
       // attack tell via a steady hover that LIFTS on wind-up and DROPS on the strike —
       // scale stays locked at 1.3 (the old scale pulsing read as a weird grow/shrink).
-      this.charge = this.attack ? 1 - this.windup / this.windupMax : damp(this.charge, 0, 6, dt);
+      this.charge = this.attack ? 1 - this.windup / this.windupMax : this.cineSurge > 0 ? damp(this.charge, this.cineSurge, 5, dt) : damp(this.charge, 0, 6, dt);
       this.lunge = damp(this.lunge, 0, 7, dt);
       this.group.scale.setScalar(1.3);
       this.group.position.y = Math.sin(this.t * 1.2) * 0.15 + this.charge * 0.5 - this.lunge * 0.7;
@@ -279,7 +281,7 @@ export class Boss implements Hittable {
     // the soul-fire light rides with the Warden now that he roams
     this.light.position.set(this.pos.x, 5, this.pos.z);
     // eye-level attack tell: his light burns the telegraph color through every wind-up
-    const baseInt = this.phase >= 3 ? 55 : this.phase === 2 ? 42 : 30;
+    const baseInt = this.phase >= 3 ? 70 : this.phase === 2 ? 54 : 42;
     if (this.attack && this.windup > 0) {
       this.light.color.setHex(this.teleColor());
       this.light.intensity = baseInt * 1.6;

@@ -228,6 +228,30 @@ export class Level {
       portcullis.position.set(0, 0, z - 0.35);
       this.group.add(portcullis);
 
+      // gate fortification: a stone drum tower with an iron cap on each flank + a
+      // crenellated arch header spanning the gateway — each gate reads as a real gatehouse
+      for (const sx of [-1, 1]) {
+        const drum = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.9, 17, 10), wallMat);
+        drum.position.set(sx * (HALF_WIDTH + 1.6), 8.5, z);
+        drum.castShadow = true;
+        const cap = new THREE.Mesh(new THREE.ConeGeometry(3.0, 3.4, 10), ironMat);
+        cap.position.set(sx * (HALF_WIDTH + 1.6), 18.7, z);
+        cap.castShadow = true;
+        const brim = new THREE.Mesh(new THREE.CylinderGeometry(3.1, 3.1, 0.5, 10), ironMat);
+        brim.position.set(sx * (HALF_WIDTH + 1.6), 17.1, z);
+        const slitT = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.6, 0.4), this.emissiveMat(EMBER[i % EMBER.length], 1.2));
+        slitT.position.set(sx * (HALF_WIDTH + 1.6) - sx * 2.45, 12, z);
+        this.group.add(drum, cap, brim, slitT);
+      }
+      const headerParts: THREE.BufferGeometry[] = [new THREE.BoxGeometry(HALF_WIDTH * 2 + 3, 2.6, 2.6).translate(0, 9.6, 0)];
+      for (let m = -4; m <= 4; m++) headerParts.push(new THREE.BoxGeometry(1.6, 1.1, 2.2).translate(m * 3.6, 11.4, 0));
+      const headerGeo = mergeGeometries(headerParts);
+      headerParts.forEach((g) => g.dispose());
+      const header = new THREE.Mesh(headerGeo, wallMat);
+      header.position.set(0, 0, z);
+      header.castShadow = true;
+      this.group.add(header);
+
       this.gates.push({ z, triggerZ: z - 30, open: false, barrier, light, portcullis });
     }
 
@@ -237,6 +261,9 @@ export class Level {
       const color = EMBER[a % EMBER.length];
       const px = ARENA_CENTER.x + Math.cos(ang) * (ARENA_RADIUS + 1.5);
       const pz = ARENA_CENTER.y + Math.sin(ang) * (ARENA_RADIUS + 1.5);
+      // skip the ones that land in the causeway mouth — a lone glowing pillar dead
+      // center of the path read as a weapon beacon (it was nothing)
+      if (Math.abs(px) < HALF_WIDTH + 3 && pz < ARENA_CENTER.y - ARENA_RADIUS + 14) continue;
       const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.0, 14, 8), this.emissiveMat(color, 0.9));
       pillar.position.set(px, 7, pz);
       pillar.castShadow = true;
@@ -384,6 +411,52 @@ export class Level {
     this.group.add(this.makeStars(340, 2.2, true));
     this.group.add(this.makeStars(660, 1.0, false));
 
+    // --- a pale dead moon over the keep (the sky's one cold light) ---
+    const moon = new THREE.Mesh(
+      new THREE.CircleGeometry(9, 40),
+      new THREE.MeshBasicMaterial({ color: 0xcfdce8, fog: false }),
+    );
+    moon.position.set(-52, 74, 235);
+    moon.lookAt(0, 8, 60);
+    const moonHalo = new THREE.Mesh(
+      new THREE.PlaneGeometry(42, 42),
+      new THREE.MeshBasicMaterial({ map: this.makeGlowTexture(), color: 0x9fb4cc, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }),
+    );
+    moonHalo.position.copy(moon.position);
+    moonHalo.lookAt(0, 8, 60);
+    // a ragged cloud shelf crossing the moon's lower rim sells depth
+    const shelf = new THREE.Mesh(
+      new THREE.PlaneGeometry(46, 10),
+      new THREE.MeshBasicMaterial({ color: 0x0a0608, transparent: true, opacity: 0.85, depthWrite: false, fog: false }),
+    );
+    shelf.position.set(-52, 68.5, 234);
+    shelf.lookAt(0, 6, 60);
+    this.group.add(moonHalo, moon, shelf);
+
+    // --- the dead keep's skyline: black tower silhouettes ringing the horizon ---
+    const towerGeo = mergeGeometries([
+      new THREE.BoxGeometry(8, 26, 8),
+      new THREE.ConeGeometry(6.2, 9, 4).translate(0, 17.5, 0),
+    ]);
+    const silMat = new THREE.MeshBasicMaterial({ color: 0x060304, fog: false });
+    const skyline = new THREE.InstancedMesh(towerGeo, silMat, 26);
+    skyline.frustumCulled = false;
+    const sd = new THREE.Object3D();
+    let si = 0;
+    for (let k = 0; k < 26; k++) {
+      const ang = (k / 26) * Math.PI * 2 + Math.sin(k * 7.3) * 0.1;
+      const r = 158 + Math.sin(k * 12.9) * 16;
+      sd.position.set(Math.cos(ang) * r, 4 + Math.sin(k * 5.1) * 3, 110 + Math.sin(ang) * r);
+      const s = 0.7 + (Math.sin(k * 3.7) + 1) * 0.5;
+      sd.scale.set(s, s * (0.8 + (Math.sin(k * 9.1) + 1) * 0.5), s);
+      sd.rotation.y = ang;
+      sd.updateMatrix();
+      skyline.setMatrixAt(si++, sd.matrix);
+    }
+    skyline.count = si;
+    skyline.instanceMatrix.needsUpdate = true;
+    this.group.add(skyline);
+
     // --- overhead stone arches spanning the causeway (grandeur + detail) ---
     const archDark = new THREE.MeshStandardMaterial({ color: 0x251e19, roughness: 0.9, metalness: 0.05, envMapIntensity: 0.7 });
     let ai = 0;
@@ -528,22 +601,60 @@ export class Level {
     const cv = document.createElement("canvas");
     cv.width = w; cv.height = h;
     const g = cv.getContext("2d")!;
-    g.fillStyle = "#1a1410";
+    g.fillStyle = "#17110d";
     g.fillRect(0, 0, w, h);
-    // running-bond courses: each course offset by half a block
-    const rowH = 42, blockW = 64;
+    // running-bond courses with VARIED block widths per course — a hand-laid wall,
+    // not a printed grid
+    const rowH = 42;
     for (let row = 0, y = 0; y < h; row++, y += rowH) {
-      const off = (row % 2) * (blockW / 2);
-      for (let x = -blockW; x < w + blockW; x += blockW) {
-        const bx = x + off + 2, by = y + 2, bw = blockW - 4, bh = rowH - 4;
-        // block face — slight per-block value variation for a hewn look
-        const v = 26 + ((row * 7 + x) % 5) * 4;
+      let x = -((row * 37) % 48);
+      while (x < w) {
+        const bw = 44 + ((row * 13 + x) % 3) * 16; // 44 / 60 / 76 wide stones
+        const bx = x + 2, by = y + 2, bh = rowH - 4;
+        const s = row * 7 + x;
+        let v = 26 + (s % 5) * 4;
+        if (s % 8 === 0) v -= 7; // odd darker stone
         g.fillStyle = `rgb(${v + 12},${v + 4},${v - 2})`;
-        g.fillRect(bx, by, bw, bh);
-        // top-left highlight + bottom-right shadow bevel
-        g.fillStyle = "rgba(255,210,170,0.06)"; g.fillRect(bx, by, bw, 3);
-        g.fillStyle = "rgba(0,0,0,0.35)"; g.fillRect(bx, by + bh - 3, bw, 3);
+        g.fillRect(bx, by, bw - 4, bh);
+        // per-stone tooling marks — faint diagonal chisel lines
+        g.strokeStyle = "rgba(0,0,0,0.12)"; g.lineWidth = 1;
+        for (let t = 0; t < 3; t++) {
+          g.beginPath();
+          g.moveTo(bx + 4 + t * 12, by + bh - 4);
+          g.lineTo(bx + 12 + t * 12, by + 4);
+          g.stroke();
+        }
+        // bevel
+        g.fillStyle = "rgba(255,210,170,0.06)"; g.fillRect(bx, by, bw - 4, 3);
+        g.fillStyle = "rgba(0,0,0,0.35)"; g.fillRect(bx, by + bh - 3, bw - 4, 3);
+        // chipped corner bite
+        if (s % 4 === 1) {
+          g.fillStyle = "#0e0906";
+          g.beginPath();
+          g.moveTo(bx + bw - 4, by);
+          g.lineTo(bx + bw - 16, by);
+          g.lineTo(bx + bw - 4, by + 8);
+          g.closePath(); g.fill();
+        }
+        x += bw;
       }
+    }
+    // soot streaks bleeding down from sconce height
+    for (let i = 0; i < 5; i++) {
+      const sx2 = (i * 89 + 30) % w;
+      const grad = g.createLinearGradient(0, 0, 0, h * 0.7);
+      grad.addColorStop(0, "rgba(0,0,0,0.5)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = grad;
+      g.fillRect(sx2 - 9, 0, 18 + (i % 3) * 8, h * 0.7);
+    }
+    // moss crawling up the bottom course
+    for (let i = 0; i < 22; i++) {
+      const mx = (i * 47) % w;
+      g.fillStyle = `rgba(52,74,44,${0.22 + (i % 4) * 0.08})`;
+      g.beginPath();
+      g.arc(mx, h - 4 - (i * 13) % 14, 4 + (i % 5), 0, Math.PI * 2);
+      g.fill();
     }
     // a handful of ember-lit cracks (these glow via emissiveMap)
     g.strokeStyle = "rgba(255,110,40,0.8)"; g.lineWidth = 2;
@@ -743,23 +854,49 @@ export class Level {
     g.fillStyle = "#52210f";
     g.fillRect(0, 0, s, s);
     this.eachFlag((bx, by, bw, bh, row, col) => {
-      // hewn stone face — per-block value + slight warm/cool grain
-      const v = 28 + ((row * 7 + col * 3) % 5) * 5;
-      g.fillStyle = `rgb(${v + 8},${v + 1},${v - 5})`;
+      const seed = row * 7 + col * 3;
+      // hewn stone face — per-block value + slight warm/cool grain; every ~9th block is a
+      // darker replacement stone (repairs), every ~11th leans warm (fire-baked)
+      let v = 28 + (seed % 5) * 5;
+      if (seed % 9 === 0) v -= 9;
+      const warm = seed % 11 === 0;
+      g.fillStyle = warm ? `rgb(${v + 14},${v + 3},${v - 6})` : `rgb(${v + 8},${v + 1},${v - 5})`;
       g.fillRect(bx, by, bw, bh);
       // grime / aggregate speckle scattered over the face
-      for (let i = 0; i < 26; i++) {
+      for (let i = 0; i < 30; i++) {
         const px = bx + ((row * 31 + col * 17 + i * 53) % bw);
         const py = by + ((col * 29 + row * 19 + i * 37) % bh);
         const d = (i % 3) - 1; // -1 dark fleck, 0 mid, +1 light fleck
         g.fillStyle = d < 0 ? "rgba(0,0,0,0.22)" : d > 0 ? "rgba(255,210,160,0.07)" : "rgba(120,70,40,0.10)";
         g.fillRect(px, py, 2, 2);
       }
+      // moss creep on about a fifth of the stones — cold green-grey eating a corner
+      if (seed % 5 === 1) {
+        const mx = bx + ((seed * 13) % 2 ? bw - 14 : 2);
+        const my = by + ((seed * 17) % 2 ? bh - 10 : 2);
+        g.fillStyle = "rgba(52,74,44,0.5)";
+        for (let m = 0; m < 7; m++) {
+          g.beginPath();
+          g.arc(mx + ((seed * 29 + m * 37) % 16), my + ((seed * 41 + m * 23) % 10), 2.5 + (m % 3), 0, Math.PI * 2);
+          g.fill();
+        }
+      }
       // hewn bevel: warm top-left highlight, deep bottom-right shadow
       g.fillStyle = "rgba(255,205,155,0.08)"; g.fillRect(bx, by, bw, 4); g.fillRect(bx, by, 4, bh);
       g.fillStyle = "rgba(0,0,0,0.42)"; g.fillRect(bx, by + bh - 4, bw, 4); g.fillRect(bx + bw - 4, by, 4, bh);
+      // chipped corner on a third of the blocks — a bite of mortar showing through
+      if (seed % 3 === 2) {
+        const cx2 = (seed * 7) % 2 ? bx : bx + bw;
+        const cy2 = (seed * 11) % 2 ? by : by + bh;
+        g.fillStyle = "#241009";
+        g.beginPath();
+        g.moveTo(cx2, cy2);
+        g.lineTo(cx2 + ((seed * 7) % 2 ? 13 : -13), cy2);
+        g.lineTo(cx2, cy2 + ((seed * 11) % 2 ? 9 : -9));
+        g.closePath(); g.fill();
+      }
       // a worn ember-lit crack across about a third of the blocks (glows via emissiveMap)
-      if ((row * 5 + col * 3) % 3 === 0) {
+      if (seed % 3 === 0) {
         g.strokeStyle = "rgba(255,120,45,0.55)"; g.lineWidth = 1.5;
         g.beginPath();
         g.moveTo(bx + bw * 0.28, by); g.lineTo(bx + bw * 0.42, by + bh * 0.45);

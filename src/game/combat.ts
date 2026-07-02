@@ -23,6 +23,8 @@ export interface Hittable {
   hitColor: number;
   /** Top of the vertical hitbox (default ~2.6); tall bosses set this higher. */
   hitTop?: number;
+  /** Bottom of the vertical hitbox (default 0.2); flyers ride theirs with altitude. */
+  hitBottom?: number;
   /** True if (x,y,z) lands inside this thing's weak point (boss core). */
   isWeakHit?(x: number, y: number, z: number): boolean;
   /** Optional incoming-damage hook (shielded elites reduce frontal hits). */
@@ -131,6 +133,7 @@ export class Combat {
     const hit: Hittable[] = [];
     const half = Math.cos(arc / 2);
     for (const t of this.targets()) {
+      if ((t.hitBottom ?? 0) > 2.2) continue; // out of a grounded swing's reach (flyer on the wing)
       const dx = t.pos.x - ox;
       const dz = t.pos.z - oz;
       const d = Math.hypot(dx, dz);
@@ -149,6 +152,7 @@ export class Combat {
   /** Damage everything within `radius` of (x,z). */
   aoeDamage(x: number, z: number, radius: number, dmg: number, kb: number, heavy: boolean): void {
     for (const t of this.targets()) {
+      if ((t.hitBottom ?? 0) > 3) continue; // ground blasts don't reach a cruising flyer
       if (Math.hypot(t.pos.x - x, t.pos.z - z) <= radius + t.radius) {
         this.dealDamage(t, dmg, { heavy, knockback: kb, fromX: x, fromZ: z });
       }

@@ -106,6 +106,7 @@ export class Hud {
       <div id="lockhint">CLICK TO AIM</div>
 
       <div id="banner"></div>
+      <div id="letterbox"><div class="lb-top"></div><div class="lb-bot"></div></div>
 
       <div id="bottom">
         <div id="chain"></div>
@@ -180,6 +181,11 @@ export class Hud {
 
   setVisible(on: boolean): void {
     this.hud.style.display = on ? "block" : "none";
+  }
+
+  /** Cinematic letterbox bars (boss intro + phase cutscenes). */
+  setLetterbox(on: boolean): void {
+    this.hud.querySelector("#letterbox")!.classList.toggle("on", on);
   }
 
   showBanner(text: string, color: number): void {

@@ -7,6 +7,7 @@ type Shape = "dart" | "cannonball" | "comet";
 
 interface Shot {
   group: THREE.Group;
+  bomb: THREE.Group;
   glow: THREE.Mesh;
   head: THREE.Mesh;
   tail: THREE.Mesh;
@@ -56,6 +57,10 @@ export class Projectiles {
   private tailGeo: THREE.ConeGeometry;
   private dartGeo: THREE.BufferGeometry;
   private headMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+  // the iron bomb (bombard shells + crypt-bomber skulls): solid lit metal, not energy
+  private bombIron = new THREE.MeshStandardMaterial({ color: 0x26221e, roughness: 0.55, metalness: 0.85, envMapIntensity: 1.0 });
+  private bombBand = new THREE.MeshStandardMaterial({ color: 0x50301c, roughness: 0.7, metalness: 0.5 });
+  private fuseMat = new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
   private q = new THREE.Quaternion();
   private vn = new THREE.Vector3();
 
@@ -84,6 +89,17 @@ export class Projectiles {
       const tailMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
       const runeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
       const group = new THREE.Group();
+      // the bomb: a fat iron sphere, a rust girdle, a stub neck and a burning fuse tip
+      const bomb = new THREE.Group();
+      const shellM = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), this.bombIron);
+      const girdle = new THREE.Mesh(new THREE.TorusGeometry(0.29, 0.04, 5, 12), this.bombBand);
+      girdle.rotation.x = Math.PI / 2;
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.12, 6), this.bombBand);
+      neck.position.y = 0.32;
+      const fuse = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), this.fuseMat);
+      fuse.position.y = 0.44;
+      bomb.add(shellM, girdle, neck, fuse);
+      group.add(bomb);
       const glow = new THREE.Mesh(this.glowGeo, glowMat);
       const head = new THREE.Mesh(this.headGeo, this.headMat);
       const tail = new THREE.Mesh(this.tailGeo, tailMat);
@@ -101,7 +117,7 @@ export class Projectiles {
       group.frustumCulled = false;
       group.renderOrder = 5;
       this.ctx.stage.scene.add(group);
-      this.pool.push({ group, glow, head, tail, ring, dart, runes, shape: "comet", glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
+      this.pool.push({ group, bomb, glow, head, tail, ring, dart, runes, shape: "comet", glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
     }
   }
 
@@ -127,20 +143,23 @@ export class Projectiles {
     s.glowMat.color.setHex(color);
     s.tailMat.color.setHex(color);
     s.runeMat.color.setHex(color);
-    // shape: a thin crossbow dart, a heavy iron cannonball, or the full runed comet
+    // shape: a bare iron crossbow bolt, a fused iron BOMB, or the runed arcane comet
     s.shape = opts?.shape ?? "comet";
+    const isBomb = s.shape === "cannonball";
+    s.bomb.visible = isBomb;
+    s.bomb.rotation.set(0, 0, 0);
     s.dart.visible = s.shape === "dart";
-    s.glow.visible = s.shape !== "dart";
-    s.head.visible = s.shape !== "dart";
+    s.glow.visible = s.shape === "comet";
+    s.head.visible = s.shape === "comet";
     s.ring.visible = s.shape === "comet";
     // ponytail: only the player's hero comet wears orbiting runes; hostile shots skip
     // them (3 fewer draws/bolt — a boss volley is 7 bolts) and read fine as plain comets.
     s.runes.visible = s.shape === "comet" && friendly;
-    s.tail.visible = true;
+    s.tail.visible = s.shape === "comet"; // bolts and bombs are METAL — no energy tracer
     s.group.visible = true;
     this.orient(s);
-    // muzzle flash — fatter for a big shot
-    this.ctx.fx.burst({ x, y, z, count: s.scale > 1.5 ? 16 : 6, color: [color, 0xffffff], speed: [3, 8 * s.scale], size: [0.12, 0.3 * s.scale], life: [0.12, 0.3] });
+    // muzzle flash — fatter for a big shot, a bare wisp for a bolt
+    this.ctx.fx.burst({ x, y, z, count: s.shape === "dart" ? 3 : s.scale > 1.5 ? 16 : 6, color: [color, 0xffffff], speed: [3, 8 * s.scale], size: [0.1, 0.3 * s.scale], life: [0.1, 0.28] });
   }
 
   private orient(s: Shot): void {
@@ -181,29 +200,27 @@ export class Projectiles {
       }
       // living-bolt animation: pulsing glow + core, rune shards orbiting the travel axis
       const age = 3.2 - s.life;
-      const ball = s.shape === "cannonball"; // heavy iron shot reads bigger + smokier
-      const bomb = s.explodeRadius > 0;      // explosive: strobes hot + spits fuse sparks
-      if (bomb) {
-        const strobe = 0.5 + 0.5 * Math.sin(age * 26);
-        s.glow.scale.setScalar(1.6 + strobe * 0.8);
-        s.head.scale.setScalar(1.7 + strobe * 0.5);
-        s.glowMat.color.setHex(strobe > 0.5 ? 0xff8830 : s.color); // fuse flicker
-      } else {
-        s.glow.scale.setScalar((ball ? 1.5 : 0.85) + Math.sin(age * 30) * 0.15);
-        s.head.scale.setScalar((ball ? 1.7 : 0.9) + Math.sin(age * 46) * 0.22);
+      const isBomb = s.shape === "cannonball";
+      if (isBomb) {
+        // the bomb TUMBLES end over end, fuse hissing
+        s.bomb.rotation.x += dt * 6.5;
+        s.bomb.rotation.z += dt * 4.2;
+      } else if (s.shape === "comet") {
+        s.glow.scale.setScalar(0.85 + Math.sin(age * 30) * 0.15);
+        s.head.scale.setScalar(0.9 + Math.sin(age * 46) * 0.22);
       }
       s.runes.rotation.z += dt * 9;
       if (s.shape === "dart") s.dart.rotation.z += dt * 16; // fletched bolt spins in flight
-      // throttled trailing sparks (fuse embers on a bomb, a sootier smear on a cannonball)
+      // throttled trail: hissing fuse embers + coal smoke on a bomb, a faint wisp on a bolt
       s.trailT -= dt;
       if (s.trailT <= 0) {
-        s.trailT = bomb ? 0.018 : ball ? 0.022 : 0.035;
+        s.trailT = isBomb ? 0.02 : 0.05;
         this.ctx.fx.burst({
-          x: p.x, y: p.y, z: p.z, count: bomb ? 3 : ball ? 2 : 1,
-          color: bomb ? [0xffd070, 0xff5020] : ball ? [s.color, 0x442018] : s.color,
-          speed: bomb ? [0.5, 2.2] : [0.2, 1.2], up: bomb ? 0.6 : 0,
-          size: bomb ? [0.14, 0.3] : ball ? [0.2, 0.42] : [0.12, 0.26],
-          life: [0.18, 0.36], gravity: 0, drag: 3,
+          x: p.x, y: p.y, z: p.z, count: isBomb ? 3 : 1,
+          color: isBomb ? [0xffd070, 0xff5020, 0x3a3230] : 0x8a8078,
+          speed: isBomb ? [0.5, 2.2] : [0.1, 0.6], up: isBomb ? 0.6 : 0,
+          size: isBomb ? [0.14, 0.3] : [0.08, 0.16],
+          life: isBomb ? [0.18, 0.36] : [0.1, 0.22], gravity: 0, drag: 3,
         });
       }
 
@@ -219,14 +236,14 @@ export class Projectiles {
           // explosive: detonate on touching any target (splash handles the kill)
           for (const t of targets) {
             if (!t.alive) continue;
-            const dx = p.x - t.pos.x, dz = p.z - t.pos.z, rr = t.radius + r, top = t.hitTop ?? 2.6;
-            if (dx * dx + dz * dz <= rr * rr && p.y >= 0.2 && p.y <= top) { this.detonate(s); break; }
+            const dx = p.x - t.pos.x, dz = p.z - t.pos.z, rr = t.radius + r, top = t.hitTop ?? 2.6, bot = t.hitBottom ?? 0.2;
+            if (dx * dx + dz * dz <= rr * rr && p.y >= bot && p.y <= top) { this.detonate(s); break; }
           }
         } else {
           for (const t of targets) {
             if (!t.alive) continue;
-            const dx = p.x - t.pos.x, dz = p.z - t.pos.z, rr = t.radius + r, top = t.hitTop ?? 2.6;
-            if (dx * dx + dz * dz <= rr * rr && p.y >= 0.2 && p.y <= top) {
+            const dx = p.x - t.pos.x, dz = p.z - t.pos.z, rr = t.radius + r, top = t.hitTop ?? 2.6, bot = t.hitBottom ?? 0.2;
+            if (dx * dx + dz * dz <= rr * rr && p.y >= bot && p.y <= top) {
               if (s.pierce && s.hit.has(t)) continue; // a piercing shot hits each target once
               const weak = t.isWeakHit ? t.isWeakHit(p.x, p.y, p.z) : false;
               this.ctx.combat.dealDamage(t, s.dmg, { knockback: s.knockback, fromX: p.x - s.vel.x, fromZ: p.z - s.vel.z, weak });
@@ -256,6 +273,13 @@ export class Projectiles {
     const p = s.group.position;
     const rad = s.explodeRadius;
     if (s.friendly) this.ctx.combat.aoeDamage(p.x, p.z, rad, s.dmg, s.knockback, true);
+    else {
+      // hostile mortar: the blast itself is the hit
+      const pl = this.ctx.player;
+      if (pl.alive && Math.hypot(pl.pos.x - p.x, pl.pos.z - p.z) <= rad + pl.radius) {
+        this.ctx.combat.damagePlayer(s.dmg, p.x, p.z);
+      }
+    }
     this.ctx.fx.ring(p.x, p.z, { radius: rad, color: s.color, duration: 0.4, y: 0.3, startRadius: 0.4 });
     this.ctx.fx.ring(p.x, p.z, { radius: rad * 1.4, color: s.color, duration: 0.5, y: 0.2, startRadius: rad * 0.5 });
     this.ctx.fx.ring(p.x, p.z, { radius: rad * 0.55, color: 0xffffff, duration: 0.26, y: 0.35, startRadius: 0.3 });

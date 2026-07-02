@@ -571,13 +571,13 @@ export class Player {
       }
     } else if (a.mode === "laser") {
       // instant hitscan beam down the look ray
-      this.ctx.sfx.boltCast();
+      this.ctx.sfx.prismZap();
       this.ctx.combat.beam(this.pos.x, this.pos.z, fx, fz, a.beamRange, a.beamWidth, dmg, a.knockback, color);
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
       this.muzzleFx(color, heavy);
     } else if (a.mode === "airstrike") {
       // call down strike(s) on the zone ahead
-      this.ctx.sfx.boltCast();
+      this.ctx.sfx.stormCall();
       const cx = this.pos.x + fx * a.strikeRange, cz = this.pos.z + fz * a.strikeRange;
       for (let i = 0; i < Math.max(1, a.strikeCount); i++) {
         const ang = this.ctx.rng.range(0, Math.PI * 2);
@@ -589,7 +589,16 @@ export class Player {
       this.muzzleFx(color, heavy);
     } else {
       // bolt / rocket: fire `pellets` along the look ray, fanned by `spread`
-      this.ctx.sfx.boltCast();
+      if (a.mode === "rocket") {
+        this.ctx.sfx.cannonFire();
+        // black-powder muzzle: a smoke ring + soot puff blasting from the bore
+        this.tipMarker.getWorldPosition(this.tip);
+        this.ctx.fx.ring(this.tip.x, this.tip.z, { radius: 0.9, color: 0xcfc4b4, duration: 0.28, y: this.tip.y, startRadius: 0.15 });
+        this.ctx.fx.burst({ x: this.tip.x, y: this.tip.y, z: this.tip.z, count: 12, color: [0x6a6058, 0x3a3230], speed: [2, 6], size: [0.2, 0.5], life: [0.3, 0.7], gravity: 1, drag: 2 });
+        this.ctx.cam.addTrauma(heavy ? 0.16 : 0.09);
+      } else {
+        this.ctx.sfx.crossbowSnap();
+      }
       const n = Math.max(1, a.pellets);
       const opts = {
         scale: a.big ? 1.9 : 1,
