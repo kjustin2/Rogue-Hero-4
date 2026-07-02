@@ -31,7 +31,7 @@ import type { Ctx } from "./game/ctx";
 import { PerfMonitor } from "./debug/perfMonitor";
 import { PAL } from "./core/palette";
 import { pick3 } from "./game/boons";
-import { loadSave, writeSave, dailyStamp } from "./core/save";
+import { loadSave, writeSave } from "./core/save";
 
 const lowfx = new URLSearchParams(location.search).has("lowfx");
 type State = "title" | "playing" | "paused" | "boon" | "dead" | "victory";
@@ -84,7 +84,6 @@ let kills = 0;
 let streak = 0;
 let streakTimer = 0;
 const save = loadSave();
-let isDaily = false;
 // run stats — fed entirely by existing events, rendered on the death/victory screens
 const runStats = { dmgDealt: 0, dmgTaken: 0, combos: 0, bestStreak: 0 };
 let bossSpawned = false;
@@ -135,11 +134,10 @@ function setState(s: State): void {
     menus.showTitle({
       clears: save.clears,
       unlockedStarts: save.unlockedStarts,
-      daily: save.daily && save.daily.date === dailyStamp() ? save.daily.score : null,
       bestTime: save.bestTime,
-    }, (daily, startWeapon) => {
+    }, (startWeapon) => {
       unlockAudio();
-      startRun(daily ? parseInt(dailyStamp(), 10) : newSeed(), { daily, startWeapon });
+      startRun(newSeed(), startWeapon);
     });
   } else if (s === "playing") {
     ctx.stage.setLowCost(false);
@@ -176,25 +174,15 @@ function setState(s: State): void {
     save.totalKills += kills;
     if (!save.bestTime || runTime < save.bestTime) save.bestTime = runTime;
     for (const id of ctx.player.weapons) if (!save.unlockedStarts.includes(id)) save.unlockedStarts.push(id);
-    if (isDaily) {
-      const score = dailyScore();
-      if (!save.daily || save.daily.date !== dailyStamp() || score > save.daily.score) {
-        save.daily = { date: dailyStamp(), score };
-      }
-    }
     writeSave(save);
     menus.showVictory(fullStats(), () => startRun(newSeed()));
   }
 }
 
-function dailyScore(): number {
-  return Math.max(0, kills * 10 + ctx.player.shards * 5 - Math.round(runTime));
-}
-
 function fullStats() {
   return {
     time: runTime, kills, ...runStats, shards: ctx.player.shards,
-    bestTime: save.bestTime, daily: isDaily ? dailyScore() : null,
+    bestTime: save.bestTime,
   };
 }
 
@@ -202,11 +190,10 @@ function newSeed(): number {
   return (Date.now() ^ (Math.random() * 0x7fffffff)) & 0x7fffffff;
 }
 
-function startRun(seed = 20260629, opts?: { daily?: boolean; startWeapon?: string }): void {
+function startRun(seed = 20260629, startWeapon?: string): void {
   ctx.rng.reseed(seed);
-  isDaily = !!opts?.daily;
   ctx.player.reset(PLAYER_SPAWN);
-  if (opts?.startWeapon && save.unlockedStarts.includes(opts.startWeapon)) ctx.player.setStartingWeapon(opts.startWeapon);
+  if (startWeapon && save.unlockedStarts.includes(startWeapon)) ctx.player.setStartingWeapon(startWeapon);
   ctx.cam.yaw = Math.PI;
   ctx.cam.pitch = 0;
   ctx.level.reset();

@@ -108,7 +108,9 @@ export class Combat {
     });
     if (crit) this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.2, color: 0xffd9b0, duration: 0.26, y: 1 });
     this.ctx.cam.addTrauma(crit ? 0.22 : 0.08);
-    if (crit) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.05);
+    // every landed hit gets a micro-stop (crits a longer one) — contact you can FEEL
+    this.ctx.hitstop = Math.max(this.ctx.hitstop, crit ? 0.05 : 0.02);
+    if (killed) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.07);
     // SOUL LEECH boon: a slice of every dealt hit comes back as vitality
     const p = this.ctx.player;
     if (p.mods.lifesteal > 0 && p.alive && p.hp < p.maxHp) {
@@ -169,8 +171,8 @@ export class Combat {
         this.dealDamage(t, dmg, { heavy: true, knockback: kb, fromX: ox, fromZ: oz, weak });
       }
     }
-    this.ctx.fx.laser(ox, 1.4, oz, dirX, dirZ, range, color, Math.max(0.2, width * 0.6));
-    this.ctx.fx.laser(ox, 1.4, oz, dirX, dirZ, range, 0xffffff, Math.max(0.08, width * 0.22));
+    this.ctx.fx.laser(ox + dirX * 2.2, 1.4, oz + dirZ * 2.2, dirX, dirZ, range - 2.2, color, Math.max(0.2, width * 0.6));
+    this.ctx.fx.laser(ox + dirX * 2.2, 1.4, oz + dirZ * 2.2, dirX, dirZ, range - 2.2, 0xffffff, Math.max(0.08, width * 0.22));
     this.ctx.cam.addTrauma(0.12);
   }
 
@@ -228,12 +230,13 @@ export class Combat {
     const dirX = aim.x / glen, dirZ = aim.z / glen;
     const dir = COMBO_DIR.set(aim.x, aim.y, aim.z).normalize();
     const my = 1.55;
-    const muzzleX = x + dirX * 1.2, muzzleZ = z + dirZ * 1.2;
+    // finishers spawn well AHEAD of the eyes — a scale-3 comet at arm's length was a screen-filler
+    const muzzleX = x + dirX * 2.6, muzzleZ = z + dirZ * 2.6;
 
     switch (combo.effect) {
       case "barrage": {
         // a single colossal piercing comet along the look ray
-        this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 3.4, pierce: true });
+        this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 2.0, pierce: true });
         this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 10, color: combo.color, speed: [3, 9], size: [0.12, 0.3], life: [0.18, 0.4] });
         break;
       }

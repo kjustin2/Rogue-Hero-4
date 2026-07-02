@@ -7,7 +7,6 @@ import type { BoonDef } from "../game/boons";
 export interface TitleMeta {
   clears: number;
   unlockedStarts: string[];
-  daily: number | null; // today's best daily score, if any
   bestTime: number;
 }
 
@@ -20,7 +19,6 @@ export interface RunStatsView {
   bestStreak: number;
   shards: number;
   bestTime: number;
-  daily: number | null;
 }
 
 /** Actions shown on the Controls screen (skip pause-rebinding to keep it simple). */
@@ -69,7 +67,7 @@ export class Menus {
     el?.addEventListener("click", () => { this.ctx.events.emit("UI_CLICK", {}); fn(); });
   }
 
-  showTitle(meta: TitleMeta, onStart: (daily: boolean, startWeapon?: string) => void): void {
+  showTitle(meta: TitleMeta, onStart: (startWeapon?: string) => void): void {
     // starting-weapon rack — the first-clear meta unlock
     const rack = meta.clears > 0 && meta.unlockedStarts.length > 1
       ? `<div class="start-rack"><span class="sr-lbl">BEGIN WITH</span>` + WEAPONS
@@ -78,7 +76,7 @@ export class Menus {
           .join("") + `</div>`
       : "";
     const laurels = meta.clears > 0
-      ? `<div class="meta-line">${meta.clears} CLEAR${meta.clears > 1 ? "S" : ""} · BEST ${meta.bestTime.toFixed(0)}s${meta.daily != null ? ` · DAILY ${meta.daily}` : ""}</div>`
+      ? `<div class="meta-line">${meta.clears} CLEAR${meta.clears > 1 ? "S" : ""} · BEST ${meta.bestTime.toFixed(0)}s</div>`
       : "";
     this.panel(`
       <div class="title">ROGUE HERO <b>IV</b></div>
@@ -86,7 +84,6 @@ export class Menus {
       ${laurels}
       <div class="menu-buttons">
         <button id="start" class="primary">DESCEND</button>
-        <button id="daily">DAILY RITE</button>
         <button id="controls">CONTROLS</button>
         <button id="settings">SETTINGS</button>
       </div>
@@ -97,8 +94,7 @@ export class Menus {
       this.ctx.events.emit("UI_CLICK", {});
       this.showTitle(meta, onStart);
     }));
-    this.wire("start", () => onStart(false, this.startWeapon));
-    this.wire("daily", () => onStart(true, this.startWeapon));
+    this.wire("start", () => onStart(this.startWeapon));
     this.wire("controls", () => this.showControls(() => this.showTitle(meta, onStart)));
     this.wire("settings", () => this.showSettings(() => this.showTitle(meta, onStart)));
   }
@@ -221,7 +217,6 @@ export class Menus {
       ["BEST STREAK", `${s.bestStreak}×`],
       ["SHARDS", String(s.shards)],
     ];
-    if (s.daily != null) rows.push(["DAILY SCORE", String(s.daily)]);
     return `<div class="stat-grid">` + rows.map(([k, v]) => `<div class="sg-row"><span>${k}</span><b>${v}</b></div>`).join("") + `</div>`;
   }
 

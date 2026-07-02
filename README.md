@@ -29,7 +29,6 @@ three boons**. Elites (gate 2+) are crowned: shielded (flank them), frenzied, or
 (dodge the death blast). The Barrow King roams, reaps, and — in his final phase — burns the
 floor; dash *through* his gravewave ring.
 
-**DAILY RITE** on the title runs today's seed for score (kills×10 + shards×5 − seconds).
 Clearing the causeway unlocks starting with any weapon you held.
 
 ## Develop

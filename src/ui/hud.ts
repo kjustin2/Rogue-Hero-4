@@ -45,6 +45,8 @@ export class Hud {
   private danger!: HTMLElement;
   private crosshair!: HTMLElement;
   private dashRing!: HTMLElement;
+  private hitMarker!: HTMLElement;
+  private hitMarkT = 0;
   private dmgDir!: HTMLElement;
   private fervorEl!: HTMLElement;
   private fervorFill!: HTMLElement;
@@ -61,6 +63,11 @@ export class Hud {
       this.showComboSplash(e.name, def?.color ?? 0xffffff, def?.recipe ?? []);
     });
     ctx.events.on("KILL_STREAK", (e) => { this.streakCount = e.count; this.streakT = 2; });
+    ctx.events.on("ENEMY_HIT", (e) => {
+      // crosshair hitmarker: the classic "your shot CONNECTED" tick (gold on crit/kill)
+      this.hitMarkT = e.heavy || e.killed ? 0.18 : 0.1;
+      this.hitMarker.classList.toggle("crit", !!(e.heavy || e.killed));
+    });
     ctx.events.on("PLAYER_HIT", (e) => {
       this.streakCount = 0;
       this.dmgT = 0.4;
@@ -82,6 +89,7 @@ export class Hud {
       <div id="dmgflash"></div>
       <div id="dmgdir"></div>
       <div id="crosshair"><span></span><span></span><span></span><span></span></div>
+      <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
       <div id="dashring"></div>
 
       <div id="boss-bar"><div class="boss-name">MORDREK · BARROW KING</div><div class="boss-track"><div class="boss-fill"></div></div></div>
@@ -137,6 +145,7 @@ export class Hud {
     this.danger = this.hud.querySelector("#danger")!;
     this.crosshair = this.hud.querySelector("#crosshair")!;
     this.dashRing = this.hud.querySelector("#dashring")!;
+    this.hitMarker = this.hud.querySelector("#hitmarker")!;
     this.dmgDir = this.hud.querySelector("#dmgdir")!;
     this.fervorEl = this.hud.querySelector("#fervor")!;
     this.fervorFill = this.hud.querySelector("#fervor .fv-fill")!;
@@ -229,6 +238,9 @@ export class Hud {
     if (chainHtml !== this.lastChain) { this.chain.innerHTML = chainHtml; this.lastChain = chainHtml; }
 
     this.crosshair.classList.toggle("weak", this.ctx.combat.isAimingWeak());
+    // hitmarker flick
+    if (this.hitMarkT > 0) { this.hitMarkT -= dt; this.hitMarker.classList.add("on"); }
+    else this.hitMarker.classList.remove("on");
     // dash cooldown ring: a conic sweep that empties as the dash returns
     const cd = p.dashCd01();
     this.dashRing.style.opacity = cd > 0 ? "0.85" : "0";

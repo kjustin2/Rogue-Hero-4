@@ -170,6 +170,15 @@ export class Projectiles {
       this.orient(s);
       // grenades detonate when they hit the ground
       if (s.grav && p.y <= 0.25) { this.detonate(s); continue; }
+      // nothing sails through the flags: any shot that dips below the floor impacts it
+      if (p.y <= 0.1) {
+        if (s.explodeRadius > 0) { this.detonate(s); continue; }
+        p.y = 0.12;
+        this.ctx.fx.burst({ x: p.x, y: 0.15, z: p.z, count: 8, color: s.color, speed: [2, 6], up: 1.2, size: [0.1, 0.26], life: [0.15, 0.35] });
+        this.ctx.fx.ring(p.x, p.z, { radius: 0.9, color: s.color, duration: 0.22, y: 0.1, startRadius: 0.2 });
+        this.kill(s);
+        continue;
+      }
       // living-bolt animation: pulsing glow + core, rune shards orbiting the travel axis
       const age = 3.2 - s.life;
       const ball = s.shape === "cannonball"; // heavy iron shot reads bigger + smokier
@@ -243,5 +252,6 @@ export class Projectiles {
 
   private impact(p: THREE.Vector3, color: number): void {
     this.ctx.fx.burst({ x: p.x, y: p.y, z: p.z, count: 18, color: [color, 0xffffff], speed: [3, 11], size: [0.12, 0.36], life: [0.2, 0.5] });
+    this.ctx.fx.ring(p.x, p.z, { radius: 1.0, color, duration: 0.18, y: p.y, startRadius: 0.2 }); // a snappy contact ring at the wound
   }
 }

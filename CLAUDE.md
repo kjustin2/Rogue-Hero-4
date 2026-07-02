@@ -8,12 +8,11 @@ charge** on three of them), and its own combos whose finishers fire FORWARD. Com
 **fervor** (full = next heavy free + empowered); the chain **survives weapon swaps** (SWAP FINISH
 1.25×). **Dash** i-frames; dodging through a hit is a PERFECT (slow-mo + cooldown refund). Kills
 drop gold **rift shards** that heal; elites (crowned: shielded/frenzied/bursting) always drop one.
-Meta saves (localStorage `rh4-save`): clears, best time, starting-weapon unlocks, **DAILY RITE**
-seed + score.
+Meta saves (localStorage `rh4-save`): clears, best time, starting-weapon unlocks.
 
 Stack: **plain Three.js + Vite + strict TypeScript, shipped as Electron** — no game engine, no UI
 framework, no test framework. Rebuilt from the Rogue-Hero-3 base, then remade (2026-07):
-palette/color-hierarchy overhaul, spawn director + elites, boss overhaul, boons/meta/daily.
+palette/color-hierarchy overhaul, spawn director + elites, boss overhaul, boons/meta.
 **All art is procedural** (primitives + canvas textures) — Meshy GLB assets were tried and
 REMOVED by user decision (they read worse than the stylized primitives); do not reintroduce.
 

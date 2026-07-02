@@ -10,13 +10,12 @@ export interface SaveData {
   totalKills: number;
   /** Weapon ids the player may START a run with (unlocked by clearing with them held). */
   unlockedStarts: string[];
-  daily: { date: string; score: number } | null;
 }
 
 const KEY = "rh4-save";
 
 export function defaultSave(): SaveData {
-  return { v: 1, clears: 0, bestTime: 0, totalKills: 0, unlockedStarts: [], daily: null };
+  return { v: 1, clears: 0, bestTime: 0, totalKills: 0, unlockedStarts: [] };
 }
 
 export function loadSave(): SaveData {
@@ -34,8 +33,3 @@ export function writeSave(s: SaveData): void {
   try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* private mode */ }
 }
 
-/** Today as YYYYMMDD — both the daily seed and its save key. */
-export function dailyStamp(): string {
-  const d = new Date();
-  return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-}
