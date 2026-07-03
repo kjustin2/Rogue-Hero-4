@@ -7,7 +7,7 @@ import { damp } from "../core/math";
 import { PAL } from "../core/palette";
 import { buildEnemyMesh } from "../render/enemyMeshes";
 
-export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer" | "gargoyle" | "bomber";
+export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer" | "gargoyle" | "bomber" | "knight" | "rat";
 
 interface KindCfg {
   hp: number;
@@ -32,6 +32,8 @@ const KIND: Record<EnemyKind, KindCfg> = {
   archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: 0x8fb4ff, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
   gargoyle: { hp: 24, radius: 0.6, speed: 11, contactDmg: 15, attackRange: 11, windup: 0.55, color: 0xffa24a, bodyY: 0 }, // stone flyer: circles high, telegraphed dive
   bomber: { hp: 60, radius: 0.95, speed: 4.2, contactDmg: 18, attackRange: 17, windup: 0.6, color: 0xff8038, bodyY: 0, proj: { speed: 15, shape: "cannonball", interval: 2.6, gravity: 15, explode: 3.4 } }, // crypt bombard: lobbed exploding skulls
+  knight: { hp: 72, radius: 0.7, speed: 5.4, contactDmg: 17, attackRange: 2.9, windup: 0.42, color: 0xc9d4e4, bodyY: 0 }, // revenant knight: kite shield blocks frontal shots — flank him
+  rat: { hp: 8, radius: 0.32, speed: 17.5, contactDmg: 5, attackRange: 1.3, windup: 0.12, color: 0xd06a3a, bodyY: 0 }, // plague rats: cheap, fast, and NEVER alone
 };
 
 // Elite modifiers — a data catalog, rolled by the spawn director on gate 2+.
@@ -46,11 +48,11 @@ crownMat.userData.shared = true;
 // `cap` — pacing reads the player (dominating → pour it on, hurting → ease off).
 interface GateWaveCfg { budget: number; cap: number; eliteChance: number; pack: [EnemyKind, number][] }
 const GATE_WAVES: GateWaveCfg[] = [
-  { budget: 12, cap: 5, eliteChance: 0, pack: [["husk", 3], ["ghoul", 2], ["wraith", 1]] },
-  { budget: 22, cap: 6, eliteChance: 0.2, pack: [["husk", 3], ["spitter", 2], ["archer", 2], ["wraith", 2], ["ghoul", 2], ["gargoyle", 2]] },
-  { budget: 36, cap: 7, eliteChance: 0.28, pack: [["brute", 2], ["wraith", 2], ["spitter", 2], ["archer", 2], ["ghoul", 3], ["husk", 2], ["gargoyle", 2], ["bomber", 2]] },
+  { budget: 13, cap: 6, eliteChance: 0, pack: [["husk", 3], ["ghoul", 2], ["wraith", 1], ["rat", 3]] },
+  { budget: 24, cap: 7, eliteChance: 0.2, pack: [["husk", 3], ["spitter", 2], ["archer", 2], ["wraith", 2], ["ghoul", 2], ["gargoyle", 2], ["knight", 1], ["rat", 2]] },
+  { budget: 38, cap: 8, eliteChance: 0.28, pack: [["brute", 2], ["wraith", 2], ["spitter", 2], ["archer", 2], ["ghoul", 3], ["husk", 2], ["gargoyle", 2], ["bomber", 2], ["knight", 2]] },
 ];
-const COST: Record<EnemyKind, number> = { husk: 2, ghoul: 2, wraith: 3, spitter: 3, archer: 3, brute: 6, gargoyle: 3, bomber: 5 };
+const COST: Record<EnemyKind, number> = { husk: 2, ghoul: 2, wraith: 3, spitter: 3, archer: 3, brute: 6, gargoyle: 3, bomber: 5, knight: 5, rat: 1 };
 
 let NEXT_ID = 1;
 const SHOT_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
@@ -183,9 +185,10 @@ export class Enemy implements Hittable {
     this.ctx.floaters.spawn(this.pos.x, this.cfg.bodyY + 2.2, this.pos.z, ELITE_NAMES[kind], "label", "#ffc24a");
   }
 
-  /** Damage-funnel hook: a shielded elite shrugs off frontal hits — flank it. */
+  /** Damage-funnel hook: shields (revenant knights, shielded elites) blunt frontal hits — flank them. */
   modifyIncoming(dmg: number, opts: HitOpts): number {
-    if (this.elite !== "shielded" || opts.fromX === undefined || opts.fromZ === undefined) return dmg;
+    const shielded = this.elite === "shielded" || this.kind === "knight";
+    if (!shielded || opts.fromX === undefined || opts.fromZ === undefined) return dmg;
     const fy = this.group.rotation.y; // facing (toward the player, usually)
     const hx = opts.fromX - this.pos.x, hz = opts.fromZ - this.pos.z;
     const d = Math.hypot(hx, hz) || 1;
@@ -230,7 +233,7 @@ export class Enemy implements Hittable {
     // hit-reaction stagger: a solid hit CANCELS a winding-up attack — the payoff for
     // aggressive counterplay. Fodder buckles to anything; the brute only to heavy/big hits.
     if (this.state === "windup") {
-      const tanky = this.kind === "brute";
+      const tanky = this.kind === "brute" || this.kind === "knight";
       const solid = !!opts.heavy || dmg >= this.maxHp * 0.14;
       if (!tanky || solid) {
         this.tele?.cancel(); this.tele = null;
@@ -287,7 +290,7 @@ export class Enemy implements Hittable {
     const nz = dz / dist;
 
     switch (this.kind) {
-      case "husk": case "brute": case "ghoul": this.tickMelee(dt, dist, nx, nz); break;
+      case "husk": case "brute": case "ghoul": case "knight": case "rat": this.tickMelee(dt, dist, nx, nz); break;
       case "spitter": case "archer": case "bomber": this.tickRanged(dt, dist, nx, nz); break;
       case "wraith": this.tickLunge(dt, dist, nx, nz); break;
       case "gargoyle": this.tickFly(dt, dist, nx, nz); break;
@@ -516,7 +519,7 @@ export class Enemy implements Hittable {
       let d = target - this.faceYaw;
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
-      const turnK = this.state === "lunge" ? 18 : this.kind === "brute" || this.kind === "bomber" ? 5 : 9;
+      const turnK = this.state === "lunge" ? 18 : this.kind === "brute" || this.kind === "bomber" || this.kind === "knight" ? 5.5 : this.kind === "rat" ? 14 : 9;
       this.faceYaw += d * Math.min(1, turnK * dt);
     }
     const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
@@ -581,7 +584,7 @@ export class Enemy implements Hittable {
 export class EnemyManager {
   private list: Enemy[] = [];
   // parked instances per kind — reused instead of rebuilt (meshes stay in-scene, shaders warm)
-  private parked: Record<EnemyKind, Enemy[]> = { husk: [], spitter: [], brute: [], wraith: [], ghoul: [], archer: [], gargoyle: [], bomber: [] };
+  private parked: Record<EnemyKind, Enemy[]> = { husk: [], spitter: [], brute: [], wraith: [], ghoul: [], archer: [], gargoyle: [], bomber: [], knight: [], rat: [] };
   private live: Enemy[] = []; // living() scratch — refilled every call, never retained
   // spawn-director state for the active gate wave
   private waveCfg: GateWaveCfg | null = null;

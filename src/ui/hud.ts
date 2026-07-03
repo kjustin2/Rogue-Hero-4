@@ -170,7 +170,7 @@ export class Hud {
         <div class="atk" data-slot="light" style="--gc:${hex}"><div class="atk-cd"></div><b>LMB</b><span>FAST</span></div>
         <div class="atk" data-slot="heavy" style="--gc:${hex}"><div class="atk-cd"></div><b>RMB</b><span>STRONG</span></div>
       </div>
-      <div class="wp-swap"><span class="wdots">${dots}</span><span class="wp-hint">E · SWAP ${p.weapons.length}/${WEAPONS.length}</span></div>
+      <div class="wp-swap"><span class="wdots">${dots}</span><span class="wp-hint">E · SWAP ${p.weapons.length}/5</span></div>
     `;
     this.atkCd.light = this.weaponEl.querySelector('.atk[data-slot="light"] .atk-cd')!;
     this.atkCd.heavy = this.weaponEl.querySelector('.atk[data-slot="heavy"] .atk-cd')!;

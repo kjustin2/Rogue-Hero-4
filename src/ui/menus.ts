@@ -83,6 +83,27 @@ export class Menus {
     this.wire("settings", () => this.showSettings(() => this.showTitle(meta, onStart)));
   }
 
+  /**
+   * Arsenal-full choice: trade one carried weapon for the claimed one, or leave it.
+   * onPick(dropId) trades; onPick(null) declines (the weapon returns to the ground).
+   */
+  showWeaponSwap(carried: { id: string; name: string; color: number }[], offered: { id: string; name: string; color: number }, onPick: (dropId: string | null) => void): void {
+    const cards = carried.map((w) =>
+      `<button class="boon" data-id="${w.id}"><span class="boon-name" style="color:#${w.color.toString(16).padStart(6, "0")}">${w.name}</span><span class="boon-desc">Trade this away</span></button>`,
+    ).join("");
+    this.panel(`
+      <div class="title small">ARSENAL FULL</div>
+      <div class="subtitle">TRADE A WEAPON FOR <b style="color:#${offered.color.toString(16).padStart(6, "0")}">${offered.name}</b> — OR LEAVE IT</div>
+      <div class="boon-cards">${cards}</div>
+      <div class="menu-buttons"><button id="leave">LEAVE IT</button></div>
+    `);
+    this.overlay.querySelectorAll<HTMLButtonElement>(".boon").forEach((b) => b.addEventListener("click", () => {
+      this.ctx.events.emit("UI_CLICK", {});
+      onPick(b.dataset.id!);
+    }));
+    this.wire("leave", () => onPick(null));
+  }
+
   /** The between-gate decision beat: claim one of three boons. */
   showBoons(boons: BoonDef[], onPick: (b: BoonDef) => void): void {
     const cards = boons.map((b, i) =>

@@ -118,6 +118,7 @@ function poseFor(weaponId: string, slot: Slot, isMelee: boolean): PoseId {
     rocketlance: ["cannonLight", "cannonHeavy"],
     arclaser: ["beamLight", "beamHeavy"],
     stormcaller: ["summonLight", "summonHeavy"],
+    francisca: ["summonLight", "summonHeavy"], // raise + hurl reads as a throw
   };
   const pair = map[weaponId] ?? ["beamLight", "beamHeavy"];
   return slot === "light" ? pair[0] : pair[1];
@@ -205,6 +206,7 @@ export class Player {
   private dashCdMax = DASH_CD;
   private dashDir = new THREE.Vector3();
   private kb = new THREE.Vector3(); // self-recoil (rocket kick) / lunge (melee) impulse — decays
+  private vmKick = 0; // viewmodel recoil: 1 on fire → 0, pushes the weapon back + climbs the muzzle
 
   // viewmodel — one distinct model per weapon, swapped on equip
   private vm = new THREE.Group();
@@ -269,6 +271,8 @@ export class Player {
     this.models.rocketlance = this.buildBombard();
     this.models.arclaser = this.buildPrismRod();
     this.models.stormcaller = this.buildStormStaff();
+    this.models.warhammer = this.buildWarhammer();
+    this.models.francisca = this.buildFrancisca();
     for (const id in this.models) {
       const e = this.models[id];
       e.group.visible = false;
@@ -411,6 +415,57 @@ export class Player {
     return { group: g, glow: [glow], add: [{ mat: orb, mesh: orbGlow }], tip: [0, 0.06, -1.25], base: [0, 0, 0.06] };
   }
 
+  /** warhammer → the grave maul: long haft, massive iron block head, butt spike. */
+  private buildWarhammer(): ModelEntry {
+    const g = new THREE.Group();
+    const C = 0xff8c3a;
+    const glow = this.glowMat(C, 1.7);
+    const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 1.5, 8), this.mWood);
+    haft.rotation.x = Math.PI / 2; haft.position.set(0, 0, -0.45);
+    const gripW = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.3, 8), this.mDark);
+    gripW.rotation.x = Math.PI / 2; gripW.position.set(0, 0, 0.12);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.42), this.mIron);
+    head.position.set(0, 0.04, -1.1);
+    const face = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.34, 0.1), this.mSteel);
+    face.position.set(0, 0.04, -1.32);
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.09, 0.34, 5), this.mSteel);
+    spike.rotation.x = Math.PI; spike.position.set(0, -0.2, -1.1);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.08, 0.03, 6, 10), this.mBrass);
+    band.position.set(0, 0, -0.88); band.rotation.x = Math.PI / 2;
+    const rune = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.08, 0.08), glow);
+    rune.position.set(0, 0.04, -1.14);
+    g.add(haft, gripW, head, face, spike, band, rune);
+    return { group: g, glow: [glow], add: [], tip: [0, 0.04, -1.35], base: [0, 0, -0.2] };
+  }
+
+  /** francisca → a bearded throwing axe in hand (spares on the bracer). */
+  private buildFrancisca(): ModelEntry {
+    const g = new THREE.Group();
+    const C = 0xe8d9a8;
+    const glow = this.glowMat(C, 1.6);
+    const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.85, 7), this.mWood);
+    haft.rotation.x = Math.PI / 2; haft.position.set(0, 0, -0.55);
+    const blade = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.08, 0.5, 3, 1), this.mSteel);
+    blade.scale.z = 0.16;
+    blade.position.set(0, 0.2, -0.92); blade.rotation.z = Math.PI / 2; blade.rotation.y = Math.PI / 2;
+    const beard = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.26, 4), this.mSteel);
+    beard.position.set(0, -0.02, -1.02); beard.rotation.x = Math.PI;
+    const bind = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.025, 5, 8), this.mBrass);
+    bind.position.set(0, 0.02, -0.85); bind.rotation.x = Math.PI / 2;
+    const runeA = new THREE.Mesh(new THREE.OctahedronGeometry(0.05), glow);
+    runeA.position.set(0, 0.22, -0.98);
+    // two spare axes strapped to the forearm — you always have another
+    for (const k of [0, 1]) {
+      const spare = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.04, 0.2, 3, 1), this.mDark);
+      spare.scale.z = 0.2;
+      spare.position.set(0.12, -0.12 - k * 0.1, 0.14 + k * 0.1);
+      spare.rotation.set(0.4, 0, Math.PI / 2);
+      g.add(spare);
+    }
+    g.add(haft, blade, beard, bind, runeA);
+    return { group: g, glow: [glow], add: [], tip: [0, 0.1, -1.05], base: [0, 0, -0.15] };
+  }
+
   /** Swap the visible weapon model + move the tip/base markers to it. */
   private applyWeaponLook(): void {
     const e = this.models[this.weapon.id] ?? this.models.boltcaster;
@@ -546,6 +601,9 @@ export class Player {
 
     // weapon-feel self-shove: + recoil kicks you BACKWARD (rocket/beam), - lunges you FORWARD (melee)
     if (a.recoil) { this.kb.x += -fx * a.recoil * c.dmgMult; this.kb.z += -fz * a.recoil * c.dmgMult; }
+    // the weapon itself KICKS: shoved into the shoulder + muzzle climb, damped in animate()
+    this.vmKick = Math.min(1.4, this.vmKick + (heavy ? 1 : 0.5));
+    if (heavy) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.02); // heavy discharge bites the frame
 
     if (a.type === "melee") {
       this.ctx.sfx.meleeSwing(heavy);
@@ -572,7 +630,7 @@ export class Player {
     } else if (a.mode === "laser") {
       // instant hitscan beam down the look ray
       this.ctx.sfx.prismZap();
-      this.ctx.combat.beam(this.pos.x, this.pos.z, fx, fz, a.beamRange, a.beamWidth, dmg, a.knockback, color);
+      this.ctx.combat.beam(this.pos.x, 1.55, this.pos.z, this.aim, a.beamRange, a.beamWidth, dmg, a.knockback, color);
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
       this.muzzleFx(color, heavy);
     } else if (a.mode === "airstrike") {
@@ -653,6 +711,25 @@ export class Player {
     this.shards++;
     this.ctx.events.emit("SHARD", { total: this.shards });
     if (this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + heal + this.mods.shardHealBonus);
+  }
+
+  /** Arsenal is capped at five — swapping is a real choice. */
+  static readonly MAX_WEAPONS = 5;
+
+  /** Trade an owned weapon for the offered one (the swap screen's pick). */
+  swapWeapon(dropId: string, gainId: string): void {
+    const idx = this.weapons.indexOf(dropId);
+    if (idx < 0 || this.weapons.includes(gainId)) return;
+    this.weapons[idx] = gainId;
+    this.wi = idx;
+    this.cooldowns.light = this.cooldowns.heavy = 0;
+    this.buffer.length = 0;
+    this.bufferWeapons.length = 0;
+    this.cur = null;
+    this.applyWeaponLook();
+    this.ctx.sfx.unlockFanfare();
+    this.ctx.events.emit("WEAPON_UNLOCK", { id: gainId, name: this.weapon.name });
+    this.ctx.events.emit("WEAPON_SWITCH", { id: gainId, name: this.weapon.name });
   }
 
   /** Claim a weapon found on the causeway: add it, equip it immediately, fanfare. */
@@ -757,8 +834,10 @@ export class Player {
       trailActive = c.a.type === "melee" && p > 0.18 && p < 0.62;
     }
 
-    this.weaponGrp.position.set(pose[0], pose[1], pose[2]);
-    this.weaponGrp.rotation.set(pose[3], pose[4], pose[5]);
+    // recoil kick rides on TOP of the pose: sharp shove toward the shoulder + muzzle climb
+    this.vmKick = damp(this.vmKick, 0, 11, dt);
+    this.weaponGrp.position.set(pose[0], pose[1] + this.vmKick * 0.03, pose[2] + this.vmKick * 0.16);
+    this.weaponGrp.rotation.set(pose[3] + this.vmKick * 0.14, pose[4], pose[5]);
 
     // pulse the active model's emissive metal + its additive glow bits on the attack flash
     const e = this.active;

@@ -496,8 +496,8 @@ export class Boss implements Hittable {
       const dx = this.aim.x - this.pos.x, dz = this.aim.z - this.pos.z;
       const d = Math.hypot(dx, dz) || 1;
       const bx = dx / d, bz = dz / d;
-      this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, bz, 60, this.hitColor, 1.6);
-      this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, bz, 60, 0xffffff, 0.6);
+      this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, 0, bz, 60, this.hitColor, 1.6);
+      this.ctx.fx.laser(this.pos.x, 1.7, this.pos.z, bx, 0, bz, 60, 0xffffff, 0.6);
       const px = p.pos.x - this.pos.x, pz = p.pos.z - this.pos.z;
       const along = px * bx + pz * bz;
       const perp = Math.abs(px * bz - pz * bx);

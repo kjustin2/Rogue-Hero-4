@@ -488,6 +488,92 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
     lob.position.set(0.62, 1.7, 0.3);
     group.add(lob);
     weapon = lob;
+  } else if (kind === "knight") {
+    // revenant knight: full plate, great helm, a tall KITE SHIELD (his gimmick), arming sword
+    const skirt = robe(0.36, 0.6, 1.0, CLOTH);
+    const cuirass = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.4, 0.85, 8), IRON);
+    cuirass.position.y = 1.5; cuirass.castShadow = true;
+    const plackart = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.42, 0.3, 8), RUST);
+    plackart.position.y = 1.12;
+    const helm = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.26, 0.44, 8), IRON);
+    helm.position.y = 2.14; helm.castShadow = true;
+    const helmTop = new THREE.Mesh(new THREE.ConeGeometry(0.25, 0.2, 8), IRON);
+    helmTop.position.y = 2.42;
+    const visorSlit = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.08), VOID);
+    visorSlit.position.set(0, 2.18, 0.22);
+    core = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.05, 0.06), coreMat); // grave-light through the slit
+    core.position.set(0, 2.18, 0.24);
+    const plume = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.42, 5), CLOTH_RAG);
+    plume.position.set(0, 2.6, -0.08); plume.rotation.x = -0.5;
+    for (const sx of [-1, 1]) {
+      const pauldron = new THREE.Mesh(new THREE.SphereGeometry(0.19, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), IRON);
+      pauldron.position.set(sx * 0.36, 1.86, 0);
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.7, 6), IRON);
+      arm.position.set(sx * 0.42, 1.45, 0.05); arm.rotation.z = sx * -0.28;
+      group.add(pauldron, arm);
+    }
+    // the KITE SHIELD — tall, covers him knee to chin; the reason you flank
+    const shield = new THREE.Group();
+    const face = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.1, 1.3, 3, 1), IRON);
+    face.scale.z = 0.16;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.035, 4, 10), RUST);
+    rim.position.y = 0.2; rim.scale.set(1.05, 1.15, 1);
+    const cross = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.7, 0.05), acc);
+    cross.position.z = 0.06;
+    const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.1, 0.05), acc);
+    crossH.position.set(0, 0.2, 0.06);
+    shield.add(face, rim, cross, crossH);
+    shield.position.set(-0.52, 1.35, 0.3);
+    shield.rotation.y = 0.35;
+    group.add(skirt, cuirass, plackart, helm, helmTop, visorSlit, core, plume, shield);
+    tatters(group, 0.55, 0.1, 5, 0.42, CLOTH_RAG);
+    // arming sword
+    const sword = new THREE.Group();
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 0.24, 6), CLOTH);
+    const guard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.07), RUST);
+    guard.position.y = 0.16;
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.95, 0.03), IRON);
+    blade.position.y = 0.68;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.16, 4), IRON);
+    tip.position.y = 1.22; tip.rotation.y = Math.PI / 4;
+    sword.add(grip, guard, blade, tip);
+    sword.position.set(0.55, 1.4, 0.25);
+    sword.rotation.set(0.45, 0, -0.28);
+    group.add(sword);
+    weapon = sword;
+  } else if (kind === "rat") {
+    // plague rat: a low, fast quadruped — matted hide, naked tail, ember eyes
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.26, 8, 6), CLOTH_RAG);
+    body.position.y = 0.24; body.scale.set(0.8, 0.7, 1.5); body.castShadow = true;
+    const rump = new THREE.Mesh(new THREE.SphereGeometry(0.2, 7, 5), CLOTH_RAG);
+    rump.position.set(0, 0.26, -0.28); rump.scale.set(0.9, 0.8, 1);
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.34, 6), BONE_DK);
+    head.position.set(0, 0.26, 0.44); head.rotation.x = Math.PI / 2;
+    core = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.035, 0.04), coreMat); // ember eyes
+    core.position.set(0, 0.3, 0.42);
+    for (const se of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.055, 5, 4), CLOTH_RAG);
+      ear.position.set(se * 0.09, 0.4, 0.3);
+      group.add(ear);
+    }
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.035, 0.6, 5), BONE_DK);
+    tail.position.set(0, 0.22, -0.62); tail.rotation.x = 1.35;
+    for (const [lx, lz] of [[-0.16, 0.22], [0.16, 0.22], [-0.18, -0.24], [0.18, -0.24]] as const) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.025, 0.22, 4), BONE_DK);
+      leg.position.set(lx, 0.1, lz);
+      group.add(leg);
+    }
+    group.add(body, rump, head, core, tail);
+    // teeth = the weapon (snaps forward on the bite)
+    const teeth = new THREE.Group();
+    for (const tx of [-0.04, 0.04]) {
+      const fang = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.08, 4), BONE);
+      fang.position.set(tx, -0.03, 0.05); fang.rotation.x = Math.PI;
+      teeth.add(fang);
+    }
+    teeth.position.set(0, 0.22, 0.56);
+    group.add(teeth);
+    weapon = teeth;
   } else {
     // brute: an ogre-sized executioner — stacked furnace plates with ember seams,
     // riveted pauldrons, horned great-helm, a chained colossal cleaver

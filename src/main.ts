@@ -24,7 +24,7 @@ import { EnemyManager, type EnemyKind } from "./game/enemies";
 import { Projectiles } from "./game/projectiles";
 import { Pickups } from "./game/pickups";
 import { Boss } from "./game/boss";
-import { weaponComboSelfCheck, WEAPONS } from "./game/weapons";
+import { weaponComboSelfCheck, weaponById, WEAPONS } from "./game/weapons";
 import { Hud } from "./ui/hud";
 import { Menus } from "./ui/menus";
 import type { Ctx } from "./game/ctx";
@@ -34,7 +34,7 @@ import { pick3 } from "./game/boons";
 import { loadSave, writeSave } from "./core/save";
 
 const lowfx = new URLSearchParams(location.search).has("lowfx");
-type State = "title" | "playing" | "paused" | "boon" | "dead" | "victory";
+type State = "title" | "playing" | "paused" | "boon" | "swap" | "dead" | "victory";
 
 // --------------------------------------------------------------------- boot
 const canvas = document.getElementById("game") as HTMLCanvasElement;
@@ -89,8 +89,7 @@ const runStats = { dmgDealt: 0, dmgTaken: 0, combos: 0, bestStreak: 0 };
 let bossSpawned = false;
 let triggered: boolean[] = ctx.level.gates.map(() => false);
 let victoryQueued = 0;
-// weapons found on the ground: greatsword sits near spawn, the rest reward each gate clear
-const GATE_WEAPONS = ["rocketlance", "arclaser", "stormcaller"];
+let offeredWeapon = ""; // claimed at the 5-weapon cap — resolved on the swap screen
 const CINE_LEN = 3.4; // boss-intro cutscene length
 let cineT = 0; // boss-intro cutscene timer (>0 = cutscene running)
 let cineBeatT = 0; // ticks down to fire the next scripted ripple/beam beat
@@ -105,11 +104,17 @@ ctx.events.on("KILL", (e) => {
   runStats.bestStreak = Math.max(runStats.bestStreak, streak);
   ctx.events.emit("KILL_STREAK", { count: streak });
   ctx.pickups.maybeDrop(e.x, e.z, e.elite ? 1 : undefined);
+  // crowned dead sometimes drop their steel — how the arsenal overflows its cap
+  if (e.elite && ctx.rng.chance(0.3)) {
+    const pool = WEAPONS.map((w) => w.id).filter((id) => !ctx.player.weapons.includes(id));
+    if (pool.length) ctx.pickups.dropWeapon(pool[ctx.rng.int(0, pool.length - 1)], e.x, e.z);
+  }
 });
 ctx.events.on("ENEMY_HIT", (e) => { runStats.dmgDealt += e.dmg; });
 ctx.events.on("COMBO_RESOLVE", () => { runStats.combos++; });
 ctx.events.on("PLAYER_HIT", (e) => { streak = 0; runStats.dmgTaken += e.dmg; });
 ctx.events.on("PLAYER_DIED", () => setState("dead"));
+ctx.events.on("WEAPON_OFFER", (e) => { offeredWeapon = e.id; setState("swap"); });
 ctx.events.on("BOSS_PHASE", (e) => startPhaseCutscene(e.phase));
 ctx.events.on("BOSS_DEFEATED", (e) => {
   ctx.events.emit("RUN_VICTORY", {});
@@ -143,6 +148,25 @@ function setState(s: State): void {
   } else if (s === "paused") {
     ctx.input.unlockPointer();
     menus.showPause(() => { ctx.input.lockPointer(); setState("playing"); }, () => setState("title"));
+  } else if (s === "swap") {
+    // arsenal full: trade a carried weapon for the claimed one, or put it back down
+    ctx.input.unlockPointer();
+    const offer = weaponById(offeredWeapon);
+    menus.showWeaponSwap(
+      ctx.player.weapons.map((id) => weaponById(id)),
+      offer,
+      (dropId) => {
+        if (dropId) {
+          ctx.pickups.dropWeapon(dropId, ctx.player.pos.x, ctx.player.pos.z + 3);
+          ctx.player.swapWeapon(dropId, offeredWeapon);
+        } else {
+          ctx.pickups.dropWeapon(offeredWeapon, ctx.player.pos.x, ctx.player.pos.z + 3);
+        }
+        offeredWeapon = "";
+        ctx.input.lockPointer();
+        setState("playing");
+      },
+    );
   } else if (s === "boon") {
     // between-gate decision beat: the world holds while the player claims a boon
     ctx.input.unlockPointer();
@@ -260,9 +284,9 @@ function updatePlaying(dt: number): void {
       hud.showBanner("WAY OPEN", PAL.gold);
       ctx.sfx.critical();
       ctx.music.combat(idx + 2); // each cleared gate advances the combat bed (set1→2→3…)
-      // clearing a wave reveals a new weapon on the ground just past the gate
-      const reward = GATE_WEAPONS[idx];
-      if (reward) ctx.pickups.dropWeapon(reward, 0, GATES_Z[idx] + 4);
+      // clearing a wave reveals a weapon you don't yet carry, just past the gate
+      const pool = WEAPONS.map((w) => w.id).filter((id) => !ctx.player.weapons.includes(id));
+      if (pool.length) ctx.pickups.dropWeapon(pool[ctx.rng.int(0, pool.length - 1)], 0, GATES_Z[idx] + 4);
       setState("boon"); // the decision beat: pick one of three boons
       return;
     }

@@ -167,20 +167,32 @@ export class Combat {
    * Instant hitscan laser: damage every target in a thin corridor from (ox,oz) along
    * (dirX,dirZ) out to `range`, plus the beam VFX. Crits the boss core when aiming weak.
    */
-  beam(ox: number, oz: number, dirX: number, dirZ: number, range: number, width: number, dmg: number, kb: number, color: number): void {
+  /**
+   * Instant hitscan laser as a TRUE 3D ray: fired from eye height along the full aim
+   * (pitch included). A target is hit only if the ray passes through its height
+   * column at its distance — aim up to burn flyers, aim level for the line. VFX
+   * draw along the exact same ray.
+   */
+  beam(ox: number, oy: number, oz: number, aim: THREE.Vector3, range: number, width: number, dmg: number, kb: number, color: number): void {
+    const glen = Math.hypot(aim.x, aim.z) || 1e-4;
+    const dirX = aim.x / glen, dirZ = aim.z / glen;
+    const slope = aim.y / glen; // rise per unit of ground travel
     const weakAim = this.isAimingWeak();
     for (const t of this.targets()) {
       const tx = t.pos.x - ox, tz = t.pos.z - oz;
       const along = tx * dirX + tz * dirZ;
       if (along < 0 || along > range) continue;
       const perp = Math.abs(tx * dirZ - tz * dirX);
-      if (perp <= width + t.radius) {
-        const weak = t.kind === "boss" && weakAim;
-        this.dealDamage(t, dmg, { heavy: true, knockback: kb, fromX: ox, fromZ: oz, weak });
-      }
+      if (perp > width + t.radius) continue;
+      const rayY = oy + slope * along;
+      const top = t.hitTop ?? 2.6, bot = t.hitBottom ?? 0.2;
+      if (rayY < bot - width || rayY > top + width) continue;
+      const weak = t.kind === "boss" && weakAim;
+      this.dealDamage(t, dmg, { heavy: true, knockback: kb, fromX: ox, fromZ: oz, weak });
     }
-    this.ctx.fx.laser(ox + dirX * 2.2, 1.4, oz + dirZ * 2.2, dirX, dirZ, range - 2.2, color, Math.max(0.2, width * 0.6));
-    this.ctx.fx.laser(ox + dirX * 2.2, 1.4, oz + dirZ * 2.2, dirX, dirZ, range - 2.2, 0xffffff, Math.max(0.08, width * 0.22));
+    const sx = ox + dirX * 2.2, sy = oy + slope * 2.2, sz = oz + dirZ * 2.2;
+    this.ctx.fx.laser(sx, sy, sz, aim.x, aim.y, aim.z, range - 2.2, color, Math.max(0.2, width * 0.6));
+    this.ctx.fx.laser(sx, sy, sz, aim.x, aim.y, aim.z, range - 2.2, 0xffffff, Math.max(0.08, width * 0.22));
     this.ctx.cam.addTrauma(0.12);
   }
 
@@ -271,8 +283,8 @@ export class Combat {
         break;
       }
       case "megabeam": {
-        // one huge instant hitscan corridor
-        this.beam(x, z, dirX, dirZ, 60, combo.radius, dmg, 8, combo.color);
+        // one huge instant hitscan corridor, down the true look ray
+        this.beam(x, my, z, dir, 60, combo.radius, dmg, 8, combo.color);
         this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 12, color: combo.color, speed: [3, 8], size: [0.1, 0.28], life: [0.16, 0.34] });
         break;
       }
@@ -325,6 +337,9 @@ export class Combat {
     const d = Math.hypot(dx, dz) || 1;
     this.ctx.cam.kick(-dx / d, -dz / d, Math.min(1, dmg / 16));
     this.ctx.stage.punch(Math.min(0.7, dmg / 20));
+    // taking a wound CRUNCHES: a frame-bite + shake so a hit is never just a number
+    this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.045);
+    this.ctx.cam.addTrauma(Math.min(0.5, 0.18 + dmg / 40));
     this.ctx.floaters.spawn(p.pos.x, 1.6, p.pos.z, String(dmg), "playerdmg");
     if (p.hp <= 0) {
       p.hp = 0;

@@ -185,7 +185,7 @@ app.whenReady().then(async () => {
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0);}`); // back to the starter
 
       // --- enemy lineup showcase (clean look at the upgraded models at distance)
-      await js(`['husk','spitter','brute','wraith','ghoul','archer','gargoyle','bomber'].forEach((k,i)=>window.__rh4debug.spawn(k, -15 + i*4.4, window.__rh4.player.pos.z + 15))`);
+      await js(`['husk','spitter','brute','wraith','ghoul','archer','gargoyle','bomber','knight','rat'].forEach((k,i)=>window.__rh4debug.spawn(k, -15.5 + i*3.4, window.__rh4.player.pos.z + 15))`);
       await frames(4);
       await shot(win, "enemies");
       await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
@@ -254,6 +254,20 @@ app.whenReady().then(async () => {
       expect(await js(`window.__rh4state()==='playing'`), "picking a boon did not resume play");
       await js(`window.__rh4.input.pointerLocked = true`); // boon pick re-locks; reflect it hidden
       await shot(win, "gate-open");
+
+      // --- arsenal cap: at 5 carried, a 6th weapon must be TRADED (or left), never hoarded
+      await js(`{const p=window.__rh4.player; ['greatsword','rocketlance','stormcaller'].forEach(id=>p.unlockWeapon(id));}`);
+      expect(await js(`window.__rh4.player.weapons.length`) === 5, "cap setup should leave exactly 5 weapons");
+      await js(`window.__rh4.pickups.dropWeapon('warhammer', window.__rh4.player.pos.x, window.__rh4.player.pos.z)`);
+      await frames(6);
+      expect(await js(`window.__rh4state()==='swap'`), "claiming a 6th weapon did not open the swap screen");
+      await sleep(200);
+      await shot(win, "weapon-swap");
+      await js(`document.querySelector('.boon')?.click()`); // trade the first carried weapon away
+      await frames(3);
+      expect(await js(`window.__rh4state()==='playing'`), "weapon swap did not resume play");
+      expect(await js(`window.__rh4.player.weapons.includes('warhammer') && window.__rh4.player.weapons.length===5`), "swap did not trade into the capped arsenal");
+      await js(`window.__rh4.input.pointerLocked = true`); // swap pick re-locks; reflect it hidden
 
       // --- arsenal: grant all weapons, then showcase each DISTINCT mechanic firing
       await js(`window.__rh4debug.unlockAll()`);

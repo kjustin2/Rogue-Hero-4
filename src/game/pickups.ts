@@ -57,6 +57,8 @@ export class Pickups {
       case "rocketlance": return new THREE.SphereGeometry(0.42, 14, 12);       // a cannonball
       case "arclaser": return new THREE.OctahedronGeometry(0.5);               // a crystal
       case "stormcaller": return new THREE.IcosahedronGeometry(0.46, 0);       // a storm orb
+      case "warhammer": return new THREE.BoxGeometry(0.6, 0.42, 0.42);          // a maul head
+      case "francisca": return new THREE.CylinderGeometry(0.42, 0.1, 0.55, 3);  // an axe blade
       default: return new THREE.OctahedronGeometry(0.5);
     }
   }
@@ -152,7 +154,8 @@ export class Pickups {
       const gx = d.group.position.x, gz = d.group.position.z;
       if (Math.hypot(p.pos.x - gx, p.pos.z - gz) < WEAPON_PICKUP_R && p.alive && !p.weapons.includes(d.id)) {
         d.alive = false;
-        p.unlockWeapon(d.id);
+        if (p.weapons.length >= 5) this.ctx.events.emit("WEAPON_OFFER", { id: d.id });
+        else p.unlockWeapon(d.id);
         const c = weaponById(d.id).color;
         this.ctx.fx.beam(gx, gz, c);
         this.ctx.fx.burst({ x: gx, y: 1.2, z: gz, count: 44, color: [c, 0xffffff], speed: [5, 17], up: 1, size: [0.16, 0.5], life: [0.4, 1.0] });

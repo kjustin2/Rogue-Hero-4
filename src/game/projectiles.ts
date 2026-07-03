@@ -3,12 +3,13 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Ctx } from "./ctx";
 import { ARENA_CENTER, ARENA_RADIUS, HALF_WIDTH } from "./level";
 
-type Shape = "dart" | "cannonball" | "comet" | "skull";
+type Shape = "dart" | "cannonball" | "comet" | "skull" | "axe";
 
 interface Shot {
   group: THREE.Group;
   bomb: THREE.Group;
   skullG: THREE.Group;
+  axeG: THREE.Group;
   glow: THREE.Mesh;
   head: THREE.Mesh;
   tail: THREE.Mesh;
@@ -63,6 +64,8 @@ export class Projectiles {
   private bombBand = new THREE.MeshStandardMaterial({ color: 0x50301c, roughness: 0.7, metalness: 0.5 });
   private fuseMat = new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
   private skullBone = new THREE.MeshStandardMaterial({ color: 0xb8ac92, roughness: 0.85, metalness: 0.05, emissive: 0x2a251c, emissiveIntensity: 0.6 });
+  private axeSteel = new THREE.MeshStandardMaterial({ color: 0x9aa2ac, roughness: 0.35, metalness: 0.9, emissive: 0x10151a, emissiveIntensity: 0.4 });
+  private axeWood = new THREE.MeshStandardMaterial({ color: 0x4a341e, roughness: 0.9, metalness: 0.04 });
   private q = new THREE.Quaternion();
   private vn = new THREE.Vector3();
 
@@ -112,6 +115,15 @@ export class Projectiles {
       eyesM.position.set(0, 0.02, 0.2);
       skullG.add(cranium, jaw, eyesM);
       group.add(skullG);
+      // the whirling francisca: short haft + bearded steel blade
+      const axeG = new THREE.Group();
+      const axHaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.045, 0.8, 6), this.axeWood);
+      const axBlade = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.08, 0.42, 3, 1), this.axeSteel);
+      axBlade.scale.z = 0.16;
+      axBlade.position.set(0.2, 0.32, 0);
+      axBlade.rotation.z = -Math.PI / 2;
+      axeG.add(axHaft, axBlade);
+      group.add(axeG);
       const glow = new THREE.Mesh(this.glowGeo, glowMat);
       const head = new THREE.Mesh(this.headGeo, this.headMat);
       const tail = new THREE.Mesh(this.tailGeo, tailMat);
@@ -129,7 +141,7 @@ export class Projectiles {
       group.frustumCulled = false;
       group.renderOrder = 5;
       this.ctx.stage.scene.add(group);
-      this.pool.push({ group, bomb, skullG, glow, head, tail, ring, dart, runes, shape: "comet", glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
+      this.pool.push({ group, bomb, skullG, axeG, glow, head, tail, ring, dart, runes, shape: "comet", glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
     }
   }
 
@@ -162,6 +174,8 @@ export class Projectiles {
     s.bomb.rotation.set(0, 0, 0);
     s.skullG.visible = s.shape === "skull";
     s.skullG.rotation.set(0, 0, 0);
+    s.axeG.visible = s.shape === "axe";
+    s.axeG.rotation.set(0, 0, 0);
     s.dart.visible = s.shape === "dart";
     s.glow.visible = s.shape === "comet";
     s.head.visible = s.shape === "comet";
@@ -201,8 +215,13 @@ export class Projectiles {
       p.addScaledVector(s.vel, dt);
       s.life -= dt;
       this.orient(s);
-      // grenades detonate when they hit the ground
-      if (s.grav && p.y <= 0.25) { this.detonate(s); continue; }
+      // gravity shots meet the ground: bombs detonate, axes bite the flags
+      if (s.grav && p.y <= 0.25) {
+        if (s.explodeRadius > 0) { this.detonate(s); continue; }
+        this.impact(s.group.position, s.color);
+        this.kill(s);
+        continue;
+      }
       // nothing sails through the flags: any shot that dips below the floor impacts it
       if (p.y <= 0.1) {
         if (s.explodeRadius > 0) { this.detonate(s); continue; }
@@ -226,6 +245,8 @@ export class Projectiles {
         // the skull wails as it flies — a slow roll + a wisp of grave-light
         s.skullG.rotation.z = Math.sin(age * 7) * 0.35;
         s.skullG.rotation.x = Math.sin(age * 5) * 0.2;
+      } else if (s.shape === "axe") {
+        s.axeG.rotation.x -= dt * 16; // end-over-end axe spin
       }
       s.runes.rotation.z += dt * 9;
       if (s.shape === "dart") s.dart.rotation.z += dt * 16; // fletched bolt spins in flight

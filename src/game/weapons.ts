@@ -33,8 +33,8 @@ export interface AttackDef {
   spread: number;
   big: boolean;
   pierce: boolean;
-  /** Projectile visual: a thin crossbow dart, a heavy iron cannonball, or a runed comet. */
-  shape: "dart" | "cannonball" | "comet";
+  /** Projectile visual: a bolt, an iron bomb, a runed comet, a witch-skull, or a whirling axe. */
+  shape: "dart" | "cannonball" | "comet" | "skull" | "axe";
   // rocket
   explodeRadius: number;
   /** >0 → a lobbed shot that arcs under gravity (mortar) instead of flying straight. */
@@ -159,6 +159,26 @@ export const WEAPONS: WeaponDef[] = [
     combos: [
       { name: "STORMFALL", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 1.8, effect: "airstrike", radius: 4.4, color: VIOLET },
       { name: "HEAVEN'S WRATH", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.2, effect: "airstrike", radius: 4.8, color: 0xffe6b0 },
+    ],
+  },
+  {
+    // the second melee — slower, harder, quake-flavored; every heavy is a tremor
+    id: "warhammer", name: "GRAVE MAUL", kind: "melee", color: 0xff8c3a, moveMult: 0.35,
+    light: melee({ damage: 19, cooldown: 0.34, arc: 1.6, range: 3.4, windup: 0.08, active: 0.12, recovery: 0.12, knockback: 9, recoil: -4 }),
+    heavy: melee({ damage: 44, cooldown: 0.95, arc: 2.3, range: 4.2, windup: 0.22, active: 0.2, recovery: 0.22, knockback: 16, recoil: -7, chargeMax: 0.9, chargeMult: 2.2 }),
+    combos: [
+      { name: "MOUNTAINFALL", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.4, effect: "slam", radius: 6.5, color: 0xff8c3a },
+      { name: "AFTERSHOCK", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.4, effect: "slam", radius: 8.0, color: 0xffd24a },
+    ],
+  },
+  {
+    // thrown franciscas — arcing, cleaving axes; mobile skirmisher with mid-range bite
+    id: "francisca", name: "FRANCISCA AXES", kind: "projectile", color: 0xe8d9a8, moveMult: 0.8,
+    light: bolt({ damage: 17, cooldown: 0.38, speed: 30, gravity: 9, knockback: 6, shape: "axe" }),
+    heavy: bolt({ damage: 34, cooldown: 0.9, speed: 26, gravity: 7, pierce: true, big: true, windup: 0.14, recovery: 0.14, knockback: 10, recoil: 3, shape: "axe" }),
+    combos: [
+      { name: "AXE TEMPEST", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.0, effect: "bolts", radius: 0, color: 0xe8d9a8 },
+      { name: "SKULLSPLITTER", recipe: ["light", "heavy"], tier: 2, damageMult: 1.9, effect: "barrage", radius: 4, color: 0xe8d9a8 },
     ],
   },
 ];

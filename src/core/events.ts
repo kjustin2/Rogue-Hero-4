@@ -25,6 +25,8 @@ export interface EventMap {
   SHARD: { total: number };
   /** A new weapon unlocked at a shard threshold. */
   WEAPON_UNLOCK: { id: string; name: string };
+  /** Claimed a weapon while carrying the max — main opens the swap choice. */
+  WEAPON_OFFER: { id: string };
   /** The player switched the equipped weapon. */
   WEAPON_SWITCH: { id: string; name: string };
   /** Boss health changed — drives the boss bar. */

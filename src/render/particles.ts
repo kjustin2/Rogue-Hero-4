@@ -169,7 +169,10 @@ export class Particles {
   }
 
   /** Instant hitscan beam: a thin glowing line from (x,y,z) along horizontal (dx,dz). */
-  laser(x: number, y: number, z: number, dx: number, dz: number, length: number, color: number, width = 0.3): void {
+  private laserDir = new THREE.Vector3();
+  private laserFwd = new THREE.Vector3(0, 0, 1);
+
+  laser(x: number, y: number, z: number, dx: number, dy: number, dz: number, length: number, color: number, width = 0.3): void {
     const b = this.bolts.find((b) => !b.mesh.visible);
     if (!b) return;
     b.mesh.visible = true;
@@ -177,7 +180,9 @@ export class Particles {
     b.dur = 0.16;
     b.w = width;
     b.mesh.position.set(x, y, z);
-    b.mesh.rotation.set(0, Math.atan2(dx, dz), 0);
+    // full 3D aim — a beam pointed at the sky must DRAW at the sky
+    this.laserDir.set(dx, dy, dz).normalize();
+    b.mesh.quaternion.setFromUnitVectors(this.laserFwd, this.laserDir);
     b.mesh.scale.set(width, width, length);
     b.mat.color.set(color);
     b.mat.opacity = 0.92;
