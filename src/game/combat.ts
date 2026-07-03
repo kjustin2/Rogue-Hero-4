@@ -90,6 +90,10 @@ export class Combat {
     const isBoss = t.kind === "boss";
     // Boss body is armored — chip damage unless you land the core (vertical aim matters).
     if (isBoss && !weak) dmg *= 0.45;
+    // long-range falloff: full damage inside 18u, tapering to 45% by ~50u —
+    // sniping the whole causeway from the spawn line shouldn't be the best play
+    const pd = Math.hypot(t.pos.x - this.ctx.player.pos.x, t.pos.z - this.ctx.player.pos.z);
+    if (pd > 18) dmg *= Math.max(0.45, 1 - (pd - 18) / 58);
     if (t.modifyIncoming) dmg = t.modifyIncoming(dmg, opts);
     dmg = Math.max(1, Math.round(dmg));
     const killed = t.takeDamage(dmg, opts);
@@ -240,7 +244,7 @@ export class Combat {
     switch (combo.effect) {
       case "barrage": {
         // a single colossal piercing comet along the look ray
-        this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 2.0, pierce: true });
+        this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 2.2, pierce: true, shape: "dart" }); // a colossal ballista javelin
         this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 10, color: combo.color, speed: [3, 9], size: [0.12, 0.3], life: [0.18, 0.4] });
         break;
       }
@@ -251,7 +255,7 @@ export class Combat {
           const off = (i - (n - 1) / 2) * 0.12;
           const ca = Math.cos(off), sa = Math.sin(off);
           FAN_DIR.set(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
-          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, FAN_DIR, 46, dmg / 3, true, combo.color, 3);
+          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, FAN_DIR, 46, dmg / 3, true, combo.color, 3, { shape: "dart" });
         }
         break;
       }
@@ -262,7 +266,7 @@ export class Combat {
           const off = (i - (n - 1) / 2) * 0.16;
           const ca = Math.cos(off), sa = Math.sin(off);
           FAN_DIR.set(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
-          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, FAN_DIR, 26, dmg / 2, true, combo.color, 8, { explode: combo.radius });
+          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, FAN_DIR, 26, dmg / 2, true, combo.color, 8, { explode: combo.radius, shape: "cannonball" });
         }
         break;
       }

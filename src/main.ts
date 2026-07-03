@@ -131,13 +131,9 @@ function setState(s: State): void {
     ctx.input.unlockPointer();
     hud.setVisible(false);
     ctx.music.menu();
-    menus.showTitle({
-      clears: save.clears,
-      unlockedStarts: save.unlockedStarts,
-      bestTime: save.bestTime,
-    }, (startWeapon) => {
+    menus.showTitle({ clears: save.clears, bestTime: save.bestTime }, () => {
       unlockAudio();
-      startRun(newSeed(), startWeapon);
+      startRun(newSeed());
     });
   } else if (s === "playing") {
     ctx.stage.setLowCost(false);
@@ -190,10 +186,9 @@ function newSeed(): number {
   return (Date.now() ^ (Math.random() * 0x7fffffff)) & 0x7fffffff;
 }
 
-function startRun(seed = 20260629, startWeapon?: string): void {
+function startRun(seed = 20260629): void {
   ctx.rng.reseed(seed);
   ctx.player.reset(PLAYER_SPAWN);
-  if (startWeapon && save.unlockedStarts.includes(startWeapon)) ctx.player.setStartingWeapon(startWeapon);
   ctx.cam.yaw = Math.PI;
   ctx.cam.pitch = 0;
   ctx.level.reset();

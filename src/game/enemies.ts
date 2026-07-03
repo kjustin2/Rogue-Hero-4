@@ -19,13 +19,13 @@ interface KindCfg {
   color: number;
   bodyY: number;
   /** Ranged kinds only: what they hurl and how often (tickRanged reads this). */
-  proj?: { speed: number; shape: "dart" | "cannonball" | "comet"; interval: number; gravity?: number; explode?: number };
+  proj?: { speed: number; shape: "dart" | "cannonball" | "comet" | "skull"; interval: number; gravity?: number; explode?: number };
 }
 
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
   husk: { hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
-  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0, proj: { speed: 17, shape: "comet", interval: 1.45 } }, // witchfire caster: slow lobbed orb
+  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0, proj: { speed: 17, shape: "skull", interval: 1.45 } }, // witchfire caster: hurls wailing skulls
   brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
   wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
   ghoul: { hp: 20, radius: 0.5, speed: 15.5, contactDmg: 12, attackRange: 2.2, windup: 0.13, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast
@@ -87,6 +87,7 @@ export class Enemy implements Hittable {
   private core: THREE.Mesh;
   private weapon?: THREE.Group;     // held weapon, swung on the strike
   private weaponBase = new THREE.Euler();
+  private weaponBasePos = new THREE.Vector3();
   private wings?: { l: THREE.Object3D; r: THREE.Object3D };
   /** Flyer altitude (gargoyle) — cruise high, dive to strike. */
   private alt = 0;
@@ -122,7 +123,10 @@ export class Enemy implements Hittable {
     this.core = parts.core;
     this.weapon = parts.weapon;
     this.wings = parts.wings;
-    if (this.weapon) this.weaponBase.copy(this.weapon.rotation);
+    if (this.weapon) {
+      this.weaponBase.copy(this.weapon.rotation);
+      this.weaponBasePos.copy(this.weapon.position);
+    }
     this.ctx.stage.scene.add(this.group);
     this.reset(x, z);
   }
@@ -327,7 +331,7 @@ export class Enemy implements Hittable {
       } else {
         this.state = "windup";
         this.timer = cfg.windup;
-        const angle = Math.atan2(nz, nx);
+        const angle = Math.atan2(nx, nz); // tele.line convention: strip runs along (sin a, cos a)
         if (this.kind === "brute") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, cfg.attackRange, cfg.windup, PAL.threat);
         else this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, angle, cfg.attackRange + 0.5, 1.4, cfg.windup, PAL.threat);
       }
@@ -361,7 +365,7 @@ export class Enemy implements Hittable {
   // was the unfair part; the aim line is the fairness contract.
   private tickRanged(dt: number, dist: number, nx: number, nz: number): void {
     const cfg = this.cfg;
-    const pj = cfg.proj ?? { speed: 17, shape: "comet" as const, interval: 1.45 };
+    const pj = cfg.proj ?? { speed: 17, shape: "skull" as const, interval: 1.45 };
 
     if (this.state === "windup") {
       this.timer -= dt;
@@ -406,7 +410,7 @@ export class Enemy implements Hittable {
       this.state = "windup";
       this.timer = cfg.windup;
       const len = Math.min(dist + 2, pj.shape === "dart" ? 22 : 15);
-      this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), len, 1.5, cfg.windup, PAL.threat);
+      this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nx, nz), len, 1.5, cfg.windup, PAL.threat);
     }
   }
 
@@ -422,7 +426,7 @@ export class Enemy implements Hittable {
         this.state = "windup";
         this.timer = cfg.windup;
         this.lungeDir.set(nx, 0, nz);
-        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), 12, 1.6, cfg.windup, PAL.threat);
+        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nx, nz), 12, 1.6, cfg.windup, PAL.threat);
       }
     } else if (this.state === "windup") {
       this.timer -= dt;
@@ -469,7 +473,7 @@ export class Enemy implements Hittable {
         this.state = "windup";
         this.timer = cfg.windup;
         this.lungeDir.set(nx, 0, nz);
-        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nz, nx), dist + 6, 1.7, cfg.windup, PAL.threat);
+        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nx, nz), dist + 6, 1.7, cfg.windup, PAL.threat);
       }
     } else if (this.state === "windup") {
       this.alt = damp(this.alt, cruise + 1.2, 4, dt); // rears up before the stoop
@@ -516,8 +520,12 @@ export class Enemy implements Hittable {
       this.faceYaw += d * Math.min(1, turnK * dt);
     }
     const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
-    // bob grows with movement so a charging wight reads as striding, not gliding
-    const bob = Math.sin(this.vt * (2.5 + this.moveAmt * 3) + this.id) * (0.1 + this.moveAmt * 0.14);
+    // stride: bob + a weight-shift waddle on the same clock, so steps have footfall
+    const strideT = this.vt * (2.5 + this.moveAmt * 3) + this.id;
+    const bob = Math.abs(Math.sin(strideT)) * (0.06 + this.moveAmt * 0.12);
+    const waddle = Math.sin(strideT) * 0.05 * this.moveAmt;
+    // eased wind-up: anticipation coils in, the strike releases
+    const ch = this.atkCharge * this.atkCharge * (3 - 2 * this.atkCharge);
     this.group.position.set(this.pos.x + nx * fwd, this.cfg.bodyY + this.alt + bob, this.pos.z + nz * fwd);
     if (this.wings) {
       // wingbeat: deep slow strokes on the cruise, swept tight in the stoop
@@ -526,20 +534,34 @@ export class Enemy implements Hittable {
       this.wings.l.rotation.z = -flap - 0.15;
       this.wings.r.rotation.z = flap + 0.15;
     }
-    this.group.scale.setScalar(this.baseScale * (1 + this.atkCharge * 0.14 - this.atkLunge * 0.12 - this.flinch * 0.1));
+    this.group.scale.setScalar(this.baseScale * (1 + ch * 0.05 - this.atkLunge * 0.05 - this.flinch * 0.06));
     this.group.rotation.y = this.faceYaw;
-    // lean into the advance (toward the player), faint living sway, recoil on strike, snap back on a hit
-    this.group.rotation.x = this.moveAmt * 0.17 - this.atkLunge * 0.1 - this.flinch * 0.4;
-    this.group.rotation.z = Math.sin(this.vt * 1.7 + this.id) * 0.04;
-    // weapon: cocked back through the wind-up, swung hard on the strike, idle drift otherwise
+    // body language: lean into the advance, COIL BACK through the wind-up, drive
+    // forward on the strike, snap back on a hit — plus the stride weight-shift
+    this.group.rotation.x = this.moveAmt * 0.12 + ch * 0.16 - this.atkLunge * 0.32 - this.flinch * 0.25;
+    this.group.rotation.z = Math.sin(this.vt * 1.7 + this.id) * 0.03 + waddle;
+    // weapon action, per fighting style
     if (this.weapon) {
       const b = this.weaponBase;
-      const idle = Math.sin(this.vt * 2 + this.id) * 0.07 * (1 - this.atkCharge);
-      this.weapon.rotation.set(
-        b.x - this.atkCharge * 0.8 + this.atkLunge * 1.9,
-        b.y,
-        b.z + idle - this.atkLunge * 0.3,
-      );
+      const bp = this.weaponBasePos;
+      const idle = Math.sin(this.vt * 2 + this.id) * 0.06 * (1 - ch);
+      if (this.kind === "archer") {
+        // the bow: drawn back to the shoulder, thrust forward on the loose
+        this.weapon.position.set(bp.x, bp.y, bp.z - ch * 0.18 + this.atkLunge * 0.26);
+        this.weapon.rotation.set(b.x + idle * 0.5, b.y, b.z);
+      } else if (this.kind === "spitter" || this.kind === "bomber") {
+        // casters and lobbers: gather HIGH, hurl down-forward on the release
+        this.weapon.position.set(bp.x, bp.y + ch * 0.3, bp.z);
+        this.weapon.rotation.set(b.x - ch * 1.1 + this.atkLunge * 1.6, b.y, b.z + idle);
+      } else {
+        // blades and claws: cock across the body, then a cross-body arc on the strike
+        this.weapon.position.copy(bp);
+        this.weapon.rotation.set(
+          b.x - ch * 0.9 + this.atkLunge * 1.7,
+          b.y + this.atkLunge * 0.55,
+          b.z + idle - ch * 0.25 - this.atkLunge * 0.35,
+        );
+      }
     }
   }
 

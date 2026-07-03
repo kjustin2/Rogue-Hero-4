@@ -655,14 +655,6 @@ export class Player {
     if (this.hp < this.maxHp) this.hp = Math.min(this.maxHp, this.hp + heal + this.mods.shardHealBonus);
   }
 
-  /** Meta unlock: begin the run holding a different weapon (title choice). */
-  setStartingWeapon(id: string): void {
-    this.weapons = [id];
-    this.wi = 0;
-    this.applyWeaponLook();
-    this.ctx.events.emit("WEAPON_SWITCH", { id, name: this.weapon.name });
-  }
-
   /** Claim a weapon found on the causeway: add it, equip it immediately, fanfare. */
   unlockWeapon(id: string): void {
     if (this.weapons.includes(id)) return;

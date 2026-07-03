@@ -1,12 +1,10 @@
 import type { Ctx } from "../game/ctx";
 import { ACTION_LABELS, codeLabel, type Action } from "../core/input";
 import { loadSettings, saveSettings, applySettings, type Settings } from "../core/settings";
-import { WEAPONS } from "../game/weapons";
 import type { BoonDef } from "../game/boons";
 
 export interface TitleMeta {
   clears: number;
-  unlockedStarts: string[];
   bestTime: number;
 }
 
@@ -33,7 +31,6 @@ const REBINDABLE: Action[] = ["up", "down", "left", "right", "light", "heavy", "
 export class Menus {
   private overlay = document.getElementById("overlay")!;
   settings: Settings = loadSettings();
-  private startWeapon: string = WEAPONS[0].id;
   private fs = false; // mirrored OS fullscreen state (Electron only)
 
   constructor(private ctx: Ctx) {
@@ -67,14 +64,7 @@ export class Menus {
     el?.addEventListener("click", () => { this.ctx.events.emit("UI_CLICK", {}); fn(); });
   }
 
-  showTitle(meta: TitleMeta, onStart: (startWeapon?: string) => void): void {
-    // starting-weapon rack — the first-clear meta unlock
-    const rack = meta.clears > 0 && meta.unlockedStarts.length > 1
-      ? `<div class="start-rack"><span class="sr-lbl">BEGIN WITH</span>` + WEAPONS
-          .filter((w) => meta.unlockedStarts.includes(w.id))
-          .map((w) => `<button class="sr-btn${w.id === this.startWeapon ? " on" : ""}" data-w="${w.id}" style="--gc:#${w.color.toString(16).padStart(6, "0")}">${w.name}</button>`)
-          .join("") + `</div>`
-      : "";
+  showTitle(meta: TitleMeta, onStart: () => void): void {
     const laurels = meta.clears > 0
       ? `<div class="meta-line">${meta.clears} CLEAR${meta.clears > 1 ? "S" : ""} · BEST ${meta.bestTime.toFixed(0)}s</div>`
       : "";
@@ -87,14 +77,8 @@ export class Menus {
         <button id="controls">CONTROLS</button>
         <button id="settings">SETTINGS</button>
       </div>
-      ${rack}
     `);
-    this.overlay.querySelectorAll<HTMLButtonElement>(".sr-btn").forEach((b) => b.addEventListener("click", () => {
-      this.startWeapon = b.dataset.w!;
-      this.ctx.events.emit("UI_CLICK", {});
-      this.showTitle(meta, onStart);
-    }));
-    this.wire("start", () => onStart(this.startWeapon));
+    this.wire("start", onStart);
     this.wire("controls", () => this.showControls(() => this.showTitle(meta, onStart)));
     this.wire("settings", () => this.showSettings(() => this.showTitle(meta, onStart)));
   }

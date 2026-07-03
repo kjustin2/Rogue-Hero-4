@@ -42,6 +42,7 @@ export class Boss implements Hittable {
   private waveHit = false;
   private waveHinted = false; // "DASH THROUGH" teaching floater, once per fight
   private waveFxT = 0; // gravewave wall-ring emit throttle
+  private spinT = 0;   // >0 = the warblade is mid 360° reap (sweep/harvest strike)
   private summonT = 25; // phase-3 recurring adds timer
   /** Phase-3 soulfire pools left by collapses — the safe floor shrinks. */
   private pools: { x: number; z: number; r: number; t: number; tick: number }[] = [];
@@ -232,18 +233,26 @@ export class Boss implements Hittable {
     // the shard halo wheels around the core, faster as the fight escalates
     this.orbit.rotation.y += dt * (this.phase >= 3 ? 1.7 : this.phase === 2 ? 1.1 : 0.7);
     // halo gathers inward + lifts as it charges an attack, flares out on the strike
-    this.orbit.scale.setScalar(1 - this.charge * 0.34 + this.lunge * 0.22);
-    this.orbit.position.y = this.charge * 0.7 - this.lunge * 0.4;
+    // eased anticipation drives the halo + blade together (defined here — this runs first)
+    const cs = this.charge * this.charge * (3 - 2 * this.charge);
+    this.orbit.scale.setScalar(1 - cs * 0.34 + this.lunge * 0.22);
+    this.orbit.position.y = cs * 0.7 - this.lunge * 0.4;
     // cloak billow — a slow living roll
     this.cloak.rotation.z = Math.sin(this.t * 1.1) * 0.05;
     this.cloak.rotation.x = Math.sin(this.t * 0.8 + 1) * 0.04;
-    // the warblade hovers, raises on the wind-up, hammers down on the strike
-    this.blade.position.y = this.bladeY + Math.sin(this.t * 1.3) * 0.3 + this.charge * 1.5 - this.lunge * 1.9;
+    // the warblade hovers, RAISES with an eased anticipation curve, hammers down on
+    // the strike — and wheels a full 360° on the reaping attacks
+    if (this.spinT > 0) this.spinT = Math.max(0, this.spinT - dt);
+    const spinK = this.spinT > 0 ? 1 - this.spinT / 0.55 : 0;
+    const spinYaw = spinK > 0 ? (spinK < 0.5 ? 2 * spinK * spinK : 1 - Math.pow(-2 * spinK + 2, 2) / 2) * Math.PI * 2 : 0;
+    this.blade.position.y = this.bladeY + Math.sin(this.t * 1.3) * 0.3 + cs * 1.6 - this.lunge * 1.9;
     this.blade.rotation.set(
-      this.bladeBase.x - this.charge * 0.9 + this.lunge * 2.3,
-      this.bladeBase.y + Math.sin(this.t * 0.9) * 0.08,
+      this.bladeBase.x - cs * 1.0 + this.lunge * 2.2 + (this.spinT > 0 ? -0.9 : 0),
+      this.bladeBase.y + Math.sin(this.t * 0.9) * 0.08 + spinYaw,
       this.bladeBase.z,
     );
+    // his bulk pitches into the blow — follow-through, not a statue with a sword
+    this.group.rotation.x = cs * 0.05 - this.lunge * 0.09;
 
     // rising entrance: scale up from nothing; no attacks until fully risen
     if (this.rise < 1 && !this.dying) {
@@ -420,19 +429,19 @@ export class Boss implements Hittable {
     this.aimAngle = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
     const c = this.teleColor();
     if (this.attack === "slam") this.tele = this.ctx.tele.circle(this.aim.x, this.aim.z, 5, this.windupMax, c);
-    else if (this.attack === "sweep") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 40, 5, this.windupMax, c);
-    else if (this.attack === "beam") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x), 60, 4, this.windupMax, c);
+    else if (this.attack === "sweep") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, this.aimAngle, 40, 5, this.windupMax, c);
+    else if (this.attack === "beam") this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, this.aimAngle, 60, 4, this.windupMax, c);
     else if (this.attack === "gravewave") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, 8, this.windupMax, c);
     else if (this.attack === "harvest") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, 9, this.windupMax, c);
     else if (this.attack === "volley") {
       // the bolt fan is telegraphed as its actual lanes — no more untelegraphed volleys
       const n = this.phase === 2 ? 7 : 5;
-      const base = Math.atan2(p.pos.z - this.pos.z, p.pos.x - this.pos.x);
+      const base = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
       for (const t of this.teles) t.cancel();
       this.teles = [];
       for (let i = 0; i < n; i++) {
-        // volley aims by atan2(x,z); tele.line wants atan2(z,x) — mirror the offset
-        this.teles.push(this.ctx.tele.line(this.pos.x, this.pos.z, base - (i - (n - 1) / 2) * 0.18, 26, 1.1, this.windupMax, c));
+        // same (sin,cos) convention as the bolts themselves — lanes match flight paths
+        this.teles.push(this.ctx.tele.line(this.pos.x, this.pos.z, base + (i - (n - 1) / 2) * 0.18, 26, 1.1, this.windupMax, c));
       }
     }
     else if (this.attack === "collapse") {
@@ -479,7 +488,7 @@ export class Boss implements Hittable {
       for (let i = 0; i < n; i++) {
         const ang = base + (i - (n - 1) / 2) * 0.18;
         VOLLEY_DIR.set(Math.sin(ang) * horiz, ty - sy, Math.cos(ang) * horiz);
-        this.ctx.projectiles.spawn(this.pos.x, sy, this.pos.z, VOLLEY_DIR, 24, 14, false, this.hitColor, 3);
+        this.ctx.projectiles.spawn(this.pos.x, sy, this.pos.z, VOLLEY_DIR, 24, 14, false, this.hitColor, 3, { shape: "skull" });
       }
     } else if (a === "beam") {
       // a searing lance fires ALONG THE TELEGRAPHED LINE (locked at wind-up on this.aim),
@@ -496,11 +505,13 @@ export class Boss implements Hittable {
       this.ctx.sfx.beamFire();
       if (along > 0 && perp <= 2.0) this.ctx.combat.damagePlayer(30, this.pos.x, this.pos.z); // corridor matches the width-4 strip
     } else if (a === "sweep") {
+      this.spinT = 0.55;
       // hit if player is within the swept band along aimAngle
       const dx = p.pos.x - this.pos.x;
       const dz = p.pos.z - this.pos.z;
-      const along = dx * Math.cos(this.aimAngle) + dz * Math.sin(this.aimAngle);
-      const perp = Math.abs(dx * Math.sin(this.aimAngle) - dz * Math.cos(this.aimAngle));
+      // aimAngle is atan2(x,z): forward = (sin a, cos a) — project on THAT axis pair
+      const along = dx * Math.sin(this.aimAngle) + dz * Math.cos(this.aimAngle);
+      const perp = Math.abs(dx * Math.cos(this.aimAngle) - dz * Math.sin(this.aimAngle));
       this.ctx.fx.burst({ x: this.pos.x, y: 1, z: this.pos.z, count: 40, color: this.hitColor, speed: [8, 18], vertical: 0.3, life: [0.3, 0.6] });
       if (along > 0 && perp <= 3.0) this.ctx.combat.damagePlayer(32, this.pos.x, this.pos.z);
     } else if (a === "collapse") {
@@ -531,6 +542,7 @@ export class Boss implements Hittable {
         this.ctx.floaters.spawn(p.pos.x, 2.4, p.pos.z, "DASH THROUGH THE WAVE", "label", "#ff5a4a");
       }
     } else if (a === "harvest") {
+      this.spinT = 0.55; // the blade wheels a full circle
       // a full-circle reap that punishes hugging the Warden
       this.ctx.fx.slash(this.pos.x, 2.2, this.pos.z, this.ctx.rng.range(0, Math.PI * 2), { color: this.hitColor, radius: 9.5, tilt: -0.02, duration: 0.32, spin: 6 });
       this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 9, color: this.hitColor, duration: 0.4, y: 1.2 });

@@ -3,11 +3,12 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Ctx } from "./ctx";
 import { ARENA_CENTER, ARENA_RADIUS, HALF_WIDTH } from "./level";
 
-type Shape = "dart" | "cannonball" | "comet";
+type Shape = "dart" | "cannonball" | "comet" | "skull";
 
 interface Shot {
   group: THREE.Group;
   bomb: THREE.Group;
+  skullG: THREE.Group;
   glow: THREE.Mesh;
   head: THREE.Mesh;
   tail: THREE.Mesh;
@@ -61,6 +62,7 @@ export class Projectiles {
   private bombIron = new THREE.MeshStandardMaterial({ color: 0x26221e, roughness: 0.55, metalness: 0.85, envMapIntensity: 1.0 });
   private bombBand = new THREE.MeshStandardMaterial({ color: 0x50301c, roughness: 0.7, metalness: 0.5 });
   private fuseMat = new THREE.MeshBasicMaterial({ color: 0xffc060, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+  private skullBone = new THREE.MeshStandardMaterial({ color: 0xb8ac92, roughness: 0.85, metalness: 0.05, emissive: 0x2a251c, emissiveIntensity: 0.6 });
   private q = new THREE.Quaternion();
   private vn = new THREE.Vector3();
 
@@ -100,6 +102,16 @@ export class Projectiles {
       fuse.position.y = 0.44;
       bomb.add(shellM, girdle, neck, fuse);
       group.add(bomb);
+      // the witch-skull: a screaming bone skull, eyes lit in the caster's color
+      const skullG = new THREE.Group();
+      const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.22, 9, 7), this.skullBone);
+      cranium.scale.set(1, 1.05, 1.15);
+      const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.12, 0.16), this.skullBone);
+      jaw.position.set(0, -0.2, 0.08);
+      const eyesM = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.06, 0.05), glowMat);
+      eyesM.position.set(0, 0.02, 0.2);
+      skullG.add(cranium, jaw, eyesM);
+      group.add(skullG);
       const glow = new THREE.Mesh(this.glowGeo, glowMat);
       const head = new THREE.Mesh(this.headGeo, this.headMat);
       const tail = new THREE.Mesh(this.tailGeo, tailMat);
@@ -117,7 +129,7 @@ export class Projectiles {
       group.frustumCulled = false;
       group.renderOrder = 5;
       this.ctx.stage.scene.add(group);
-      this.pool.push({ group, bomb, glow, head, tail, ring, dart, runes, shape: "comet", glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
+      this.pool.push({ group, bomb, skullG, glow, head, tail, ring, dart, runes, shape: "comet", glowMat, tailMat, runeMat, vel: new THREE.Vector3(), life: 0, dmg: 0, knockback: 0, friendly: false, active: false, trailT: 0, color: 0xffffff, scale: 1, pierce: false, hit: new Set(), explodeRadius: 0, grav: 0 });
     }
   }
 
@@ -148,6 +160,8 @@ export class Projectiles {
     const isBomb = s.shape === "cannonball";
     s.bomb.visible = isBomb;
     s.bomb.rotation.set(0, 0, 0);
+    s.skullG.visible = s.shape === "skull";
+    s.skullG.rotation.set(0, 0, 0);
     s.dart.visible = s.shape === "dart";
     s.glow.visible = s.shape === "comet";
     s.head.visible = s.shape === "comet";
@@ -208,6 +222,10 @@ export class Projectiles {
       } else if (s.shape === "comet") {
         s.glow.scale.setScalar(0.85 + Math.sin(age * 30) * 0.15);
         s.head.scale.setScalar(0.9 + Math.sin(age * 46) * 0.22);
+      } else if (s.shape === "skull") {
+        // the skull wails as it flies — a slow roll + a wisp of grave-light
+        s.skullG.rotation.z = Math.sin(age * 7) * 0.35;
+        s.skullG.rotation.x = Math.sin(age * 5) * 0.2;
       }
       s.runes.rotation.z += dt * 9;
       if (s.shape === "dart") s.dart.rotation.z += dt * 16; // fletched bolt spins in flight
@@ -217,7 +235,7 @@ export class Projectiles {
         s.trailT = isBomb ? 0.02 : 0.05;
         this.ctx.fx.burst({
           x: p.x, y: p.y, z: p.z, count: isBomb ? 3 : 1,
-          color: isBomb ? [0xffd070, 0xff5020, 0x3a3230] : 0x8a8078,
+          color: isBomb ? [0xffd070, 0xff5020, 0x3a3230] : s.shape === "skull" ? s.color : 0x8a8078,
           speed: isBomb ? [0.5, 2.2] : [0.1, 0.6], up: isBomb ? 0.6 : 0,
           size: isBomb ? [0.14, 0.3] : [0.08, 0.16],
           life: isBomb ? [0.18, 0.36] : [0.1, 0.22], gravity: 0, drag: 3,

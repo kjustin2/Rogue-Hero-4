@@ -348,7 +348,7 @@ app.whenReady().then(async () => {
       //    half-swept for the capture.
       await js(`{const pz=window.__rh4.player.pos.z; window.__rh4.enemies.clear(); window.__rh4debug.spawn('archer', 6, pz+13); window.__rh4debug.spawn('spitter', -6, pz+11); 0;}`);
       await frames(50); // let them close to realistic mid-range first
-      await js(`{const p=window.__rh4.player; window.__rh4.enemies.living().forEach(e=>{ e.frozen=5; const dx=p.pos.x-e.pos.x, dz=p.pos.z-e.pos.z, d=Math.hypot(dx,dz)||1; window.__rh4.tele.line(e.pos.x, e.pos.z, Math.atan2(dz,dx), Math.min(d+2,18), 1.5, 1.2, 0xff2b33); }); 0;}`);
+      await js(`{const p=window.__rh4.player; window.__rh4.enemies.living().forEach(e=>{ e.frozen=5; const dx=p.pos.x-e.pos.x, dz=p.pos.z-e.pos.z, d=Math.hypot(dx,dz)||1; window.__rh4.tele.line(e.pos.x, e.pos.z, Math.atan2(dx,dz), Math.min(d+2,18), 1.5, 1.2, 0xff2b33); }); 0;}`);
       await frames(20); // sweep fills to ~half along the aim-lane, then hold for the shot
       await shot(win, "enemy-telegraph");
 
