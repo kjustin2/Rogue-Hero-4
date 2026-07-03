@@ -97,14 +97,16 @@ export class Enemy implements Hittable {
   private atkCharge = 0; // wind-up inflate (0→1 across the telegraph)
   private atkLunge = 0;  // strike snap forward (set to 1, decays)
   private moveAmt = 0;   // 0..1 stride signal (drives lean + bob), from actual displacement
+  private faceYaw = 0;    // damped facing — bodies TURN toward you, they don't snap
+  private faceInit = false;
   private prevX = 0;
   private prevZ = 0;
   dying = false;
   private deathT = 0;
 
-  /** Death animation finished — the manager parks the body back into the pool. */
+  /** Death animation finished (fallen + sunk) — the manager parks the body. */
   reapReady(): boolean {
-    return this.dying && this.group.scale.x <= 0.02;
+    return this.dying && this.deathT > 1.35;
   }
 
   constructor(private ctx: Ctx, kind: EnemyKind, x: number, z: number) {
@@ -140,6 +142,7 @@ export class Enemy implements Hittable {
     this.flash = 0; this.flinch = 0;
     this.atkCharge = 0; this.atkLunge = 0;
     this.moveAmt = 0; this.vt = 0;
+    this.faceInit = false;
     this.alt = this.kind === "gargoyle" ? 4.5 : 0;
     this.hitTop = undefined;
     this.hitBottom = undefined;
@@ -247,6 +250,11 @@ export class Enemy implements Hittable {
 
     if (this.dying) {
       this.deathT += dt;
+      // a felled body KEELS OVER, then sinks into the barrow (flyers crash from the sky)
+      if (this.alt > 0) this.alt = Math.max(0, this.alt - 11 * dt);
+      const fall = Math.min(1, this.deathT / 0.4);
+      this.group.rotation.x = -(fall * fall) * 1.35;
+      this.group.position.y = this.cfg.bodyY + this.alt + Math.sin(fall * Math.PI) * 0.15 - Math.max(0, this.deathT - 0.55) * 1.7;
       if (this.burstT > 0) {
         this.burstT -= dt;
         if (this.burstT <= 0) {
@@ -259,7 +267,6 @@ export class Enemy implements Hittable {
           if (Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z) <= 3.6) this.ctx.combat.damagePlayer(20, this.pos.x, this.pos.z);
         }
       }
-      this.group.scale.setScalar(Math.max(0.001, 1 - this.deathT * 5));
       return;
     }
 
@@ -300,7 +307,7 @@ export class Enemy implements Hittable {
     if ((this.kind === "wraith" || this.kind === "gargoyle") && (this.state === "windup" || this.state === "lunge")) {
       fnx = this.lungeDir.x; fnz = this.lungeDir.z;
     }
-    this.sync(fnx, fnz);
+    this.sync(dt, fnx, fnz);
   }
 
   private tickMelee(dt: number, dist: number, nx: number, nz: number): void {
@@ -497,7 +504,17 @@ export class Enemy implements Hittable {
     this.hitBottom = Math.max(0.2, this.alt - 1.3);
   }
 
-  private sync(nx = 0, nz = 0): void {
+  private sync(dt: number, nx = 0, nz = 0): void {
+    // damped facing: bodies swing around with weight instead of snapping each frame
+    if (nx || nz) {
+      const target = Math.atan2(nx, nz);
+      if (!this.faceInit) { this.faceYaw = target; this.faceInit = true; }
+      let d = target - this.faceYaw;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      const turnK = this.state === "lunge" ? 18 : this.kind === "brute" || this.kind === "bomber" ? 5 : 9;
+      this.faceYaw += d * Math.min(1, turnK * dt);
+    }
     const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
     // bob grows with movement so a charging wight reads as striding, not gliding
     const bob = Math.sin(this.vt * (2.5 + this.moveAmt * 3) + this.id) * (0.1 + this.moveAmt * 0.14);
@@ -510,7 +527,7 @@ export class Enemy implements Hittable {
       this.wings.r.rotation.z = flap + 0.15;
     }
     this.group.scale.setScalar(this.baseScale * (1 + this.atkCharge * 0.14 - this.atkLunge * 0.12 - this.flinch * 0.1));
-    if (nx || nz) this.group.rotation.y = Math.atan2(nx, nz);
+    this.group.rotation.y = this.faceYaw;
     // lean into the advance (toward the player), faint living sway, recoil on strike, snap back on a hit
     this.group.rotation.x = this.moveAmt * 0.17 - this.atkLunge * 0.1 - this.flinch * 0.4;
     this.group.rotation.z = Math.sin(this.vt * 1.7 + this.id) * 0.04;
@@ -563,6 +580,16 @@ export class EnemyManager {
     this.trickleT = 0;
     const burst = Math.min(cfg.cap, 4);
     for (let i = 0; i < burst && this.waveBudget > 0; i++) this.directorSpawn();
+  }
+
+  /**
+   * Boot-time warm-up: build one pooled body of every kind (parked, invisible,
+   * in-scene) so template merging AND first-use shader compiles happen under the
+   * loading screen instead of stalling the first wave.
+   */
+  prewarm(): void {
+    for (const kind of Object.keys(this.parked) as EnemyKind[]) this.spawn(kind, 0, -40);
+    this.clear();
   }
 
   /** Test seam: dump the remaining wave budget (smoke fast-forwards a gate). */

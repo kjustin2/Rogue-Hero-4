@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { MATS } from "./enemyMeshes";
+import { MATS, mergeStatic } from "./enemyMeshes";
 
 /**
  * The Barrow King's procedural body, extracted from Boss so art and logic live
@@ -150,6 +150,47 @@ function buildProcedural(coreMat: THREE.MeshStandardMaterial): BossMeshParts {
     }
   }
 
+  // ---- massive plated arms, gauntlets resting at his sides ----
+  for (const sx of [-1, 1]) {
+    const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.5, 1.6, 8), IRON);
+    upper.position.set(sx * 2.1, 5.1, 0.15);
+    upper.rotation.z = sx * 0.12;
+    upper.castShadow = true;
+    const couter = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), RUST); // elbow cop
+    couter.position.set(sx * 2.25, 4.2, 0.2);
+    const fore = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.42, 1.3, 8), IRON);
+    fore.position.set(sx * 2.3, 3.4, 0.3);
+    fore.rotation.z = sx * 0.06;
+    fore.castShadow = true;
+    const gauntlet = new THREE.Mesh(new THREE.SphereGeometry(0.46, 8, 6), RUST);
+    gauntlet.position.set(sx * 2.32, 2.6, 0.35);
+    gauntlet.scale.set(0.9, 1.1, 1.05);
+    for (let k = 0; k < 3; k++) { // knuckle ridges
+      const kn = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.12), trim);
+      kn.position.set(sx * (2.12 + k * 0.14), 2.42, 0.62);
+      group.add(kn);
+    }
+    group.add(upper, couter, fore, gauntlet);
+  }
+
+  // ---- fur mantle around the gorget + heraldic tabard down the front ----
+  const mantle = new THREE.Mesh(new THREE.TorusGeometry(1.5, 0.38, 7, 14), CLOTH_RAG);
+  mantle.position.y = 6.35;
+  mantle.rotation.x = Math.PI / 2;
+  mantle.scale.set(1.15, 1.15, 0.9);
+  group.add(mantle);
+  const tabard = new THREE.Mesh(new THREE.BoxGeometry(1.15, 3.4, 0.14), CLOTH);
+  tabard.position.set(0, 3.0, 1.9);
+  tabard.rotation.x = 0.06;
+  const tabardHem = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.16), trim);
+  tabardHem.position.set(0, 1.34, 2.0);
+  // the King's device: a crowned cross in soulfire
+  const devV = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.5, 0.06), coreMat);
+  devV.position.set(0, 3.4, 2.0);
+  const devH = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.16, 0.06), coreMat);
+  devH.position.set(0, 3.85, 2.0);
+  group.add(tabard, tabardHem, devV, devH);
+
   // ---- the ragged royal cloak (billows in tick) ----
   const cloak = new THREE.Mesh(new THREE.ConeGeometry(2.6, 5.2, 10, 1, true), CLOTH_RAG);
   cloak.position.set(0, 4.4, -1.1);
@@ -175,6 +216,10 @@ function buildProcedural(coreMat: THREE.MeshStandardMaterial): BossMeshParts {
 
   const { blade, orbit } = buildBladeAndOrbit(coreMat);
   group.add(blade, orbit);
+
+  // PERF: the King was ~90 draw calls of trim and rivets — merge everything static
+  // (coreMat pieces merge together and still flash as one; the cage stays with them)
+  mergeStatic(group, [cloak, blade, orbit]);
 
   return { group, cloak, blade, orbit };
 }

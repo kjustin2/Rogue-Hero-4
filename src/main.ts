@@ -437,6 +437,7 @@ w.__rh4debug = {
 };
 
 // --------------------------------------------------------------------- finish boot
+ctx.enemies.prewarm(); // one parked body per kind → their shaders compile in warmUp, not mid-wave
 ctx.stage.warmUp(); // compiles the boss's shaders too (it's in the scene, visible, right now)
 ctx.boss?.reset();  // ...then hide it away, dormant, until the arena — shaders stay warm
 setState("title");

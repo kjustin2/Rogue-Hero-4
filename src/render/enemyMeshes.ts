@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import type { EnemyKind } from "../game/enemies";
 
 /**
@@ -27,11 +28,45 @@ const CLOTH_RAG = new THREE.MeshStandardMaterial({ color: 0x241e28, roughness: 0
 const IRON = new THREE.MeshStandardMaterial({ color: 0x35322e, roughness: 0.48, metalness: 0.85, envMapIntensity: 1.1 });
 const RUST = new THREE.MeshStandardMaterial({ color: 0x50301c, roughness: 0.78, metalness: 0.45, envMapIntensity: 0.7 });
 const STONE = new THREE.MeshStandardMaterial({ color: 0x4c463e, roughness: 0.9, metalness: 0.08, envMapIntensity: 0.6, emissive: 0x14110c, emissiveIntensity: 0.4 });
+const WOOD = new THREE.MeshStandardMaterial({ color: 0x4a341e, roughness: 0.9, metalness: 0.04, envMapIntensity: 0.4 });
 const VOID = new THREE.MeshBasicMaterial({ color: 0x030204 });
-for (const m of [BONE, BONE_DK, CLOTH, CLOTH_RAG, IRON, RUST, STONE, VOID]) m.userData.shared = true;
+for (const m of [BONE, BONE_DK, CLOTH, CLOTH_RAG, IRON, RUST, STONE, WOOD, VOID]) m.userData.shared = true;
 
 /** The shared medieval material language — bossMesh builds from the same box. */
-export const MATS = { BONE, BONE_DK, CLOTH, CLOTH_RAG, IRON, RUST, STONE, VOID } as const;
+export const MATS = { BONE, BONE_DK, CLOTH, CLOTH_RAG, IRON, RUST, STONE, WOOD, VOID } as const;
+
+/**
+ * PERF: collapse every STATIC mesh in a built body into one merged mesh per material
+ * (a detailed husk was ~28 draw calls; merged it is ~6). Animated subtrees (core,
+ * held weapon, wings) are listed in `keep` and stay live. Call once per built body.
+ */
+export function mergeStatic(group: THREE.Group, keep: (THREE.Object3D | undefined)[]): void {
+  const keepSet = new Set<THREE.Object3D>();
+  for (const k of keep) k?.traverse((o) => keepSet.add(o));
+  group.updateMatrixWorld(true); // group sits at origin during build — matrixWorld = local chain
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  const doomed: THREE.Mesh[] = [];
+  group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!(m as THREE.Mesh).isMesh || keepSet.has(o)) return;
+    // polyhedron primitives (octa/icosa/tetra) ship non-indexed — normalize so the
+    // merge never fails on mixed indexing (a failed merge silently DELETES the parts)
+    const g = (m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone()).applyMatrix4(m.matrixWorld);
+    const list = byMat.get(m.material as THREE.Material);
+    if (list) list.push(g);
+    else byMat.set(m.material as THREE.Material, [g]);
+    doomed.push(m);
+  });
+  for (const m of doomed) { m.removeFromParent(); m.geometry.dispose(); }
+  for (const [mat, geos] of byMat) {
+    const merged = mergeGeometries(geos);
+    geos.forEach((g) => g.dispose());
+    if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, mat);
+    mesh.castShadow = true;
+    group.add(mesh);
+  }
+}
 
 // per-kind emissive accent (trim, runes) — shared per color
 const accentCache = new Map<number, THREE.MeshStandardMaterial>();
@@ -89,7 +124,7 @@ function tatters(g: THREE.Group, r: number, y: number, n: number, len: number, m
   }
 }
 
-export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMaterial): EnemyMeshParts {
+function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMaterial): EnemyMeshParts {
   const acc = accent(color);
   const group = new THREE.Group();
   let core: THREE.Mesh;
@@ -123,6 +158,24 @@ export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.Me
     const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.055, 0.7, 6), BONE_DK);
     armR.position.set(0.42, 1.42, 0.1); armR.rotation.z = -0.35;
     group.add(skirt, mail, belt, buckle, head, helm, brim, core, pauldron, armL, armR);
+    // a battered heater shield on the left arm + a chevroned tabard panel
+    const shield = new THREE.Group();
+    const shieldFace = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.06, 0.72, 3, 1), CLOTH_RAG);
+    shieldFace.scale.z = 0.14;
+    const shieldRim = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.03, 4, 8), RUST);
+    shieldRim.position.y = 0.1; shieldRim.scale.set(1.1, 0.9, 1);
+    const shieldBoss = new THREE.Mesh(new THREE.SphereGeometry(0.07, 6, 5), IRON);
+    shieldBoss.position.z = 0.06;
+    shield.add(shieldFace, shieldRim, shieldBoss);
+    shield.position.set(-0.52, 1.3, 0.14);
+    shield.rotation.set(0, 0.5, 0.1);
+    const tabard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.7, 0.03), CLOTH_RAG);
+    tabard.position.set(0, 1.35, 0.36);
+    const chevron = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.035), acc);
+    chevron.position.set(0, 1.42, 0.37); chevron.rotation.z = 0.5;
+    const chevron2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.035), acc);
+    chevron2.position.set(0, 1.42, 0.37); chevron2.rotation.z = -0.5;
+    group.add(shield, tabard, chevron, chevron2);
     tatters(group, 0.56, 0.15, 6, 0.5, CLOTH_RAG);
     // the falchion: broad single-edge blade, iron guard, leather grip
     const sword = new THREE.Group();
@@ -167,13 +220,25 @@ export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.Me
       group.add(arm, hand);
     }
     group.add(gown, mantle, hood, hoodMouth, rope, core);
+    // a censer swinging from the rope belt — grave incense
+    for (let l = 0; l < 3; l++) {
+      const link = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.012, 4, 6), IRON);
+      link.position.set(-0.34, -0.28 - l * 0.09, 0.22);
+      link.rotation.x = l % 2 ? 0 : Math.PI / 2;
+      group.add(link);
+    }
+    const censer = new THREE.Mesh(new THREE.SphereGeometry(0.09, 7, 6), RUST);
+    censer.position.set(-0.34, -0.6, 0.22);
+    const censerGlow = new THREE.Mesh(new THREE.SphereGeometry(0.045, 5, 4), acc);
+    censerGlow.position.set(-0.34, -0.66, 0.22);
+    group.add(censer, censerGlow);
     tatters(group, 0.6, -2.55, 7, 0.55, CLOTH_RAG);
     // skull-crowned staff
     const staff = new THREE.Group();
     const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 2.1, 6), RUST);
     const staffSkull = skull(0.55);
     staffSkull.position.y = 1.14;
-    const staffEye = new THREE.Mesh(new THREE.OctahedronGeometry(0.06), coreMat);
+    const staffEye = new THREE.Mesh(new THREE.OctahedronGeometry(0.06), acc);
     staffEye.position.set(0, 1.1, 0.1);
     staff.add(shaft, staffSkull, staffEye);
     staff.position.set(0.52, -0.1, 0.02);
@@ -272,6 +337,16 @@ export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.Me
       claws.add(claw);
     }
     claws.position.set(0.42, 1.0, 0.25);
+    // broken manacles — a grave-robber's corpse that got up anyway
+    for (const [mx, my, mz] of [[-0.42, 0.5, 0.42], [0.42, 0.72, 0.5]] as const) {
+      const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.03, 4, 8), RUST);
+      cuff.position.set(mx, my, mz);
+      cuff.rotation.x = Math.PI / 2.4;
+      group.add(cuff);
+    }
+    const dragLink = new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.02, 4, 6), RUST);
+    dragLink.position.set(-0.42, 0.36, 0.44);
+    group.add(dragLink);
     group.add(claws);
     weapon = claws;
   } else if (kind === "archer") {
@@ -392,11 +467,22 @@ export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.Me
       armC.position.set(sx * 0.66, 0.95, 0.1); armC.rotation.z = sx * 0.5;
       group.add(leg, armC);
     }
-    group.add(body, bandT, bandB, core, head, helm);
+    // the powder keg strapped to its back — the sapper's whole job
+    const keg = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.62, 9), WOOD);
+    keg.position.set(0, 1.15, -0.62); keg.rotation.x = 0.25; keg.castShadow = true;
+    for (const ky of [-0.2, 0.2]) {
+      const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.025, 4, 10), IRON);
+      hoop.position.set(0, 1.15 + ky * Math.cos(0.25), -0.62 - ky * Math.sin(0.25) * -1);
+      hoop.rotation.x = Math.PI / 2 + 0.25;
+      group.add(hoop);
+    }
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.75, 0.05), CLOTH);
+    strap.position.set(0, 1.0, 0.52); strap.rotation.x = -0.15;
+    group.add(keg, strap, body, bandT, bandB, core, head, helm);
     // the throwing arm hefts a lit skull-bomb (the weapon — snaps forward on the lob)
     const lob = new THREE.Group();
     const bombSkull = skull(0.8);
-    const fuse = new THREE.Mesh(new THREE.OctahedronGeometry(0.06), coreMat);
+    const fuse = new THREE.Mesh(new THREE.OctahedronGeometry(0.06), acc);
     fuse.position.y = 0.24;
     lob.add(bombSkull, fuse);
     lob.position.set(0.62, 1.7, 0.3);
@@ -424,6 +510,9 @@ export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.Me
       bar.position.set(-0.18 + i * 0.12, 1.75, 0.9);
       group.add(bar);
     }
+    const aventail = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.62, 0.5, 8, 1, true), RUST);
+    aventail.position.y = 2.78;
+    group.add(aventail);
     const head2 = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.42, 0.55, 8), IRON);
     head2.position.y = 3.05; head2.castShadow = true;
     const visor = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.1, 0.1), VOID);
@@ -472,5 +561,57 @@ export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.Me
     weapon = cleaver;
   }
 
+  return { group, core, weapon, wings };
+}
+
+/** Merged body template per kind — built ONCE; instances share every geometry. */
+interface BodyTemplate {
+  statics: THREE.Mesh[];
+  core: THREE.Mesh;
+  weapon?: THREE.Group;
+  wings?: { l: THREE.Object3D; r: THREE.Object3D };
+}
+const TEMPLATES = new Map<EnemyKind, BodyTemplate>();
+
+/**
+ * Instantiate a body from its (lazily built) merged template. Merging happens once
+ * per KIND, not per spawn — per-spawn merging was a mid-wave GC/stall spike. Only the
+ * core is a fresh mesh (it carries the per-instance hit-flash material).
+ */
+export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMaterial): EnemyMeshParts {
+  let t = TEMPLATES.get(kind);
+  if (!t) {
+    const built = buildBody(kind, color, accent(color));
+    mergeStatic(built.group, [built.core, built.weapon, built.wings?.l, built.wings?.r]);
+    const statics: THREE.Mesh[] = [];
+    for (const child of built.group.children) {
+      const m = child as THREE.Mesh;
+      if (m.isMesh && m !== built.core) statics.push(m);
+    }
+    t = { statics, core: built.core, weapon: built.weapon, wings: built.wings };
+    TEMPLATES.set(kind, t);
+  }
+  const group = new THREE.Group();
+  for (const s of t.statics) {
+    const m = new THREE.Mesh(s.geometry, s.material);
+    m.castShadow = true;
+    group.add(m);
+  }
+  const core = new THREE.Mesh(t.core.geometry, coreMat);
+  core.position.copy(t.core.position);
+  core.rotation.copy(t.core.rotation);
+  core.scale.copy(t.core.scale);
+  group.add(core);
+  let weapon: THREE.Group | undefined;
+  if (t.weapon) {
+    weapon = t.weapon.clone(true); // deep clone shares geometry + materials
+    group.add(weapon);
+  }
+  let wings: EnemyMeshParts["wings"];
+  if (t.wings) {
+    const l = t.wings.l.clone(true), r = t.wings.r.clone(true);
+    group.add(l, r);
+    wings = { l, r };
+  }
   return { group, core, weapon, wings };
 }

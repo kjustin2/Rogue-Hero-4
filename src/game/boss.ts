@@ -61,6 +61,7 @@ export class Boss implements Hittable {
   private dying = false;
   private deathT = 0;
   private t = 0;
+  private faceYaw = 0; // damped facing — the King turns with the weight of a crypt door
   private risen = false;
   /** Held during a phase-transition cutscene — animates but does not attack. */
   paused = false;
@@ -138,6 +139,7 @@ export class Boss implements Hittable {
     this.pos.copy(BOSS_ANCHOR);
     this.group.position.copy(this.pos);
     this.group.scale.setScalar(0.001);
+    this.faceYaw = 0;
     this.group.rotation.set(0, 0, 0);
     this.orbit.rotation.set(0, 0, 0);
     this.orbit.scale.setScalar(1);
@@ -259,11 +261,16 @@ export class Boss implements Hittable {
       this.coreMat.emissiveIntensity += this.charge * 4;
     }
 
-    // face the player
+    // face the player — slowly; his mass is part of the menace
     const p = this.ctx.player;
     const dx = p.pos.x - this.pos.x;
     const dz = p.pos.z - this.pos.z;
-    this.group.rotation.y = Math.atan2(dx, dz);
+    const targetYaw = Math.atan2(dx, dz);
+    let dy = targetYaw - this.faceYaw;
+    while (dy > Math.PI) dy -= Math.PI * 2;
+    while (dy < -Math.PI) dy += Math.PI * 2;
+    this.faceYaw += dy * Math.min(1, 3.2 * dt);
+    this.group.rotation.y = this.faceYaw;
     this.group.rotation.z = Math.sin(this.t * 0.6) * 0.02; // faint menacing roll
 
     if (this.dying) {
@@ -278,8 +285,13 @@ export class Boss implements Hittable {
     if (this.rise < 1) return; // still rising in
     if (this.paused) return;   // frozen for a phase-transition cutscene
 
-    // the soul-fire light rides with the Warden now that he roams
-    this.light.position.set(this.pos.x, 5, this.pos.z);
+    // the soul-fire light rides with the Warden — thrown FORWARD of his facing so it
+    // lights the face he shows the player (from inside his bulk it lit nothing)
+    this.light.position.set(
+      this.pos.x + Math.sin(this.faceYaw) * 6,
+      4.2,
+      this.pos.z + Math.cos(this.faceYaw) * 6,
+    );
     // eye-level attack tell: his light burns the telegraph color through every wind-up
     const baseInt = this.phase >= 3 ? 70 : this.phase === 2 ? 54 : 42;
     if (this.attack && this.windup > 0) {
