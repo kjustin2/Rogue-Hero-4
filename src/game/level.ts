@@ -974,9 +974,15 @@ export class Level {
     const closed = this.firstClosedGate();
     if (closed && pos.z > closed.z - radius - 0.6) pos.z = closed.z - radius - 0.6;
 
-    if (pos.z < ARENA_BLEND_Z) {
+    // The stone walls run the full causeway to z≈190 (pathLen-8). The arena circle is wider
+    // than the corridor, so switching to it at ARENA_BLEND_Z (184) alone would let you strafe
+    // through the walls in the [184,190] mouth band — keep the hard corridor clamp until the
+    // walls actually end, THEN let the arena bowl open up.
+    const WALL_END_Z = ARENA_BLEND_Z + 6;
+    if (pos.z < WALL_END_Z) {
       pos.x = clamp(pos.x, -HALF_WIDTH + radius, HALF_WIDTH - radius);
-    } else {
+    }
+    if (pos.z >= ARENA_BLEND_Z) {
       const dx = pos.x - ARENA_CENTER.x;
       const dz = pos.z - ARENA_CENTER.y;
       const maxR = ARENA_RADIUS - radius;

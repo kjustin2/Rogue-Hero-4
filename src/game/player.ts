@@ -739,6 +739,7 @@ export class Player {
     this.wi = this.weapons.length - 1;
     this.cooldowns.light = this.cooldowns.heavy = 0;
     this.buffer.length = 0;
+    this.bufferWeapons.length = 0; // keep the parallel array in sync or a stale entry fakes a SWAP FINISH
     this.cur = null;
     this.applyWeaponLook();
     this.ctx.sfx.unlockFanfare();

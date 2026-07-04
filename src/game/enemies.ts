@@ -28,12 +28,12 @@ const KIND: Record<EnemyKind, KindCfg> = {
   spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0, proj: { speed: 17, shape: "skull", interval: 1.45 } }, // witchfire caster: hurls wailing skulls
   brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
   wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
-  ghoul: { hp: 20, radius: 0.5, speed: 15.5, contactDmg: 12, attackRange: 2.2, windup: 0.13, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast
+  ghoul: { hp: 20, radius: 0.5, speed: 13.5, contactDmg: 12, attackRange: 2.2, windup: 0.26, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast (base speed stays under the player's 14)
   archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: 0x8fb4ff, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
   gargoyle: { hp: 24, radius: 0.6, speed: 11, contactDmg: 15, attackRange: 11, windup: 0.55, color: 0xffa24a, bodyY: 0 }, // stone flyer: circles high, telegraphed dive
   bomber: { hp: 60, radius: 0.95, speed: 4.2, contactDmg: 18, attackRange: 17, windup: 0.6, color: 0xff8038, bodyY: 0, proj: { speed: 15, shape: "cannonball", interval: 2.6, gravity: 15, explode: 3.4 } }, // crypt bombard: lobbed exploding skulls
   knight: { hp: 72, radius: 0.7, speed: 5.4, contactDmg: 17, attackRange: 2.9, windup: 0.42, color: 0xc9d4e4, bodyY: 0 }, // revenant knight: kite shield blocks frontal shots — flank him
-  rat: { hp: 8, radius: 0.32, speed: 17.5, contactDmg: 5, attackRange: 1.3, windup: 0.12, color: 0xd06a3a, bodyY: 0 }, // plague rats: cheap, fast, and NEVER alone
+  rat: { hp: 8, radius: 0.32, speed: 13.8, contactDmg: 5, attackRange: 1.3, windup: 0.2, color: 0xd06a3a, bodyY: 0 }, // plague rats: cheap, fast (just under the player), and NEVER alone
 };
 
 // Elite modifiers — a data catalog, rolled by the spawn director on gate 2+.
@@ -82,6 +82,7 @@ export class Enemy implements Hittable {
   private didHit = false;
   private flash = 0;
   private flinch = 0; // hit-reaction recoil (0→1 on hit, decays) — leans the body back
+  private atkAngle = 0; // melee strike lane, LOCKED at wind-up so the hitbox matches the telegraph
   private kb = new THREE.Vector3();
   private tele: TelegraphHandle | null = null;
   group = new THREE.Group();
@@ -137,6 +138,7 @@ export class Enemy implements Hittable {
   reset(x: number, z: number): void {
     this.pos.set(x, 0, z);
     this.prevX = x; this.prevZ = z;
+    this.maxHp = this.cfg.hp; // clear any elite HP bump before restoring — pooled bodies must reset to base
     this.hp = this.maxHp;
     this.alive = true;
     this.dying = false;
@@ -226,7 +228,8 @@ export class Enemy implements Hittable {
       this.tele?.cancel();
       if (this.elite === "bursting") {
         this.burstT = 0.7;
-        this.ctx.tele.circle(this.pos.x, this.pos.z, 3.6, 0.7, PAL.threat);
+        // keep the handle so park()/clear() can cancel it — else it lingers on the death screen
+        this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, 3.6, 0.7, PAL.threat);
       }
       return true;
     }
@@ -335,6 +338,7 @@ export class Enemy implements Hittable {
         this.state = "windup";
         this.timer = cfg.windup;
         const angle = Math.atan2(nx, nz); // tele.line convention: strip runs along (sin a, cos a)
+        this.atkAngle = angle; // lock the lane now so a sidestep during wind-up actually dodges
         if (this.kind === "brute") this.tele = this.ctx.tele.circle(this.pos.x, this.pos.z, cfg.attackRange, cfg.windup, PAL.threat);
         else this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, angle, cfg.attackRange + 0.5, 1.4, cfg.windup, PAL.threat);
       }
@@ -344,14 +348,20 @@ export class Enemy implements Hittable {
         // strike lands — snap forward + a slash arc + sparks so the swing reads even on a whiff
         this.atkLunge = 1;
         this.flash = 1;
-        const yaw = Math.atan2(nx, nz);
         const heavy = this.kind === "brute";
+        // brute's circle telegraph = radial hit; everyone else strikes along their LOCKED lane,
+        // so the swing FX and the damage cone both match the line the player saw.
+        const fdx = heavy ? nx : Math.sin(this.atkAngle);
+        const fdz = heavy ? nz : Math.cos(this.atkAngle);
+        const yaw = Math.atan2(fdx, fdz);
         const sy = this.cfg.bodyY + (heavy ? 1.8 : 1.2);
-        this.ctx.fx.slash(this.pos.x + nx * 0.9, sy, this.pos.z + nz * 0.9, yaw, {
+        this.ctx.fx.slash(this.pos.x + fdx * 0.9, sy, this.pos.z + fdz * 0.9, yaw, {
           color: PAL.threat, radius: heavy ? 2.2 : 1.3, tilt: heavy ? -0.05 : -0.6, duration: 0.16,
         });
-        this.ctx.fx.burst({ x: this.pos.x + nx * 1.4, y: sy, z: this.pos.z + nz * 1.4, count: heavy ? 12 : 8, color: PAL.threat, speed: [3, heavy ? 10 : 7], life: [0.2, 0.4] });
-        if (dist <= cfg.attackRange + 0.8) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
+        this.ctx.fx.burst({ x: this.pos.x + fdx * 1.4, y: sy, z: this.pos.z + fdz * 1.4, count: heavy ? 12 : 8, color: PAL.threat, speed: [3, heavy ? 10 : 7], life: [0.2, 0.4] });
+        // in range AND (brute = any direction) OR (others = within the telegraphed lane's cone)
+        const inLane = heavy || nx * fdx + nz * fdz > 0.2; // ~78° each side of the struck line
+        if (dist <= cfg.attackRange + 0.8 && inLane) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
         if (heavy) this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: cfg.attackRange, color: PAL.threat, duration: 0.3 });
         this.state = "recover";
         this.timer = (this.kind === "brute" ? 0.9 : 0.4) / this.speedMult;

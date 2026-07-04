@@ -125,7 +125,7 @@ export class Particles {
     // ponytail: shorter/thinner than before (was 9 tall, r0.4) — a close airstrike pillar bloomed into a blinding screen-filling dome
     const beamGeo = new THREE.CylinderGeometry(0.3, 0.42, 6, 10, 1, true);
     beamGeo.translate(0, 3, 0);
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 16; i++) { // sized for boss-phase-3 death pillars + clustered casts
       const mat = new THREE.MeshBasicMaterial({
         color: 0xffffff, transparent: true, opacity: 0,
         blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
@@ -155,7 +155,7 @@ export class Particles {
     // Laser beams — thin glowing boxes (unit cube scaled along local +Z) for hitscan shots.
     const boltGeo = new THREE.BoxGeometry(1, 1, 1);
     boltGeo.translate(0, 0, 0.5); // origin at the near end so it extends forward
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < 16; i++) { // hitscan weapons + boss volley can flash >8 tracers in one 0.16s window
       const mat = new THREE.MeshBasicMaterial({
         color: 0xffffff, transparent: true, opacity: 0,
         blending: THREE.AdditiveBlending, depthWrite: false,

@@ -49,6 +49,55 @@ export class Menus {
 
   clear(): void {
     this.overlay.innerHTML = "";
+    this.navButtons = [];
+  }
+
+  // ----------------------------------------------------------------- gamepad menu nav
+  private navButtons: HTMLButtonElement[] = [];
+  private navIndex = 0;
+  private navAxisLatch = false;
+
+  /**
+   * Drive the current DOM overlay from a gamepad — d-pad / left-stick to move focus, A to
+   * confirm, B to cancel/back. Without this a controller-only player is soft-locked at every
+   * menu (title, boon, swap, pause, death). No-ops entirely unless a pad is the active input,
+   * so mouse/keyboard play (and the headless smoke) are untouched.
+   */
+  navGamepad(): void {
+    const input = this.ctx.input;
+    if (!input.usingGamepad) { this.clearNavFocus(); return; }
+    const list = Array.from(this.overlay.querySelectorAll<HTMLButtonElement>("button"))
+      .filter((b) => !b.disabled && b.offsetParent !== null);
+    if (list.length === 0) { this.navButtons = []; return; }
+    // a freshly-rendered menu (different buttons) starts focus at the top
+    if (list.length !== this.navButtons.length || list[0] !== this.navButtons[0]) {
+      this.navButtons = list;
+      this.navIndex = 0;
+      this.applyNavFocus();
+    }
+    let step = 0;
+    if (input.padEdge(13) || input.padEdge(15)) step = 1;        // d-pad down / right
+    else if (input.padEdge(12) || input.padEdge(14)) step = -1;  // d-pad up / left
+    const ay = input.padAxis(1);
+    if (Math.abs(ay) > 0.5) { if (!this.navAxisLatch) { step = ay > 0 ? 1 : -1; this.navAxisLatch = true; } }
+    else this.navAxisLatch = false;
+    if (step !== 0) {
+      this.navIndex = (this.navIndex + step + this.navButtons.length) % this.navButtons.length;
+      this.applyNavFocus();
+      this.ctx.events.emit("UI_HOVER", {});
+    }
+    if (input.padEdge(0)) this.navButtons[this.navIndex]?.click();          // A = confirm
+    else if (input.padEdge(1)) this.overlay.querySelector<HTMLButtonElement>("#back, #resume, #leave")?.click(); // B = back
+    input.consumePadEdge(0, 1, 12, 13, 14, 15);
+  }
+
+  private applyNavFocus(): void {
+    this.navButtons.forEach((b, i) => b.classList.toggle("gp-focus", i === this.navIndex));
+    this.navButtons[this.navIndex]?.focus();
+  }
+
+  private clearNavFocus(): void {
+    for (const b of this.navButtons) b.classList.remove("gp-focus");
   }
 
   private panel(html: string): HTMLElement {

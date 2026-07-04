@@ -483,8 +483,10 @@ export class Boss implements Hittable {
       const n = this.phase === 2 ? 7 : 5;
       // aim DOWN to the player's torso so bolts arrive at chest height, not over the head
       const sy = 4.4, ty = 1.3;
-      const horiz = Math.max(2, Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z));
-      const base = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
+      // fire along the LANES LOCKED AT WIND-UP (this.aim/aimAngle), not the live position —
+      // so strafing off the telegraphed fan actually dodges it (matches slam/beam/sweep)
+      const horiz = Math.max(2, Math.hypot(this.aim.x - this.pos.x, this.aim.z - this.pos.z));
+      const base = this.aimAngle;
       for (let i = 0; i < n; i++) {
         const ang = base + (i - (n - 1) / 2) * 0.18;
         VOLLEY_DIR.set(Math.sin(ang) * horiz, ty - sy, Math.cos(ang) * horiz);

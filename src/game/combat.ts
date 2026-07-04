@@ -132,9 +132,8 @@ export class Combat {
     }
   }
 
-  /** Cone sweep from (ox,oz) facing (dirX,dirZ). Returns the targets it hit. */
-  meleeSweep(ox: number, oz: number, dirX: number, dirZ: number, arc: number, range: number, dmg: number, kb: number, heavy: boolean): Hittable[] {
-    const hit: Hittable[] = [];
+  /** Cone sweep from (ox,oz) facing (dirX,dirZ). */
+  meleeSweep(ox: number, oz: number, dirX: number, dirZ: number, arc: number, range: number, dmg: number, kb: number, heavy: boolean): void {
     const half = Math.cos(arc / 2);
     for (const t of this.targets()) {
       if ((t.hitBottom ?? 0) > 2.2) continue; // out of a grounded swing's reach (flyer on the wing)
@@ -148,9 +147,7 @@ export class Combat {
       // a melee swing crits the boss only if you're looking up at its core
       const weak = t.kind === "boss" && this.isAimingWeak();
       this.dealDamage(t, dmg, { heavy, knockback: kb, fromX: ox, fromZ: oz, weak });
-      hit.push(t);
     }
-    return hit;
   }
 
   /** Damage everything within `radius` of (x,z). */

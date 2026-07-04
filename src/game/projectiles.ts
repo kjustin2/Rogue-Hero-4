@@ -38,7 +38,7 @@ interface Shot {
   grav: number;
 }
 
-const POOL = 56;
+const POOL = 72; // headroom for a boss volley (7) overlapping player finishers (bolts 9 / rocketvolley 5)
 const RADIUS = 0.35; // collision radius (gameplay) — visual size is independent
 const FWD = new THREE.Vector3(0, 0, 1);
 const TAU = Math.PI * 2;
@@ -146,8 +146,13 @@ export class Projectiles {
   }
 
   spawn(x: number, y: number, z: number, dir: THREE.Vector3, speed: number, dmg: number, friendly: boolean, color: number, knockback = 3, opts?: { scale?: number; pierce?: boolean; explode?: number; gravity?: number; shape?: Shape }): void {
-    const s = this.pool.find((p) => !p.active);
-    if (!s) return;
+    let s = this.pool.find((p) => !p.active);
+    if (!s) {
+      // pool saturated (a boss volley overlapping a big player finisher): steal the shot
+      // closest to expiry instead of silently dropping this one — a fired shot must always
+      // spawn its tracer + damage. spawn() below fully re-inits the reused slot.
+      s = this.pool.reduce((a, b) => (b.life < a.life ? b : a));
+    }
     s.active = true;
     s.friendly = friendly;
     s.dmg = dmg;

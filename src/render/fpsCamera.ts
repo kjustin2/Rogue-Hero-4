@@ -118,11 +118,16 @@ export class FpsCamera {
     const sway = Math.cos(this.bobPhase * 0.5) * 0.03 * moveAmount;
 
     // --- trauma shake ---
-    const sh = this.trauma * this.trauma * this.shakeScale;
-    const rng = this.ctx.rng;
-    const shYaw = rng.range(-1, 1) * sh * 0.05;
-    const shPitch = rng.range(-1, 1) * sh * 0.05;
-    const shRoll = rng.range(-1, 1) * sh * 0.06;
+    // Cosmetic ONLY, so it uses Math.random (never the seeded sim RNG) and samples nothing when
+    // idle — drawing from ctx.rng every frame made spawn positions/elite rolls frame-count
+    // dependent, silently breaking the seeded-repro contract the harness + dailies rely on.
+    let shYaw = 0, shPitch = 0, shRoll = 0;
+    if (this.trauma > 0) {
+      const sh = this.trauma * this.trauma * this.shakeScale;
+      shYaw = (Math.random() * 2 - 1) * sh * 0.05;
+      shPitch = (Math.random() * 2 - 1) * sh * 0.05;
+      shRoll = (Math.random() * 2 - 1) * sh * 0.06;
+    }
 
     const p = this.ctx.player.pos;
     this.cam.position.set(p.x + this.shoveX + sway, EYE_HEIGHT + bob, p.z + this.shoveZ);

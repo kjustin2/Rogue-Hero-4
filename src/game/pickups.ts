@@ -133,7 +133,7 @@ export class Pickups {
           this.ctx.events.emit("HEAL", { amount: healed });
           this.ctx.floaters.spawn(p.pos.x, 1.7, p.pos.z, "+" + healed, "heal");
         }
-        this.ctx.fx.burst({ x: m.x, y: 1, z: m.z, count: 16, color: COLOR, speed: [3, 8], life: [0.2, 0.5] });
+        this.ctx.fx.burst({ x: m.x, y: 1, z: m.z, count: 16, color: COLOR, speed: [3, 8], size: [0.08, 0.24], life: [0.2, 0.5] });
       }
     }
     // reap collected shards

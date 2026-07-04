@@ -124,7 +124,7 @@ ctx.events.on("BOSS_DEFEATED", (e) => {
   ctx.slowmo = Math.max(ctx.slowmo, 1.1);
   if (ctx.boss) { ctx.boss.coreWorld(cineTarget); ctx.cam.setCinematic(true, cineTarget); }
   for (let i = 0; i < 3; i++) ctx.fx.beam(e.x + (i - 1) * 2.5, e.z, BOSS_TEAL);
-  ctx.fx.burst({ x: e.x, y: 5, z: e.z, count: 70, color: [BOSS_TEAL, 0xffffff], speed: [6, 18], up: 1.2, life: [0.5, 1.2] });
+  ctx.fx.burst({ x: e.x, y: 5, z: e.z, count: 70, color: [BOSS_TEAL, 0xffffff], speed: [6, 18], up: 1.2, size: [0.14, 0.42], life: [0.5, 1.2] });
   victoryQueued = 1.8; // let the death animation play, then show victory
 });
 
@@ -229,6 +229,7 @@ function startRun(seed = 20260629): void {
   cineT = 0;
   ctx.player.frozen = false;
   ctx.cam.setCinematic(false);
+  hud.setLetterbox(false); // a run aborted mid-cutscene must not carry its black bars into the next
   runTime = 0;
   kills = 0;
   streak = 0;
@@ -345,7 +346,7 @@ function updateBossCutscene(dt: number): void {
       const r = 3.5 + ctx.rng.range(0, 6);
       ctx.fx.beam(bx + Math.cos(a) * r, bz + Math.sin(a) * r, i % 2 ? BOSS_TEAL : 0xffffff);
     }
-    ctx.fx.burst({ x: bx, y: 1, z: bz, count: 14 + Math.round(k * 16), color: [BOSS_TEAL, 0xffffff], speed: [4, 12], up: 1.4, vertical: 0.3, life: [0.4, 1.0] });
+    ctx.fx.burst({ x: bx, y: 1, z: bz, count: 14 + Math.round(k * 16), color: [BOSS_TEAL, 0xffffff], speed: [4, 12], up: 1.4, vertical: 0.3, size: [0.12, 0.36], life: [0.4, 1.0] });
   }
   // rhythmic shake while it rises sells the weight, harder near the climax
   if (ctx.rng.next() < 0.08 + k * 0.12) ctx.cam.addTrauma(0.12 + k * 0.16);
@@ -394,6 +395,7 @@ function frame(dt: number): void {
   ctx.input.pollGamepad();
   if (state === "playing") updatePlaying(dt);
   else if (state === "paused" && (ctx.input.actionPressed("pause") || ctx.input.pauseEdgeRaw())) setState("playing");
+  else menus.navGamepad(); // any overlay state: let a controller drive the menu (no-op on mouse/kb)
 
   ctx.cam.update(dt, state === "playing" ? ctx.player.moveAmount : 0);
   ctx.level.update(dt);
@@ -412,7 +414,8 @@ ctx.stage.renderer.setAnimationLoop(() => {
   const now = performance.now();
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  frame(dt);
+  // one bad frame must never freeze the game — always let the loop reschedule
+  try { frame(dt); } catch (e) { console.error("frame error", e); }
 });
 
 // --------------------------------------------------------------------- scenarios + debug seam
