@@ -205,7 +205,7 @@ app.whenReady().then(async () => {
       const calls = await js(`window.__rh4.stage.renderer.info.render.calls`);
       console.log(`  draw calls (gate-1 combat): ${calls}`);
       expect(calls > 0, "no draw calls (" + calls + ")");
-      expect(calls < 700, "draw-call regression: " + calls + " (gate-1 combat measured ~480 incl. SSAO normal pass; check level.ts instancing/merges)");
+      expect(calls < 700, "draw-call regression: " + calls + " (gate-1 combat measured ~600 incl. SSAO normal pass + the player-tracked shadow pass + rat/ghoul leg meshes; check level.ts instancing/merges)");
       await frames(18); // let enemies close in
       await shot(win, "combat");
 
@@ -217,10 +217,11 @@ app.whenReady().then(async () => {
       await shot(win, "attack");
       await frames(14);
 
-      // --- drive an ARROWSTORM combo on the starter (3× light = J, J, J → big barrage shot)
+      // --- drive an ARROWSTORM combo on the starter (L,L,L,H = J,J,J,K → big barrage shot)
       await tap("KeyJ"); await frames(11);
       await tap("KeyJ"); await frames(11);
       await tap("KeyJ"); await frames(11);
+      await tap("KeyK"); await frames(11);
       const lastCombo = await js(`window.__rh4.player.lastCombo`);
       expect(lastCombo === "ARROWSTORM", "ARROWSTORM combo did not resolve (got '" + lastCombo + "')");
       await shot(win, "combat-combo");
@@ -297,19 +298,19 @@ app.whenReady().then(async () => {
       expect(await js(`window.__rh4.player.weapon.kind`) === "melee", "greatsword should be melee");
       await fire("greatsword", "atk-sword-light", ["KeyJ"], 4, 5.5);
       await fire("greatsword", "atk-sword-heavy", ["KeyK"], 8, 5.5);
-      await fire("greatsword", "atk-sword-combo", ["KeyJ", "KeyJ", "KeyK"], 10, 5.5); // CRESCENDO slam
+      await fire("greatsword", "atk-sword-combo", ["KeyJ", "KeyJ", "KeyJ", "KeyK"], 10, 5.5); // SUNDERSTRIKE slam (L,L,L,H)
 
       await fire("rocketlance", "atk-rocket-light", ["KeyJ"], 12, 9);              // flat rocket → blast
       await fire("rocketlance", "atk-rocket-heavy", ["KeyK"], 14, 9);             // lobbed mortar
-      await fire("rocketlance", "atk-rocket-combo", ["KeyJ", "KeyJ", "KeyK"], 16, 9); // SALVO rocket fan
+      await fire("rocketlance", "atk-rocket-combo", ["KeyJ", "KeyJ", "KeyK", "KeyK"], 16, 9); // CANNONADE rocket fan (L,L,H,H)
 
       await fire("arclaser", "atk-laser-light", ["KeyJ"], 3, 9);                  // thin beam
       await fire("arclaser", "atk-laser-heavy", ["KeyK"], 12, 9);                 // wide beam (windup 0.32)
-      await fire("arclaser", "atk-laser-combo", ["KeyJ", "KeyJ", "KeyJ"], 3, 9);  // OVERLOAD mega-beam
+      await fire("arclaser", "atk-laser-combo", ["KeyJ", "KeyJ", "KeyJ", "KeyK"], 3, 9);  // RADIANT LANCE mega-beam (L,L,L,H)
 
       await fire("stormcaller", "atk-storm-light", ["KeyJ"], 20, 16);             // single called strike
       await fire("stormcaller", "atk-storm-heavy", ["KeyK"], 24, 18);             // 3-strike barrage
-      await fire("stormcaller", "atk-storm-combo", ["KeyJ", "KeyJ", "KeyK"], 28, 18); // TEMPEST cluster
+      await fire("stormcaller", "atk-storm-combo", ["KeyJ", "KeyJ", "KeyJ", "KeyK"], 28, 18); // STORMFALL cluster (L,L,L,H)
 
       // ---------- phase-4 combat depth: charge, fervor, swap combo, elite ----------
       // charged heavy: holding RMB fills the draw; releasing fires and clears it
@@ -332,25 +333,75 @@ app.whenReady().then(async () => {
       const fervorAfter = await js(`window.__rh4.player.fervor`);
       expect(fervorAfter < 0.5, `full fervor was not consumed by the heavy (still ${fervorAfter})`);
 
-      // swap combo: L,L on the greatsword then swap → L on the boltcaster finishes
-      // ARROWSTORM across the swap (the buffer survives cycleWeapon)
+      // swap combo: L,L on the greatsword then swap → L,H on the boltcaster finishes
+      // ARROWSTORM [L,L,L,H] across the swap (the buffer survives cycleWeapon)
       await frames(30); // let cooldowns settle
       await tap("KeyJ"); await frames(11);
       await tap("KeyJ"); await frames(11);
       await equip("boltcaster");
-      await tap("KeyJ"); await frames(8);
+      await tap("KeyJ"); await frames(11);
+      await tap("KeyK"); await frames(8);
       expect((await js(`window.__rh4.player.lastCombo`)) === "ARROWSTORM", "swap combo did not resolve ARROWSTORM");
 
       // elite: promoted enemy is tougher and always drops a shard on death
+      // (clear the swap-combo's in-flight ARROWSTORM barrage first, or it shreds the fresh spawn)
+      await js(`window.__rh4.projectiles.clear(); window.__rh4.enemies.clear();`);
       await js(`{const p=window.__rh4.player; const e=window.__rh4debug.spawn('husk', 0, p.pos.z + 8); e.makeElite('frenzied'); 0;}`);
       await frames(2);
       const eliteHp = await js(`window.__rh4.enemies.living()[0]?.maxHp ?? 0`);
       expect(eliteHp > 60, `elite husk should have ~75 hp (got ${eliteHp})`);
+      // The god-mode arsenal showcase kills ~36 enemies stationary, piling collected shards /
+      // weapon-drop icons / transient FX right on the camera — a capture artifact that never
+      // happens in real play (the player moves). Clear that debris so the elite reads clean.
+      await js(`window.__rh4.pickups.clear(); window.__rh4.projectiles.clear();`);
+      await frames(8); // let prior-combo burst/ring FX decay
       await shot(win, "elite");
       await js(`window.__rh4.enemies.living().forEach(e=>e.takeDamage(99999,{}))`);
       await frames(60); // death anim + guaranteed shard drop
       expect(await js(`window.__rh4.pickups.count() > 0 || window.__rh4.player.shards > 0`), "elite kill did not drop a shard");
       await js(`window.__rh4.enemies.clear()`);
+
+      // --- destructible parts: shoot a knight's kite SHIELD off → its frontal block is gone (guardBroken)
+      await js(`window.__rh4.enemies.clear(); window.__rh4debug.spawn('knight', 0, window.__rh4.player.pos.z + 6); 0;`);
+      await frames(2);
+      await js(`window.__rh4debug.breakParts('knight')`);
+      const partSt = await js(`window.__rh4debug.partState('knight')`);
+      expect(partSt && partSt.broken > 0 && partSt.guardBroken === true, "breaking the knight's shield did not break a part / set guardBroken: " + JSON.stringify(partSt));
+      await js(`window.__rh4.enemies.clear()`);
+
+      // ---------- regression: two reported playtest bugs + new mechanics ----------
+      // BUG (rat couldn't hurt you): rat attackRange was BELOW the separation floor, so it was shoved
+      // out of strike range every frame and never wound up. Now a rat on a stationary player lands a hit.
+      await js(`window.__rh4debug.god(false)`);
+      const maxHpR = await js(`window.__rh4.player.maxHp`);
+      await js(`{const p=window.__rh4.player; p.hp=p.maxHp; window.__rh4.enemies.clear(); window.__rh4.projectiles.clear(); window.__rh4debug.spawn('rat', 0, p.pos.z + 1.6); 0;}`);
+      await frames(46); // let it close, wind up, strike
+      const ratHp = await js(`window.__rh4.player.hp`);
+      expect(ratHp < maxHpR, "rat could not damage the player (attackRange < separation-floor regression), hp=" + ratHp);
+      await js(`window.__rh4.enemies.clear(); window.__rh4.player.hp=window.__rh4.player.maxHp; window.__rh4debug.god(true);`);
+
+      // BUG (gate never opened): a cruising gargoyle kept out of dive range stayed unreachable to melee/AoE
+      // forever → the wave never cleared. Now it must reach a low, reachable pass (hitBottom ≤ 2.2).
+      await js(`{const p=window.__rh4.player; window.__rh4.enemies.clear(); window.__rh4debug.spawn('gargoyle', 0, p.pos.z + 22); 0;}`);
+      let minBottom = 9;
+      for (let i = 0; i < 200; i++) {
+        await frames(1);
+        const hb = await js(`window.__rh4.enemies.living()[0]?.hitBottom ?? 9`);
+        if (hb < minBottom) minBottom = hb;
+        if (minBottom <= 2.2) break;
+      }
+      expect(minBottom <= 2.2, "gargoyle never descended to a reachable pass (soft-lock regression), minBottom=" + minBottom);
+      await js(`window.__rh4.enemies.clear()`);
+
+      // NEW (storm-caller aim-to-ground): aiming DOWN (negative pitch) lands the call-down CLOSER than
+      // aiming level. (frames(1) lets cam.update apply the new pitch to the camera rotation first.)
+      await js(`{const p=window.__rh4.player; if(!p.weapons.includes('stormcaller'))p.unlockWeapon('stormcaller'); p.wi=p.weapons.indexOf('stormcaller'); p.cycleWeapon(0); window.__rh4.cam.yaw=Math.PI; 0;}`);
+      await js(`window.__rh4.cam.pitch = 0`); await frames(1);
+      const distLevel = await js(`{const t=window.__rh4.player.stormTargetXZ(15); const p=window.__rh4.player.pos; Math.hypot(t.x-p.x,t.z-p.z);}`);
+      await js(`window.__rh4.cam.pitch = -0.7`); await frames(1);
+      const distDown = await js(`{const t=window.__rh4.player.stormTargetXZ(15); const p=window.__rh4.player.pos; Math.hypot(t.x-p.x,t.z-p.z);}`);
+      expect(distDown < distLevel - 2, "storm-caller aim-down did not land closer (down=" + distDown + " level=" + distLevel + ")");
+      await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0); window.__rh4.cam.pitch=0; window.__rh4.enemies.clear();}`);
 
       // ---------- enemy telegraph + hit-reaction pass (fairness/juice) ----------
       await js(`{const p=window.__rh4.player; p.wi=0; p.cycleWeapon(0); p.hp=p.maxHp;}`);
@@ -360,7 +411,7 @@ app.whenReady().then(async () => {
       //    ctx.tele.line() call tickRanged fires (same origin/angle/width) — proving the
       //    aim-lane reads on the bright floor (the telegraphs.ts opacity fix), then hold it
       //    half-swept for the capture.
-      await js(`{const pz=window.__rh4.player.pos.z; window.__rh4.enemies.clear(); window.__rh4debug.spawn('archer', 6, pz+13); window.__rh4debug.spawn('spitter', -6, pz+11); 0;}`);
+      await js(`{const pz=window.__rh4.player.pos.z; window.__rh4.enemies.clear(); window.__rh4.pickups.clear(); window.__rh4.projectiles.clear(); window.__rh4debug.spawn('archer', 6, pz+13); window.__rh4debug.spawn('spitter', -6, pz+11); 0;}`);
       await frames(50); // let them close to realistic mid-range first
       await js(`{const p=window.__rh4.player; window.__rh4.enemies.living().forEach(e=>{ e.frozen=5; const dx=p.pos.x-e.pos.x, dz=p.pos.z-e.pos.z, d=Math.hypot(dx,dz)||1; window.__rh4.tele.line(e.pos.x, e.pos.z, Math.atan2(dx,dz), Math.min(d+2,18), 1.5, 1.2, 0xff2b33); }); 0;}`);
       await frames(20); // sweep fills to ~half along the aim-lane, then hold for the shot
@@ -392,6 +443,12 @@ app.whenReady().then(async () => {
       await js(`window.__rh4debug.scenario('boss')`);
       await frames(8);
       expect(await js(`window.__rh4.boss.dormant === false`), "boss did not activate on arena entry");
+      // NEW (arena lock): once the fight starts the player can't retreat down the corridor —
+      // clampPosition keeps them inside the bowl even when shoved far back.
+      expect(await js(`window.__rh4.level.lockArena === true`), "arena lock did not engage when the boss activated");
+      const arenaZ = await js(`window.__rh4.player.pos.z`);
+      const clampedZ = await js(`{const p=window.__rh4.player, L=window.__rh4.level; const z0=p.pos.z; p.pos.z-=60; L.clampPosition(p.pos,p.radius,true); const back=p.pos.z; p.pos.z=z0; back;}`);
+      expect(clampedZ > arenaZ - 30, "player retreated out of the boss arena (clampedZ=" + clampedZ + " arenaZ=" + arenaZ + ")");
       const bossHp = await js(`window.__rh4.boss ? window.__rh4.boss.hp : null`);
       expect(typeof bossHp === "number" && bossHp > 0, "boss did not spawn (" + bossHp + ")");
       expect(await js(`window.__rh4debug.cineActive()`), "boss-intro cutscene did not start");
@@ -406,8 +463,9 @@ app.whenReady().then(async () => {
       await frames(18);
       await shot(win, "boss");
 
-      // --- weak point: look up at the core → gold crosshair + a bolt lands on it
-      await js(`window.__rh4.cam.pitch = 0.16`);
+      // --- weak point: the boss now ROAMS, so pin it for a clean core shot + aim at its ACTUAL core
+      await js(`window.__rh4.boss.paused = true`);
+      await js(`{const b=window.__rh4.boss; const V=window.__rh4.player.pos.constructor; const core=b.coreWorld(new V()); const p=window.__rh4.player.pos; const dx=core.x-p.x, dy=core.y-1.7, dz=core.z-p.z; window.__rh4.cam.yaw=Math.atan2(-dx,-dz); window.__rh4.cam.pitch=Math.atan2(dy,Math.hypot(dx,dz));}`);
       await frames(2);
       expect(await js(`window.__rh4.combat.isAimingWeak()`), "aim ray not on the boss core when looking up");
       const bHp0 = await js(`window.__rh4.boss.hp`);
@@ -415,6 +473,7 @@ app.whenReady().then(async () => {
       await frames(36);
       const bHp1 = await js(`window.__rh4.boss.hp`);
       expect(bHp1 < bHp0, "projectile aimed at the core did not hit the boss");
+      await js(`window.__rh4.boss.paused = false`); // let the King roam again
       await shot(win, "weakpoint");
       await js(`window.__rh4.cam.pitch = 0`);
 
@@ -460,6 +519,21 @@ app.whenReady().then(async () => {
       await js(`window.__rh4debug.start()`);
       await frames(6);
       await shot(win, "resized");
+
+      // NEW (first-run tutorial): verb-gated training runs to completion → back to the menu + marks the save
+      await js(`window.__rh4debug.tutorial()`);
+      expect(await js(`window.__rh4debug.tutorialActive()`), "tutorial did not start");
+      await shot(win, "tutorial");
+      await js(`window.__rh4.player.pos.z += 5`); await frames(3);                                    // move
+      await js(`window.__rh4.events.emit('ENEMY_HIT', {x:0,y:1,z:0,dmg:5,heavy:false,killed:false})`); await frames(3); // light hit
+      await js(`window.__rh4.events.emit('DODGE', {})`); await frames(3);                              // dodge
+      await js(`window.__rh4.events.emit('ENEMY_HIT', {x:0,y:1,z:0,dmg:9,heavy:true,killed:false})`); await frames(3);  // heavy
+      await js(`window.__rh4.events.emit('COMBO_RESOLVE', {name:'ARROWSTORM'})`); await frames(3);     // combo finisher
+      await js(`window.__rh4.events.emit('WEAPON_SWITCH', {id:'boltcaster', name:'HEAVY CROSSBOW'})`); await frames(3); // swap
+      await frames(95); // run out the "training complete" hold
+      expect(await js(`window.__rh4state()==='title'`), "tutorial did not finish back to the main menu");
+      expect(await js(`!window.__rh4debug.tutorialActive()`), "tutorial still active after completing");
+      expect(await js(`JSON.parse(localStorage.getItem('rh4-save')||'{}').tutorialDone === true`), "tutorial completion did not persist tutorialDone");
 
     } catch (e) {
       errors.push("EXCEPTION: " + (e && e.message ? e.message : String(e)));

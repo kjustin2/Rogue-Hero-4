@@ -32,6 +32,8 @@ export class Stage {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
   readonly keyLight: THREE.DirectionalLight;
+  /** Cool moon-rim from behind — lifts silhouette edges off the dark background. */
+  readonly rimLight: THREE.DirectionalLight;
   readonly hemiLight: THREE.HemisphereLight;
   readonly fog: THREE.FogExp2;
   quality: Quality = "high";
@@ -109,6 +111,18 @@ export class Stage {
     this.keyLight.shadow.bias = -0.0008;
     this.scene.add(this.keyLight);
     this.scene.add(this.keyLight.target);
+
+    // Cool rim/back light — a pale moon-blue from high behind, opposite the warm key.
+    // It catches the top edges of walls, pillars, enemies and the weapon so silhouettes
+    // separate from the near-black background (the cheap "instant depth" trick). Added
+    // here at BOOT so its light-count is baked into every material's program before
+    // warmUp — adding a light mid-scene would force a synchronous whole-scene relink
+    // (the same rule that keeps the boss light scene-owned from boot). No shadows.
+    this.rimLight = new THREE.DirectionalLight(0x88a8ff, 0.75);
+    this.rimLight.position.set(-16, 22, -20);
+    this.rimLight.castShadow = false;
+    this.scene.add(this.rimLight);
+    this.scene.add(this.rimLight.target);
 
     this.buildEnv();
     this.buildPost();
@@ -194,9 +208,11 @@ export class Stage {
     }
     this.vignette = new VignetteEffect({ darkness: this.baseVignette, offset: 0.32 });
     effects.push(this.vignette);
-    // Subtle grade: a touch more saturation + contrast sells "finished"
+    // Subtle grade: deeper contrast sells "finished" and fights the flat warm wash —
+    // deeper blacks read as depth. Saturation stays at 0.12 (pushing it intensified the
+    // orange in the warm arena-mouth frames, worsening the monochrome).
     effects.push(new HueSaturationEffect({ saturation: 0.12 }));
-    effects.push(new BrightnessContrastEffect({ contrast: 0.07 }));
+    effects.push(new BrightnessContrastEffect({ contrast: 0.09 }));
     if (this.quality === "high") {
       const noise = new NoiseEffect({ premultiply: true });
       noise.blendMode.opacity.value = 0.45;
@@ -221,7 +237,7 @@ export class Stage {
       this.camera,
       new VignetteEffect({ darkness: this.baseVignette, offset: 0.32 }),
       new HueSaturationEffect({ saturation: 0.12 }),
-      new BrightnessContrastEffect({ contrast: 0.07 }),
+      new BrightnessContrastEffect({ contrast: 0.09 }),
     ));
     this.menuComposer.setSize(w, h);
   }

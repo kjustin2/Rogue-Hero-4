@@ -113,7 +113,7 @@ export class Menus {
     el?.addEventListener("click", () => { this.ctx.events.emit("UI_CLICK", {}); fn(); });
   }
 
-  showTitle(meta: TitleMeta, onStart: () => void): void {
+  showTitle(meta: TitleMeta, onStart: () => void, onTutorial: () => void): void {
     const laurels = meta.clears > 0
       ? `<div class="meta-line">${meta.clears} CLEAR${meta.clears > 1 ? "S" : ""} · BEST ${meta.bestTime.toFixed(0)}s</div>`
       : "";
@@ -123,13 +123,15 @@ export class Menus {
       ${laurels}
       <div class="menu-buttons">
         <button id="start" class="primary">DESCEND</button>
+        <button id="tutorial">TUTORIAL</button>
         <button id="controls">CONTROLS</button>
         <button id="settings">SETTINGS</button>
       </div>
     `);
     this.wire("start", onStart);
-    this.wire("controls", () => this.showControls(() => this.showTitle(meta, onStart)));
-    this.wire("settings", () => this.showSettings(() => this.showTitle(meta, onStart)));
+    this.wire("tutorial", onTutorial);
+    this.wire("controls", () => this.showControls(() => this.showTitle(meta, onStart, onTutorial)));
+    this.wire("settings", () => this.showSettings(() => this.showTitle(meta, onStart, onTutorial)));
   }
 
   /**
@@ -155,8 +157,14 @@ export class Menus {
 
   /** The between-gate decision beat: claim one of three boons. */
   showBoons(boons: BoonDef[], onPick: (b: BoonDef) => void): void {
+    const hex = (c: number) => "#" + c.toString(16).padStart(6, "0");
     const cards = boons.map((b, i) =>
-      `<button class="boon" data-i="${i}"><span class="boon-name">${b.name}</span><span class="boon-desc">${b.desc}</span></button>`,
+      `<button class="boon tier-${b.tier}" data-i="${i}" style="--accent:${hex(b.accent)};animation-delay:${i * 80}ms">
+        <span class="boon-tier">${b.tier}</span>
+        <span class="boon-icon">${b.icon}</span>
+        <span class="boon-name">${b.name}</span>
+        <span class="boon-desc">${b.desc}</span>
+      </button>`,
     ).join("");
     this.panel(`
       <div class="title small">THE WAY OPENS</div>
@@ -280,7 +288,7 @@ export class Menus {
       ${this.statGrid(stats)}
       <div class="menu-buttons">
         <button id="retry" class="primary">TRY AGAIN</button>
-        <button id="quit">TITLE</button>
+        <button id="quit">MAIN MENU</button>
       </div>
     `);
     this.wire("retry", onRetry);
@@ -293,7 +301,7 @@ export class Menus {
       ${this.statGrid(stats)}
       <div class="menu-buttons">
         <button id="again" class="primary">RUN AGAIN</button>
-        <button id="totitle">TITLE</button>
+        <button id="totitle">MAIN MENU</button>
       </div>
     `);
     this.wire("again", onAgain);

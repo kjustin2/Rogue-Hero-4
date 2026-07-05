@@ -291,6 +291,7 @@ export class Projectiles {
               if (s.pierce && s.hit.has(t)) continue; // a piercing shot hits each target once
               const weak = t.isWeakHit ? t.isWeakHit(p.x, p.y, p.z) : false;
               this.ctx.combat.dealDamage(t, s.dmg, { knockback: s.knockback, fromX: p.x - s.vel.x, fromZ: p.z - s.vel.z, weak });
+              t.hitPart?.(p.x, p.y, p.z, s.dmg); // exact impact point → chip whatever armor/limb you aimed at
               this.impact(p, s.color);
               if (s.pierce) { s.hit.add(t); } else { this.kill(s); break; }
             }
@@ -330,7 +331,8 @@ export class Projectiles {
     this.ctx.fx.burst({ x: p.x, y: 0.6, z: p.z, count: 34, color: [s.color, 0xffd070], speed: [5, 17], up: 0.8, size: [0.16, 0.5], life: [0.3, 0.7] });
     this.ctx.fx.burst({ x: p.x, y: 0.4, z: p.z, count: 14, color: 0xffb060, speed: [3, 9], up: 2.2, size: [0.2, 0.5], life: [0.4, 0.8] }); // debris column
     this.ctx.cam.addTrauma(0.26);
-    this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.03);
+    // ponytail: no hit-stop on your own blasts (it slowed the frame when you attack); a hostile
+    // mortar that hits the player still crunches via damagePlayer's wound hit-stop.
     this.ctx.sfx.explosion();
     this.kill(s);
   }

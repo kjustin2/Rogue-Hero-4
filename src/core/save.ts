@@ -10,12 +10,14 @@ export interface SaveData {
   totalKills: number;
   /** Weapon ids the player may START a run with (unlocked by clearing with them held). */
   unlockedStarts: string[];
+  /** First-run tutorial cleared/skipped — gates the auto-launch on first DESCEND. */
+  tutorialDone: boolean;
 }
 
 const KEY = "rh4-save";
 
 export function defaultSave(): SaveData {
-  return { v: 1, clears: 0, bestTime: 0, totalKills: 0, unlockedStarts: [] };
+  return { v: 1, clears: 0, bestTime: 0, totalKills: 0, unlockedStarts: [], tutorialDone: false };
 }
 
 export function loadSave(): SaveData {

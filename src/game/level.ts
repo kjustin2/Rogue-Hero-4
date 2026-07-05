@@ -42,6 +42,8 @@ function gutterAt(z: number): number {
 
 export class Level {
   readonly group = new THREE.Group();
+  /** Boss fight: lock the player into the arena bowl (no retreat down the corridor). Set when the boss activates. */
+  lockArena = false;
   readonly gates: Gate[] = [];
   private barrierMat: THREE.MeshBasicMaterial[] = [];
   private vt = 0;
@@ -56,6 +58,11 @@ export class Level {
   private flames: { obj: THREE.Object3D; mat: THREE.MeshBasicMaterial; phase: number; light?: THREE.PointLight; lightBase: number; dim: number }[] = [];
   private motes?: THREE.Points;
   private moteVel?: Float32Array;
+  private mist?: THREE.Points;
+  private mistVel?: Float32Array;
+  private dust?: THREE.Points;
+  private dustVel?: Float32Array;
+  private auroraMat?: THREE.MeshBasicMaterial;
 
   constructor(private ctx: Ctx) {}
 
@@ -553,6 +560,73 @@ export class Level {
     this.motes = new THREE.Points(mgeo, new THREE.PointsMaterial({ color: PAL.moteWarm, size: 0.16, sizeAttenuation: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     this.group.add(this.motes);
 
+    // --- drifting ground mist: a low COOL haze that gives the causeway real depth and
+    // breaks the flat warm wash (soft grey puffs, normal-blended so they read as fog, not
+    // glow; they fade into the fog with distance for honest aerial perspective) ---
+    const FN = 92;
+    const fp = new Float32Array(FN * 3);
+    this.mistVel = new Float32Array(FN * 2); // [driftX, bobPhase] per puff
+    for (let i = 0; i < FN; i++) {
+      fp[i * 3] = this.ctx.rng.range(-HALF_WIDTH - 4, HALF_WIDTH + 4);
+      fp[i * 3 + 1] = this.ctx.rng.range(0.2, 2.8); // hugs the floor as a fog carpet
+      fp[i * 3 + 2] = this.ctx.rng.range(0, ARENA_BLEND_Z + 40);
+      this.mistVel[i * 2] = this.ctx.rng.range(-0.5, 0.5);
+      this.mistVel[i * 2 + 1] = this.ctx.rng.range(0, Math.PI * 2);
+    }
+    const fgeo = new THREE.BufferGeometry();
+    fgeo.setAttribute("position", new THREE.BufferAttribute(fp, 3));
+    this.mist = new THREE.Points(fgeo, new THREE.PointsMaterial({
+      map: this.makeGlowTexture(), color: 0x4a586e, size: 9.5, sizeAttenuation: true,
+      transparent: true, opacity: 0.2, depthWrite: false, blending: THREE.NormalBlending, fog: true,
+    }));
+    this.mist.frustumCulled = false;
+    this.group.add(this.mist);
+
+    // --- fine airborne dust/ash: slow-falling motes that give the AIR volume in the
+    // firelight (tiny warm-pale specks, faint additive — bloom threshold ignores them) ---
+    const DN = 170;
+    const dp = new Float32Array(DN * 3);
+    this.dustVel = new Float32Array(DN);
+    for (let i = 0; i < DN; i++) {
+      dp[i * 3] = this.ctx.rng.range(-HALF_WIDTH, HALF_WIDTH);
+      dp[i * 3 + 1] = this.ctx.rng.range(0.5, 9);
+      dp[i * 3 + 2] = this.ctx.rng.range(0, ARENA_BLEND_Z + 30);
+      this.dustVel[i] = this.ctx.rng.range(0.18, 0.6);
+    }
+    const dgeo = new THREE.BufferGeometry();
+    dgeo.setAttribute("position", new THREE.BufferAttribute(dp, 3));
+    this.dust = new THREE.Points(dgeo, new THREE.PointsMaterial({
+      color: 0xd8c39a, size: 0.06, sizeAttenuation: true, transparent: true, opacity: 0.5,
+      depthWrite: false, blending: THREE.AdditiveBlending, fog: true,
+    }));
+    this.dust.frustumCulled = false;
+    this.group.add(this.dust);
+
+    // --- a cold aurora curtain high over the dead keep: slow drifting violet light bands
+    // (violet is unused in the signal hierarchy, so it's pure atmosphere) ---
+    this.auroraMat = new THREE.MeshBasicMaterial({
+      map: this.makeAuroraTexture(), color: 0x6a54c0, transparent: true, opacity: 0.26,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    });
+    const aurora = new THREE.Mesh(new THREE.PlaneGeometry(320, 76), this.auroraMat);
+    aurora.position.set(ARENA_CENTER.x, 60, ARENA_CENTER.y + 40);
+    this.group.add(aurora);
+
+    // --- soft firelight halos on the big braziers: fire GLOWING into the smoky air, so
+    // every flame reads as a volumetric light source once the mist catches it (one Points
+    // draw; positions are deterministic so no need to thread them through the build loops) ---
+    const glowPos: number[] = [];
+    for (let z = 18; z < ARENA_BLEND_Z; z += 28) for (const sx of [-1, 1]) glowPos.push(sx * (HALF_WIDTH - 0.6), 9.5, z);
+    for (const sx of [-1, 1]) glowPos.push(BOSS_ANCHOR.x + sx * 7, 6.1, BOSS_ANCHOR.z - 9);
+    const ggeo = new THREE.BufferGeometry();
+    ggeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(glowPos), 3));
+    const glow2 = new THREE.Points(ggeo, new THREE.PointsMaterial({
+      map: this.makeGlowTexture(), color: PAL.emberBright, size: 4.2, sizeAttenuation: true,
+      transparent: true, opacity: 0.24, depthWrite: false, blending: THREE.AdditiveBlending, fog: true,
+    }));
+    glow2.frustumCulled = false;
+    this.group.add(glow2);
+
     scene.add(this.group);
   }
 
@@ -593,6 +667,32 @@ export class Level {
       }
       pos.needsUpdate = true;
     }
+    // ground mist: slow lateral drift + a gentle vertical breathe, wrapping across the path
+    if (this.mist && this.mistVel) {
+      const pos = this.mist.geometry.attributes.position as THREE.BufferAttribute;
+      const arr = pos.array as Float32Array;
+      const n = this.mistVel.length / 2;
+      for (let i = 0; i < n; i++) {
+        arr[i * 3] += this.mistVel[i * 2] * dt;
+        arr[i * 3 + 1] += Math.sin(t * 0.4 + this.mistVel[i * 2 + 1]) * dt * 0.14;
+        if (arr[i * 3] > HALF_WIDTH + 5) arr[i * 3] = -HALF_WIDTH - 5;
+        else if (arr[i * 3] < -HALF_WIDTH - 5) arr[i * 3] = HALF_WIDTH + 5;
+      }
+      pos.needsUpdate = true;
+    }
+    // airborne dust: drifts down, sways, recycles to the top
+    if (this.dust && this.dustVel) {
+      const pos = this.dust.geometry.attributes.position as THREE.BufferAttribute;
+      const arr = pos.array as Float32Array;
+      for (let i = 0; i < this.dustVel.length; i++) {
+        arr[i * 3 + 1] -= this.dustVel[i] * dt;
+        arr[i * 3] += Math.sin(t * 0.5 + i) * dt * 0.12;
+        if (arr[i * 3 + 1] < 0.3) arr[i * 3 + 1] = 9;
+      }
+      pos.needsUpdate = true;
+    }
+    // aurora curtain drifts sideways very slowly
+    if (this.auroraMat?.map) this.auroraMat.map.offset.x = (t * 0.008) % 1;
   }
 
   /** Canvas-painted mortared stone blocks, with a few faintly ember-lit cracks. */
@@ -772,6 +872,30 @@ export class Level {
       g.fillRect(x - r, y - r, r * 2, r * 2);
     }
     return new THREE.CanvasTexture(cv);
+  }
+
+  /** Vertical light bands for the aurora curtain — soft violet streaks, tileable across X. */
+  private makeAuroraTexture(): THREE.CanvasTexture {
+    const w = 512, h = 128;
+    const cv = document.createElement("canvas");
+    cv.width = w; cv.height = h;
+    const g = cv.getContext("2d")!;
+    g.fillStyle = "#000";
+    g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 44; i++) {
+      const x = this.ctx.rng.range(0, w);
+      const bw = this.ctx.rng.range(6, 26);
+      const a = this.ctx.rng.range(0.05, 0.2);
+      const grad = g.createLinearGradient(x, 0, x, h);
+      grad.addColorStop(0, "rgba(120,90,220,0)");
+      grad.addColorStop(0.55, `rgba(150,120,240,${a.toFixed(3)})`);
+      grad.addColorStop(1, "rgba(80,60,150,0)");
+      g.fillStyle = grad;
+      g.fillRect(x - bw / 2, 0, bw, h);
+    }
+    const tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = THREE.RepeatWrapping;
+    return tex;
   }
 
   private makeFlowTexture(): THREE.CanvasTexture {
@@ -957,6 +1081,7 @@ export class Level {
       g.portcullis.visible = true;
       (g.barrier.material as THREE.MeshBasicMaterial).opacity = 0.36;
     }
+    this.lockArena = false;
   }
 
   firstClosedGate(): Gate | null {
@@ -969,7 +1094,7 @@ export class Level {
   }
 
   /** Keep a body (player or enemy) inside the playable causeway + arena. Mutates pos. */
-  clampPosition(pos: THREE.Vector3, radius: number): void {
+  clampPosition(pos: THREE.Vector3, radius: number, keepInArena = false): void {
     pos.z = Math.max(pos.z, START_Z + radius);
     const closed = this.firstClosedGate();
     if (closed && pos.z > closed.z - radius - 0.6) pos.z = closed.z - radius - 0.6;
@@ -982,7 +1107,11 @@ export class Level {
     if (pos.z < WALL_END_Z) {
       pos.x = clamp(pos.x, -HALF_WIDTH + radius, HALF_WIDTH - radius);
     }
-    if (pos.z >= ARENA_BLEND_Z) {
+    // Arena bowl: applies once you're in the arena, OR (for the player, keepInArena) the whole boss
+    // fight — there is no rear wall once every gate is open, so lockArena stops a retreat down the
+    // corridor. Enemies never pass keepInArena, so boss-fight adds still roam the approach freely.
+    const inBowl = pos.z >= ARENA_BLEND_Z || (keepInArena && this.lockArena);
+    if (inBowl) {
       const dx = pos.x - ARENA_CENTER.x;
       const dz = pos.z - ARENA_CENTER.y;
       const maxR = ARENA_RADIUS - radius;

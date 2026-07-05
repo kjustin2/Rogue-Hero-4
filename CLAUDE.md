@@ -22,23 +22,41 @@ REMOVED by user decision (they read worse than the stylized primitives); do not 
 ## Architecture (sim → render → HUD, one composition root)
 - **`src/main.ts`** — the one composition root: builds the Ctx, owns the single loop (`frame(dt)`), the state machine
   (`title → playing → paused → boon → swap → dead → victory`), run flow (gate waves → boon → boss →
-  victory/death incl. killcam slow-mo), run stats, meta-save writes, and the **`window.__rh4`**
-  seam (`__rh4debug.scenario/frames/checkCombos/drainWave`, `__rh4perf`).
+  victory/death incl. killcam slow-mo), the **boss walk-up cutscene** (a scripted camera DOLLY —
+  `fpsCamera.setCinePose` sweeps a vantage while `updateBossCutscene` scripts the path — + a MORDREK
+  title card), the **first-run tutorial** (auto-launches on the first DESCEND if `!save.tutorialDone`;
+  `inTutorial` = a forgiving training slice reusing the `playing` state — PLAYER_DIED revives, run not
+  recorded), run stats, meta-save writes, and the **`window.__rh4`**
+  seam (`__rh4debug.scenario/frames/checkCombos/drainWave/tutorial/tutorialActive`, `__rh4perf`).
+- **`src/game/tutorial.ts`** — verb-gated first-run training (move→light→dodge→heavy→combo→swap),
+  flags latched off the event bus, reuses `hud.setTutorial()`; replayable from the title's TUTORIAL button.
 - **`src/game/`** — sim: `ctx.ts` (type-only hub), `weapons.ts` (arsenal catalog + chargeable
   heavies + `matchWeaponCombo`/self-check), `player.ts` (FP controller, charge/fervor/swap-combo
   buffer, PlayerMods read sites, per-weapon procedural viewmodels), `combat.ts` (the one damage funnel; `modifyIncoming` hook for shielded elites;
-  lifesteal/dmg-taken mods; `resolveCombo` forward finishers; **long-range falloff** — full damage
-  ≤18u, tapering to 45% by ~50u; **micro-hitstop** per hit — `ctx.hitstop` 0.02–0.12s scaled by
-  crit/kill/heavy, main runs the frame at dt×0.08 while it drains), `enemies.ts` (6 archetypes,
+  lifesteal/dmg-taken mods; `resolveCombo` forward finishers (fire the WEAPON's own projectile
+  shape, not a hardcoded dart); **long-range falloff** — full damage ≤18u, tapering to 45% by
+  ~50u; **hit-stop is DEFENSE-ONLY** — landing hits on enemies never dilates the frame (that read
+  as the game slowing down when you attack); `ctx.hitstop` fires only on player wounds /
+  perfect-dodge / weapon-pickup, main runs the frame at dt×0.08 while it drains; **`hitPart`** — the
+  shootable-parts funnel: call sites (projectiles/beam/melee) resolve the impact point and chip
+  breakable armor/limbs), `enemies.ts` (6 archetypes,
   **pooled** per kind, roles/flanking, **ELITES** catalog, **spawn director** — per-gate
-  {budget,cap,pack,eliteChance}, trickle + hp-reading pacing, `waveDone()`), `boss.ts` (anchors +
-  shift glide, slam/volley/beam/sweep/collapse/**gravewave**/**harvest**, phase-3 soulfire pools +
-  recurring adds with guaranteed shards, per-phase telegraph colors), `boons.ts` (12 data boons →
-  flat `PlayerMods`), `pickups.ts` (gold economy), `level.ts` (level-as-data causeway with segment
-  identity: Outer Ward → Grave Ward → Reliquary Approach; `gutterAt(z)` torch fade),
+  {budget,cap,pack,eliteChance}, trickle + hp-reading pacing, `waveDone()`; **breakable parts** from
+  `breakables.ts` — shoot off the weapon (disarm), knight shield (noblock), brute pauldron (expose),
+  gargoyle wing (dewing); part HP is a SEPARATE pool from body HP), `boss.ts` (**roams** the arena —
+  idle tangential drift + frequent wider anchor shifts, no player pursuit; anchors + shift glide,
+  slam/volley/beam/sweep/collapse/**RIFT FISSURE** (a line of eruptions marches down the telegraphed
+  lane — sidestep OFF it; replaced the old dash-through gravewave ring)/**harvest**, phase-3 soulfire pools + recurring adds
+  with guaranteed shards, per-phase telegraph colors; **breakable pauldrons→`armorMult` / blade→drops
+  sweep+harvest**), `boons.ts` (12 data boons →
+  flat `PlayerMods`), `breakables.ts` (per-kind breakable-part catalog), `pickups.ts` (gold economy), `level.ts` (level-as-data causeway with segment
+  identity: Outer Ward → Grave Ward → Reliquary Approach; `gutterAt(z)` torch fade;
+  **atmosphere layer** — drifting cool ground mist + fine airborne dust + a cold violet aurora
+  curtain + warm brazier glow-halos, all pooled `THREE.Points` animated in `update`),
   `projectiles.ts` (pooled).
 - **`src/render/`** — `stage.ts` (post chain: bloom(0.92/thr 0.45)/SSAO(high)/CA/grade/SMAA,
-  quality tiers, dual-composer warm-up), `enemyMeshes.ts`/`bossMesh.ts` (procedural body
+  quality tiers, dual-composer warm-up, warm key + **cool rim/back light** for silhouette
+  separation), `enemyMeshes.ts`/`bossMesh.ts` (procedural body
   factories, kept separate from the sim logic), `fpsCamera.ts`,
   `particles/trail/telegraphs/floaters`.
 - **`src/core/`** — `events.ts` (typed bus incl. FERVOR), `input.ts` (rebindable; pointer-lock
@@ -61,7 +79,9 @@ REMOVED by user decision (they read worse than the stylized primitives); do not 
 - `npm run typecheck` / `npm run build` — static gates.
 - `npm run smoke` — builds, boots the BUILT game hidden in Electron, drives the full slice
   (title → wave → **boon pick** → arsenal showcase → **charged-heavy/fervor/swap-combo/elite**
-  asserts → boss phases/gravewave/killcam → victory **meta-save assert** → death), asserts
+  asserts → boss phases/RIFT FISSURE/killcam → victory **meta-save assert** → death; **regression beats**:
+  rat-lands-a-hit, stuck-gargoyle-force-descends, boss-arena-lock, stormcaller-aim-down-lands-closer,
+  first-run-tutorial-runs-to-completion), asserts
   non-black frames, zero console errors, draw calls < 700. **Read the screenshots**
   (`shots/electron-*.png`).
 - `npx electron scripts/soak-electron.cjs` — real-GPU boss-fight soak: p95 ≤ 20ms budget,
@@ -82,13 +102,44 @@ REMOVED by user decision (they read worse than the stylized primitives); do not 
 - `tele.line()` angle convention: the strip runs along (sin a, cos a) — compute the angle as
   `atan2(xComponent, zComponent)` (see boss.ts aim code).
 - `mergeStatic()` (enemyMeshes.ts): merging mixed indexed/non-indexed geometry silently drops
-  parts — it normalizes via `toNonIndexed()` first; keep that invariant.
+  parts — it normalizes via `toNonIndexed()` first; keep that invariant. The rat's 4 legs + the
+  ghoul's 2 shins are kept OUT of the merge (in the keep-list + excluded from `statics`) so they
+  stay live for the footfall stride in `Enemy.sync` — don't re-merge them.
+- **Breakable parts** (shootable armor/limbs): promoting a part is NOT just a keep-list entry —
+  `buildEnemyMesh` only re-instances core/weapon/wings/legs, so a promoted armor part must be
+  captured in `buildBody`, returned via `EnemyMeshParts.parts`, added to the keep-list, AND
+  `clone(true)`-per-instance (else all pooled instances share one Object3D). NEVER mutate a part's
+  material to flash/fade (shared across instances + the merged body) — break visuals are hide +
+  `fx.burst` + `fx.chunk`. Part state (broken/hp + effect flags) MUST reset in `Enemy.reset` /
+  `Boss.reset` and scale in `makeElite` (pooled bodies). Part HP is a SEPARATE pool from body HP
+  (a hit chips the part AND deals full body damage) so enemies never become damage-sponges.
+- The debris **chunk pool** (particles.ts) uses **MeshBasic**, not MeshStandard: a transparent +
+  lit material's first VISIBLE draw mid-fight is a ~100-370ms pipeline stall (misreads as gc/stall
+  in the soak classifier). All FX pools stay unlit MeshBasic for this reason.
+- The key light's shadow ortho box only covers ~60u, so `main.ts`'s frame loop slides the key
+  light + its target to follow the player each frame (texel-snapped so shadows don't swim) — do
+  NOT pin them at the origin again (that left the whole causeway + arena shadowless = floating
+  characters). It only MOVES existing lights (no relink).
+- Viewmodel swing timing: `player.ts animate()` time-warps the pose sample so the pose's IMPACT
+  keyframe coincides with the mechanical hit (`moveT >= windup`); `samplePose` writes a module
+  scratch (no per-frame alloc). Don't restore the linear `moveT/attackDuration` sample — the
+  visible swing would connect ~0.1s after damage fires again.
 - InstancedMesh frustum-culls off its base-geometry bounds at the origin → set
   `frustumCulled = false` for spread instances (see level.ts). Changing the scene's point-light
   count mid-combat forces a synchronous relink of every MeshStandardMaterial — the boss light is
-  pre-added and scene-owned (boss.ts / bossMesh.ts); never spawn/remove lights live.
+  pre-added and scene-owned (boss.ts / bossMesh.ts), as are the key + cool rim light (stage.ts,
+  added at boot); never spawn/remove lights live.
 - Boss weak-point coupling: `CORE_Y` (boss.ts) assumes the boss group's scale — don't rescale the
   boss group.
+- **Melee enemy reach**: any melee kind's `attackRange` MUST exceed the separation floor
+  (`radius + playerRadius(0.5) + 0.6`) or `separate()` shoves it just outside strike range every
+  frame and it can NEVER wind up (this was the "rat can't hurt me" bug — rat attackRange 1.3 < floor 1.42).
+- **Flyer reachability**: a cruising gargoyle (`alt≈4.5`, `hitBottom>2.2`) is unreachable to grounded
+  melee/AoE; `tickFly`'s low-pass failsafe force-descends it to a killable altitude after ~3.5s out of
+  dive range — without it a melee loadout could leave it alive forever and the gate never opens.
+- **Arena lock**: `level.lockArena` (set true when the boss activates in main; cleared in `Level.reset`)
+  makes `clampPosition(pos, radius, keepInArena=true)` pin the player inside the arena bowl — no
+  retreating down the corridor once the boss fight starts. The player passes `keepInArena=true`.
 - `shots/` is gitignored and accumulates stale files — wipe or mtime-filter before judging
   screenshots.
 - Windows/Git Bash: large heredocs fail — write a script file to the scratchpad and run it.

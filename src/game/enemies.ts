@@ -6,6 +6,7 @@ import { GATES_Z, HALF_WIDTH } from "./level";
 import { damp } from "../core/math";
 import { PAL } from "../core/palette";
 import { buildEnemyMesh } from "../render/enemyMeshes";
+import { BREAKABLES, type BreakEffect } from "./breakables";
 
 export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer" | "gargoyle" | "bomber" | "knight" | "rat";
 
@@ -33,7 +34,7 @@ const KIND: Record<EnemyKind, KindCfg> = {
   gargoyle: { hp: 24, radius: 0.6, speed: 11, contactDmg: 15, attackRange: 11, windup: 0.55, color: 0xffa24a, bodyY: 0 }, // stone flyer: circles high, telegraphed dive
   bomber: { hp: 60, radius: 0.95, speed: 4.2, contactDmg: 18, attackRange: 17, windup: 0.6, color: 0xff8038, bodyY: 0, proj: { speed: 15, shape: "cannonball", interval: 2.6, gravity: 15, explode: 3.4 } }, // crypt bombard: lobbed exploding skulls
   knight: { hp: 72, radius: 0.7, speed: 5.4, contactDmg: 17, attackRange: 2.9, windup: 0.42, color: 0xc9d4e4, bodyY: 0 }, // revenant knight: kite shield blocks frontal shots — flank him
-  rat: { hp: 8, radius: 0.32, speed: 13.8, contactDmg: 5, attackRange: 1.3, windup: 0.2, color: 0xd06a3a, bodyY: 0 }, // plague rats: cheap, fast (just under the player), and NEVER alone
+  rat: { hp: 8, radius: 0.32, speed: 13.8, contactDmg: 7, attackRange: 1.9, windup: 0.2, color: 0xd06a3a, bodyY: 0 }, // plague rats: cheap, fast, NEVER alone. NOTE: attackRange MUST exceed separate()'s floor (radius+0.5+0.6=1.42) or the body is shoved out of strike range every frame and can never wind up
 };
 
 // Elite modifiers — a data catalog, rolled by the spawn director on gate 2+.
@@ -57,6 +58,18 @@ const COST: Record<EnemyKind, number> = { husk: 2, ghoul: 2, wraith: 3, spitter:
 let NEXT_ID = 1;
 const SHOT_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
 
+/** A live breakable part on one enemy instance — its own HP pool (the body HP is separate). */
+interface BreakablePart {
+  mesh: THREE.Object3D;
+  offset: THREE.Vector3; // resting LOCAL offset (world pos = pos + Ry(rotation.y)·offset·baseScale)
+  radius: number;
+  hpFrac: number;        // part HP as a fraction of cfg.hp (re-armed in reset)
+  hp: number;
+  effect: BreakEffect;
+  debris: number;
+  broken: boolean;
+}
+
 export class Enemy implements Hittable {
   readonly id = NEXT_ID++;
   readonly cfg: KindCfg;
@@ -79,6 +92,14 @@ export class Enemy implements Hittable {
   private timer = 0;
   private fireTimer = 1.5;
   private lungeDir = new THREE.Vector3();
+  private atkDist = 0; // ranged: player distance LOCKED at wind-up so the shot flies the telegraphed lane
+  private legs?: THREE.Object3D[]; // articulated legs (rat quadruped / ghoul biped) — footfall stride
+  private legBase?: THREE.Euler[];
+  private breakables: BreakablePart[] = []; // shootable armor/limbs
+  private disarmed = false;    // weapon shot off → attack connects with nothing
+  private guardBroken = false; // shield shot off → frontal block gone
+  private exposed = false;     // armor shot off → takes +35% damage
+  private grounded = false;    // wing shot off → gargoyle can't dive
   private didHit = false;
   private flash = 0;
   private flinch = 0; // hit-reaction recoil (0→1 on hit, decays) — leans the body back
@@ -94,6 +115,8 @@ export class Enemy implements Hittable {
   private wings?: { l: THREE.Object3D; r: THREE.Object3D };
   /** Flyer altitude (gargoyle) — cruise high, dive to strike. */
   private alt = 0;
+  private diveStuckT = 0; // gargoyle: time unable to dive (player out of range) → forces a low reachable pass
+  private lowPassT = 0;   // gargoyle: >0 = doing a low harrying pass (drops to melee-reachable altitude)
   /** Vertical hit column (projectiles) — flyers move theirs with altitude. */
   hitTop?: number;
   hitBottom?: number;
@@ -126,9 +149,24 @@ export class Enemy implements Hittable {
     this.core = parts.core;
     this.weapon = parts.weapon;
     this.wings = parts.wings;
+    this.legs = parts.legs;
+    if (this.legs) this.legBase = this.legs.map((l) => l.rotation.clone());
     if (this.weapon) {
       this.weaponBase.copy(this.weapon.rotation);
       this.weaponBasePos.copy(this.weapon.position);
+    }
+    // breakable signature parts — resolve each catalog def to its live per-instance mesh + resting offset
+    const bdefs = BREAKABLES[kind];
+    if (bdefs) {
+      for (const d of bdefs) {
+        const mesh = d.part === "weapon" ? this.weapon
+          : d.part === "wingL" ? this.wings?.l
+          : d.part === "wingR" ? this.wings?.r
+          : parts.parts?.[d.part];
+        if (!mesh) continue;
+        const offset = d.part === "weapon" ? this.weaponBasePos.clone() : mesh.position.clone();
+        this.breakables.push({ mesh, offset, radius: d.radius, hpFrac: d.hpFrac, hp: 0, effect: d.effect, debris: d.debris, broken: false });
+      }
     }
     this.ctx.stage.scene.add(this.group);
     this.reset(x, z);
@@ -152,6 +190,7 @@ export class Enemy implements Hittable {
     this.moveAmt = 0; this.vt = 0;
     this.faceInit = false;
     this.alt = this.kind === "gargoyle" ? 4.5 : 0;
+    this.diveStuckT = 0; this.lowPassT = 0;
     this.hitTop = undefined;
     this.hitBottom = undefined;
     this.kb.set(0, 0, 0);
@@ -167,6 +206,11 @@ export class Enemy implements Hittable {
     this.group.scale.setScalar(1);
     this.group.rotation.set(0, 0, 0);
     this.group.position.set(x, this.cfg.bodyY, z);
+    // re-arm breakable parts (a pooled body keeps hidden/broken parts + effect flags otherwise)
+    this.disarmed = this.guardBroken = this.exposed = this.grounded = false;
+    for (const b of this.breakables) { b.broken = false; b.hp = b.hpFrac * this.cfg.hp; b.mesh.visible = true; }
+    if (this.weapon) this.weapon.visible = true;
+    if (this.wings) { this.wings.l.visible = true; this.wings.r.visible = true; }
   }
 
   /** Promote to an elite: bigger, 2.5x hp, a gold crown, one twist per kind. */
@@ -184,12 +228,14 @@ export class Enemy implements Hittable {
     // hover the crown above whatever body this kind has
     this.crown.position.set(0, this.kind === "brute" ? 3.6 : 2.3 - this.cfg.bodyY, 0);
     this.crown.visible = true;
+    for (const b of this.breakables) b.hp *= 2.5; // elite parts scale with the beefier body (hp set off base cfg.hp in reset)
     this.ctx.floaters.spawn(this.pos.x, this.cfg.bodyY + 2.2, this.pos.z, ELITE_NAMES[kind], "label", "#ffc24a");
   }
 
   /** Damage-funnel hook: shields (revenant knights, shielded elites) blunt frontal hits — flank them. */
   modifyIncoming(dmg: number, opts: HitOpts): number {
-    const shielded = this.elite === "shielded" || this.kind === "knight";
+    if (this.exposed) dmg *= 1.35; // armor shot off → soft everywhere
+    const shielded = (this.elite === "shielded" || this.kind === "knight") && !this.guardBroken;
     if (!shielded || opts.fromX === undefined || opts.fromZ === undefined) return dmg;
     const fy = this.group.rotation.y; // facing (toward the player, usually)
     const hx = opts.fromX - this.pos.x, hz = opts.fromZ - this.pos.z;
@@ -200,6 +246,60 @@ export class Enemy implements Hittable {
       return dmg * 0.3;
     }
     return dmg;
+  }
+
+  /** Chip breakable parts near the exact impact point. Body HP is separate — this ONLY breaks parts. */
+  hitPart(px: number, py: number, pz: number, dmg: number): void {
+    if (!this.breakables.length) return;
+    const ry = this.group.rotation.y, cy = Math.cos(ry), sy = Math.sin(ry), s = this.baseScale;
+    for (const b of this.breakables) {
+      if (b.broken) continue;
+      // world part pos = group pos + Ry(rotation.y)·localOffset·scale (same idea as boss coreWorld)
+      const wx = this.pos.x + (b.offset.x * cy + b.offset.z * sy) * s;
+      const wz = this.pos.z + (-b.offset.x * sy + b.offset.z * cy) * s;
+      const wy = this.cfg.bodyY + this.alt + b.offset.y * s;
+      const dx = px - wx, dy = py - wy, dz = pz - wz;
+      if (dx * dx + dy * dy + dz * dz > b.radius * b.radius) continue;
+      b.hp -= dmg;
+      if (b.hp <= 0) this.breakPart(b, wx, wy, wz);
+    }
+  }
+
+  private breakPart(b: BreakablePart, wx: number, wy: number, wz: number): void {
+    b.broken = true;
+    b.mesh.visible = false;
+    let label = "ARMOR BREAK";
+    switch (b.effect) {
+      case "disarm": this.disarmed = true; label = "DISARMED"; break;
+      case "noblock": this.guardBroken = true; label = "GUARD BROKEN"; break;
+      case "expose": this.exposed = true; label = "EXPOSED"; break;
+      case "dewing":
+        this.grounded = true; label = "WING TORN";
+        if (this.wings) { this.wings.l.visible = false; this.wings.r.visible = false; }
+        for (const o of this.breakables) if (o.effect === "dewing") o.broken = true; // both wings tear off together
+        break;
+    }
+    this.ctx.fx.burst({ x: wx, y: wy, z: wz, count: 14, color: b.debris, speed: [3, 9], up: 0.5, size: [0.1, 0.3], life: [0.3, 0.6], gravity: -9 });
+    this.ctx.fx.chunk(wx, wy, wz, b.debris, { count: 2 });
+    this.ctx.fx.ring(wx, wz, { radius: 1.2, color: b.debris, duration: 0.24, y: wy });
+    this.ctx.pickups.drop(wx, wz, 8); // a little matter for the trouble
+    this.ctx.floaters.spawn(wx, wy + 0.4, wz, label, "label", "#cfd6e4");
+    this.ctx.sfx.thud();
+    this.ctx.cam.addTrauma(0.12);
+  }
+
+  /** Test seam: break every remaining part now (drives the smoke's part-effect asserts). */
+  forceBreakParts(): void {
+    const ry = this.group.rotation.y, cy = Math.cos(ry), sy = Math.sin(ry), s = this.baseScale;
+    for (const b of this.breakables) {
+      if (b.broken) continue;
+      const wx = this.pos.x + (b.offset.x * cy + b.offset.z * sy) * s;
+      const wz = this.pos.z + (-b.offset.x * sy + b.offset.z * cy) * s;
+      this.breakPart(b, wx, this.cfg.bodyY + this.alt + b.offset.y * s, wz);
+    }
+  }
+  partState(): { disarmed: boolean; guardBroken: boolean; exposed: boolean; grounded: boolean; broken: number; total: number } {
+    return { disarmed: this.disarmed, guardBroken: this.guardBroken, exposed: this.exposed, grounded: this.grounded, broken: this.breakables.filter((b) => b.broken).length, total: this.breakables.length };
   }
 
   /** Hide + deactivate, keeping mesh in-scene (shaders stay warm) for pool reuse. */
@@ -243,7 +343,7 @@ export class Enemy implements Hittable {
         this.state = "recover";
         this.timer = tanky ? 0.35 : 0.5;
         this.atkCharge = 0;
-        this.ctx.fx.burst({ x: this.pos.x, y: this.cfg.bodyY + 1.1, z: this.pos.z, count: 8, color: 0xffffff, speed: [2, 6], size: [0.1, 0.28], life: [0.12, 0.3] });
+        this.ctx.fx.burst({ x: this.pos.x, y: this.cfg.bodyY + 1.1, z: this.pos.z, count: 5, color: 0xffffff, speed: [2, 6], size: [0.1, 0.28], life: [0.12, 0.3] });
       }
     }
     return false;
@@ -271,7 +371,7 @@ export class Enemy implements Hittable {
           // the bursting elite detonates — telegraphed at death, dodgeable
           const p = this.ctx.player;
           this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: 3.6, color: PAL.threat, duration: 0.4, y: 0.3 });
-          this.ctx.fx.burst({ x: this.pos.x, y: 1, z: this.pos.z, count: 30, color: [PAL.threat, 0xffffff], speed: [5, 14], up: 0.8, life: [0.3, 0.6] });
+          this.ctx.fx.burst({ x: this.pos.x, y: 1, z: this.pos.z, count: 30, color: [PAL.threat, 0xff8a70], speed: [5, 14], up: 0.8, life: [0.3, 0.6] });
           this.ctx.sfx.explosion();
           this.ctx.cam.addTrauma(0.2);
           if (Math.hypot(p.pos.x - this.pos.x, p.pos.z - this.pos.z) <= 3.6) this.ctx.combat.damagePlayer(20, this.pos.x, this.pos.z);
@@ -361,7 +461,7 @@ export class Enemy implements Hittable {
         this.ctx.fx.burst({ x: this.pos.x + fdx * 1.4, y: sy, z: this.pos.z + fdz * 1.4, count: heavy ? 12 : 8, color: PAL.threat, speed: [3, heavy ? 10 : 7], life: [0.2, 0.4] });
         // in range AND (brute = any direction) OR (others = within the telegraphed lane's cone)
         const inLane = heavy || nx * fdx + nz * fdz > 0.2; // ~78° each side of the struck line
-        if (dist <= cfg.attackRange + 0.8 && inLane) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
+        if (dist <= cfg.attackRange + 0.8 && inLane && !this.disarmed) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
         if (heavy) this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: cfg.attackRange, color: PAL.threat, duration: 0.3 });
         this.state = "recover";
         this.timer = (this.kind === "brute" ? 0.9 : 0.4) / this.speedMult;
@@ -383,16 +483,18 @@ export class Enemy implements Hittable {
     if (this.state === "windup") {
       this.timer -= dt;
       if (this.timer <= 0) {
-        this.flash = 0.9;  // iris/eye flares as it looses
+        this.flash = 0.9;  // iris/eye flares as it looses (still fires the tell even if disarmed — it flails empty-handed)
         this.atkLunge = 1; // staff thrusts / bow snaps forward on the shot
-        const p = this.ctx.player;
-        if (pj.gravity) {
-          // mortar lob: launch up-and-out; gravity brings it down on the player
-          SHOT_DIR.set(p.pos.x - this.pos.x, dist * 0.55, p.pos.z - this.pos.z);
-          this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 1.6, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape, gravity: pj.gravity, explode: pj.explode });
-        } else {
-          SHOT_DIR.set(p.pos.x - this.pos.x, 1.4 - this.cfg.bodyY, p.pos.z - this.pos.z);
-          this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape });
+        if (!this.disarmed) {
+          if (pj.gravity) {
+            // mortar lob along the LOCKED lane; gravity brings it down where the telegraph pointed.
+            // the vertical term uses the stored distance too (live `dist` would re-track the arc)
+            SHOT_DIR.set(this.lungeDir.x * this.atkDist, this.atkDist * 0.55, this.lungeDir.z * this.atkDist);
+            this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 1.6, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape, gravity: pj.gravity, explode: pj.explode });
+          } else {
+            SHOT_DIR.set(this.lungeDir.x * this.atkDist, 1.4 - this.cfg.bodyY, this.lungeDir.z * this.atkDist);
+            this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape });
+          }
         }
         this.tele = null;
         this.state = "recover";
@@ -422,6 +524,10 @@ export class Enemy implements Hittable {
       // wind up a telegraphed shot: paint the lane toward the player, then loose when it fills
       this.state = "windup";
       this.timer = cfg.windup;
+      // lock the aim to the telegraphed lane NOW — loosing toward the LIVE player would re-track
+      // off the tell, making the telegraph a lie (matches the boss volley/beam wind-up lock)
+      this.lungeDir.set(nx, 0, nz);
+      this.atkDist = Math.min(dist, cfg.attackRange + 2);
       const len = Math.min(dist + 2, pj.shape === "dart" ? 22 : 15);
       this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nx, nz), len, 1.5, cfg.windup, PAL.threat);
     }
@@ -459,7 +565,7 @@ export class Enemy implements Hittable {
       this.ctx.fx.burst({ x: this.pos.x, y: 0.8, z: this.pos.z, count: 2, color: cfg.color, speed: [0.5, 2], size: [0.16, 0.36], life: [0.12, 0.28], gravity: 0, drag: 4 });
       if (!this.didHit && dist < this.radius + this.ctx.player.radius + 0.8) {
         this.didHit = true;
-        this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
+        if (!this.disarmed) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
         this.ctx.fx.slash(this.pos.x, 1.0, this.pos.z, Math.atan2(this.lungeDir.x, this.lungeDir.z), { color: PAL.threat, radius: 2.0, tilt: -0.4, duration: 0.2 });
       }
       if (this.timer <= 0) { this.state = "recover"; this.timer = 0.6; }
@@ -473,20 +579,42 @@ export class Enemy implements Hittable {
   // player (dodge with a dash) → climb back to cruise. Its hit column rides its altitude.
   private tickFly(dt: number, dist: number, nx: number, nz: number): void {
     const cfg = this.cfg;
+    if (this.grounded) {
+      // wings shot off — it crash-lands and shambles like a walker; never dives again (its only attack gone)
+      this.alt = damp(this.alt, 0, 6, dt);
+      this.hitTop = 2.0; this.hitBottom = 0;
+      if (dist > cfg.attackRange) {
+        this.pos.x += nx * cfg.speed * 0.5 * this.speedMult * dt;
+        this.pos.z += nz * cfg.speed * 0.5 * this.speedMult * dt;
+      }
+      this.state = "approach";
+      return;
+    }
     const cruise = 4.5 + Math.sin(this.vt * 1.3 + this.id) * 0.5;
     if (this.state === "approach") {
-      this.alt = damp(this.alt, cruise, 3, dt);
-      // spiral in: approach with a sideways bias so it ORBITS rather than hovers
+      // reachability failsafe: if it can't dive (player kept too far/close) for too long, drop to a
+      // LOW harrying pass so grounded melee/AoE can reach it — otherwise a high flyer stays alive
+      // forever and the gate never opens (the soft-lock).
+      const canDive = dist < cfg.attackRange + 2 && dist > 4;
+      if (canDive) this.diveStuckT = 0; else this.diveStuckT += dt;
+      if (this.lowPassT > 0) this.lowPassT -= dt;
+      else if (this.diveStuckT > 3.5) { this.lowPassT = 2.2; this.diveStuckT = 0; }
+      const lowPass = this.lowPassT > 0;
+      this.alt = damp(this.alt, lowPass ? 1.3 : cruise, lowPass ? 5 : 3, dt);
+      // spiral in (straighten during a low pass so it actually closes to melee range)
       const sdir = this.id % 2 === 0 ? 1 : -1;
-      const mx = nx * 0.75 + -nz * sdir * 0.65;
-      const mz = nz * 0.75 + nx * sdir * 0.65;
+      const bias = lowPass ? 0.15 : 0.65;
+      const mx = nx * 0.75 + -nz * sdir * bias;
+      const mz = nz * 0.75 + nx * sdir * bias;
       this.pos.x += mx * cfg.speed * this.speedMult * dt;
       this.pos.z += mz * cfg.speed * this.speedMult * dt;
-      if (dist < cfg.attackRange && dist > 4) {
+      if (canDive && !lowPass) {
         this.state = "windup";
         this.timer = cfg.windup;
         this.lungeDir.set(nx, 0, nz);
-        this.tele = this.ctx.tele.line(this.pos.x, this.pos.z, Math.atan2(nx, nz), dist + 6, 1.7, cfg.windup, PAL.threat);
+        // dive-bomb tell: a landing ring where it will STOOP, not a straight strip — the long
+        // thin line read as a laser being fired at the player. The flyer rears, then swoops in.
+        this.tele = this.ctx.tele.circle(this.pos.x + nx * dist, this.pos.z + nz * dist, 2.6, cfg.windup, PAL.threat);
       }
     } else if (this.state === "windup") {
       this.alt = damp(this.alt, cruise + 1.2, 4, dt); // rears up before the stoop
@@ -535,7 +663,10 @@ export class Enemy implements Hittable {
     const fwd = this.atkLunge * 0.7; // lunge shoves the body toward the player on the strike
     // stride: bob + a weight-shift waddle on the same clock, so steps have footfall
     const strideT = this.vt * (2.5 + this.moveAmt * 3) + this.id;
-    const bob = Math.abs(Math.sin(strideT)) * (0.06 + this.moveAmt * 0.12);
+    // a braced/standing enemy SETTLES to a ~1cm breathe; the full walk bob scales with movement
+    // (the old 0.06 floor made stationary ranged kinds hover 6cm — a floaty idle tell)
+    const breathe = (Math.sin(this.vt * 1.4 + this.id) * 0.5 + 0.5) * 0.012;
+    const bob = Math.abs(Math.sin(strideT)) * this.moveAmt * 0.18 + breathe;
     const waddle = Math.sin(strideT) * 0.05 * this.moveAmt;
     // eased wind-up: anticipation coils in, the strike releases
     const ch = this.atkCharge * this.atkCharge * (3 - 2 * this.atkCharge);
@@ -547,7 +678,10 @@ export class Enemy implements Hittable {
       this.wings.l.rotation.z = -flap - 0.15;
       this.wings.r.rotation.z = flap + 0.15;
     }
-    this.group.scale.setScalar(this.baseScale * (1 + ch * 0.05 - this.atkLunge * 0.05 - this.flinch * 0.06));
+    // the lunge STRETCHES the body along travel (local +Z faces the lunge via faceYaw), not shrinks
+    // it — a wraith/gargoyle blurring forward should elongate into the strike, not deflate
+    const gs = this.baseScale * (1 + ch * 0.05 - this.flinch * 0.06);
+    this.group.scale.set(gs * (1 - this.atkLunge * 0.06), gs, gs * (1 + this.atkLunge * 0.18));
     this.group.rotation.y = this.faceYaw;
     // body language: lean into the advance, COIL BACK through the wind-up, drive
     // forward on the strike, snap back on a hit — plus the stride weight-shift
@@ -574,6 +708,16 @@ export class Enemy implements Hittable {
           b.y + this.atkLunge * 0.55,
           b.z + idle - ch * 0.25 - this.atkLunge * 0.35,
         );
+      }
+    }
+    // leg stride: swing the articulated legs so fast runners plant footfalls instead of gliding
+    // (rat quadruped / ghoul biped). Gated by moveAmt so a braced/idle enemy's legs settle.
+    if (this.legs && this.legBase) {
+      const swing = Math.sin(strideT) * this.moveAmt;
+      const amp = this.legs.length === 2 ? 0.6 : 0.5; // biped ghoul vs quadruped rat
+      for (let i = 0; i < this.legs.length; i++) {
+        const dir = i === 0 || i === 3 ? 1 : -1; // rat: diagonal pairs (0,3)/(1,2); ghoul: L/R
+        this.legs[i].rotation.x = this.legBase[i].x + swing * dir * amp;
       }
     }
   }
@@ -739,5 +883,8 @@ export class EnemyManager {
         }
       }
     }
+    // the push above can shove a body past a side wall or a closed gate for a frame; re-clamp
+    // (mirrors the clamp each enemy already gets in tick(); reuses the live scratch, O(n))
+    for (const e of live) this.ctx.level.clampPosition(e.pos, e.radius);
   }
 }

@@ -12,7 +12,7 @@ interface Shard {
 
 interface WeaponDrop {
   group: THREE.Group;
-  icon: THREE.Mesh;
+  icon: THREE.Object3D;
   pillarMat: THREE.MeshBasicMaterial;
   id: string;
   t: number;
@@ -49,29 +49,73 @@ export class Pickups {
     return n;
   }
 
-  /** A distinct floating silhouette per weapon type so a drop reads at a glance. */
-  private iconGeo(id: string): THREE.BufferGeometry {
+  /**
+   * A recognizable mini-model of the ACTUAL weapon (a few primitives) so a drop reads at a
+   * glance — not an abstract shape. One emissive material per drop, tinted the weapon hue.
+   */
+  private weaponPickupModel(id: string): THREE.Group {
+    const w = weaponById(id);
+    const mat = new THREE.MeshStandardMaterial({ color: 0x0a0b12, emissive: w.color, emissiveIntensity: 1.4, roughness: 0.35, metalness: 0.5 });
+    const g = new THREE.Group();
+    const part = (geo: THREE.BufferGeometry, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0): void => {
+      const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); g.add(m);
+    };
     switch (id) {
-      case "boltcaster": return new THREE.ConeGeometry(0.28, 1.0, 6);          // a bolt/dart
-      case "greatsword": return new THREE.BoxGeometry(0.18, 1.1, 0.06);        // a blade
-      case "rocketlance": return new THREE.SphereGeometry(0.42, 14, 12);       // a cannonball
-      case "arclaser": return new THREE.OctahedronGeometry(0.5);               // a crystal
-      case "stormcaller": return new THREE.IcosahedronGeometry(0.46, 0);       // a storm orb
-      case "warhammer": return new THREE.BoxGeometry(0.6, 0.42, 0.42);          // a maul head
-      case "francisca": return new THREE.CylinderGeometry(0.42, 0.1, 0.55, 3);  // an axe blade
-      default: return new THREE.OctahedronGeometry(0.5);
+      case "boltcaster": // crossbow: stock + bow limbs + a nocked bolt
+        part(new THREE.BoxGeometry(0.11, 0.7, 0.11)); // stock
+        part(new THREE.BoxGeometry(0.95, 0.09, 0.09), 0, 0.28, 0); // bow limbs
+        part(new THREE.CylinderGeometry(0.03, 0.03, 0.6), 0, 0.28, 0.25, Math.PI / 2, 0, 0); // bolt shaft
+        part(new THREE.ConeGeometry(0.07, 0.16, 6), 0, 0.28, 0.58, Math.PI / 2, 0, 0); // bolt head
+        break;
+      case "greatsword": // long blade + crossguard + grip + pommel
+        part(new THREE.BoxGeometry(0.15, 1.1, 0.05), 0, 0.35, 0); // blade
+        part(new THREE.ConeGeometry(0.11, 0.22, 4), 0, 0.95, 0); // tip
+        part(new THREE.BoxGeometry(0.62, 0.1, 0.12), 0, -0.22, 0); // crossguard
+        part(new THREE.CylinderGeometry(0.05, 0.05, 0.32), 0, -0.42, 0); // grip
+        part(new THREE.SphereGeometry(0.09, 10, 8), 0, -0.6, 0); // pommel
+        break;
+      case "rocketlance": // hand bombard: a banded tube with a flared muzzle
+        part(new THREE.CylinderGeometry(0.2, 0.2, 0.95), 0, 0, 0, Math.PI / 2, 0, 0);
+        part(new THREE.CylinderGeometry(0.26, 0.26, 0.08), 0, 0, 0.2, Math.PI / 2, 0, 0); // band
+        part(new THREE.CylinderGeometry(0.26, 0.26, 0.08), 0, 0, -0.15, Math.PI / 2, 0, 0); // band
+        part(new THREE.CylinderGeometry(0.3, 0.22, 0.14), 0, 0, 0.52, Math.PI / 2, 0, 0); // muzzle flare
+        break;
+      case "arclaser": // prism rod: a slim staff capped by a crystal
+        part(new THREE.CylinderGeometry(0.05, 0.05, 1.0), 0, -0.1, 0);
+        part(new THREE.OctahedronGeometry(0.26), 0, 0.5, 0);
+        break;
+      case "stormcaller": // storm staff: a staff, a clawed finial, a crackling orb
+        part(new THREE.CylinderGeometry(0.05, 0.05, 1.0), 0, -0.1, 0);
+        part(new THREE.TorusGeometry(0.18, 0.03, 8, 16), 0, 0.46, 0, Math.PI / 2, 0, 0); // finial ring
+        part(new THREE.IcosahedronGeometry(0.2, 0), 0, 0.46, 0); // orb
+        break;
+      case "warhammer": // grave maul: a haft topped by a big blocky head
+        part(new THREE.CylinderGeometry(0.055, 0.055, 1.1), 0, -0.15, 0);
+        part(new THREE.BoxGeometry(0.52, 0.42, 0.42), 0, 0.5, 0); // head
+        part(new THREE.BoxGeometry(0.16, 0.46, 0.46), 0.3, 0.5, 0); // striking face
+        break;
+      case "francisca": { // twin crossed throwing axes
+        for (const s of [-1, 1]) {
+          part(new THREE.BoxGeometry(0.05, 0.8, 0.05), s * 0.14, 0, 0, 0, 0, s * 0.32); // haft
+          part(new THREE.CylinderGeometry(0.3, 0.08, 0.42, 3), s * 0.14 + s * 0.32, 0.3, 0, 0, 0, s * 0.32 - Math.PI / 2); // blade
+        }
+        break;
+      }
+      default:
+        part(new THREE.OctahedronGeometry(0.5));
     }
+    return g;
   }
 
   /** Place an unclaimed weapon on the causeway: a hovering icon under a light pillar. */
   dropWeapon(id: string, x: number, z: number): void {
-    const w = weaponById(id);
     const group = new THREE.Group();
-    const iconMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: w.color, emissiveIntensity: 2.6, roughness: 0.3, metalness: 0.4 });
-    const icon = new THREE.Mesh(this.iconGeo(id), iconMat);
-    icon.position.y = 1.5;
-    const pillarMat = new THREE.MeshBasicMaterial({ color: PAL.gold, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }); // gold = the economy color; the icon keeps the weapon hue
-    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.85, 9, 14, 1, true), pillarMat);
+    const icon = this.weaponPickupModel(id);
+    icon.scale.setScalar(1.35); // the weapon model is the hero — read it clearly
+    icon.position.y = 1.7;
+    // a SLIM, faint beacon shaft: the old wide/bright pillar washed the model out entirely
+    const pillarMat = new THREE.MeshBasicMaterial({ color: PAL.gold, transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }); // gold = the economy color; the icon keeps the weapon hue
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.5, 9, 14, 1, true), pillarMat);
     pillar.position.y = 4.5;
     const ringMat = new THREE.MeshBasicMaterial({ color: PAL.gold, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
     const ringGeo = new THREE.RingGeometry(1.1, 1.4, 36); ringGeo.rotateX(-Math.PI / 2);
@@ -149,8 +193,8 @@ export class Pickups {
       if (!d.alive) continue;
       d.t += dt;
       d.icon.rotation.y += dt * 1.7;
-      d.icon.position.y = 1.5 + Math.sin(d.t * 2) * 0.2;
-      d.pillarMat.opacity = 0.24 + Math.sin(d.t * 3) * 0.1;
+      d.icon.position.y = 1.7 + Math.sin(d.t * 2) * 0.2;
+      d.pillarMat.opacity = 0.13 + Math.sin(d.t * 3) * 0.05;
       const gx = d.group.position.x, gz = d.group.position.z;
       if (Math.hypot(p.pos.x - gx, p.pos.z - gz) < WEAPON_PICKUP_R && p.alive && !p.weapons.includes(d.id)) {
         d.alive = false;

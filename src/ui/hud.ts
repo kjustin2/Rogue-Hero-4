@@ -48,13 +48,16 @@ export class Hud {
   private hitMarker!: HTMLElement;
   private hitMarkT = 0;
   private dmgDir!: HTMLElement;
+  private dmgAbove!: HTMLElement;
   private fervorEl!: HTMLElement;
   private fervorFill!: HTMLElement;
   private fervorV = 0;
   private dmgDirT = 0;
+  private dmgAboveT = 0;
   private dmgT = 0;
   private t = 0;
   private lastChain = "";
+  private hpHigh: boolean | null = null; // gate the health-bar gradient re-parse to the bucket flip
 
   constructor(private ctx: Ctx) {
     this.build();
@@ -75,7 +78,9 @@ export class Hud {
       const world = Math.atan2(e.srcX - ctx.player.pos.x, e.srcZ - ctx.player.pos.z);
       const rel = world - ctx.cam.yaw + Math.PI; // 0 = dead ahead
       this.dmgDir.style.transform = `translate(-50%,-50%) rotate(${rel.toFixed(3)}rad)`;
-      this.dmgDirT = 0.55;
+      this.dmgDirT = 0.9;
+      // overhead attacks (boss slam / collapse pass a high srcY) also flash an ABOVE cue
+      if (e.srcY > 3.5) this.dmgAboveT = 0.9;
     });
     ctx.events.on("FERVOR", (e) => { this.fervorV = e.value; });
     ctx.events.on("SHARD", (e) => { this.shardN.textContent = String(e.total); });
@@ -88,6 +93,7 @@ export class Hud {
       <div id="danger"></div>
       <div id="dmgflash"></div>
       <div id="dmgdir"></div>
+      <div id="dmgabove">▲ ABOVE</div>
       <div id="crosshair"><span></span><span></span><span></span><span></span></div>
       <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
       <div id="dashring"></div>
@@ -106,6 +112,8 @@ export class Hud {
       <div id="lockhint">CLICK TO AIM</div>
 
       <div id="banner"></div>
+      <div id="tutorial"></div>
+      <div id="bosscard"><div class="bc-sub"></div><div class="bc-name"></div><div class="bc-rule"></div></div>
       <div id="letterbox"><div class="lb-top"></div><div class="lb-bot"></div></div>
 
       <div id="bottom">
@@ -148,6 +156,7 @@ export class Hud {
     this.dashRing = this.hud.querySelector("#dashring")!;
     this.hitMarker = this.hud.querySelector("#hitmarker")!;
     this.dmgDir = this.hud.querySelector("#dmgdir")!;
+    this.dmgAbove = this.hud.querySelector("#dmgabove")!;
     this.fervorEl = this.hud.querySelector("#fervor")!;
     this.fervorFill = this.hud.querySelector("#fervor .fv-fill")!;
     this.rebuildWeapon();
@@ -188,6 +197,25 @@ export class Hud {
     this.hud.querySelector("#letterbox")!.classList.toggle("on", on);
   }
 
+  /** Training-prompt line (null hides it). */
+  setTutorial(text: string | null): void {
+    const el = this.hud.querySelector("#tutorial") as HTMLElement;
+    el.textContent = text ?? "";
+    el.classList.toggle("on", !!text);
+  }
+
+  /** Cinematic boss title card (name + subtitle) with an entrance; hideBossCard() dismisses it. */
+  showBossCard(name: string, sub: string): void {
+    const card = this.hud.querySelector("#bosscard")!;
+    (card.querySelector(".bc-name") as HTMLElement).textContent = name;
+    (card.querySelector(".bc-sub") as HTMLElement).textContent = sub;
+    card.classList.remove("on"); void (card as HTMLElement).offsetWidth; // restart the entrance
+    card.classList.add("on");
+  }
+  hideBossCard(): void {
+    this.hud.querySelector("#bosscard")!.classList.remove("on");
+  }
+
   showBanner(text: string, color: number): void {
     this.comboSplash.style.animation = "none";
     this.comboSplash.style.opacity = "0";
@@ -225,7 +253,13 @@ export class Hud {
       this.danger.style.opacity = "0";
     }
     this.hpFill.style.width = (frac * 100).toFixed(1) + "%";
-    this.hpFill.style.background = frac > 0.3 ? "linear-gradient(180deg,#ffe2a0,#ffb24a 48%,#e07a2a)" : "linear-gradient(180deg,#ff8a6a,#ff4252 58%,#b81e2e)";
+    // re-specifying the gradient re-parses it in the CSSOM every frame; it only has two values,
+    // so only re-assign on the bucket flip (mirrors the lastChain guard below).
+    const hpHigh = frac > 0.3;
+    if (hpHigh !== this.hpHigh) {
+      this.hpHigh = hpHigh;
+      this.hpFill.style.background = hpHigh ? "linear-gradient(180deg,#ffe2a0,#ffb24a 48%,#e07a2a)" : "linear-gradient(180deg,#ff8a6a,#ff4252 58%,#b81e2e)";
+    }
     this.healthEl.classList.toggle("low", frac < 0.35 && p.alive);
     this.hpText.textContent = `${Math.ceil(p.hp)} / ${p.maxHp}`;
 
@@ -251,9 +285,11 @@ export class Hud {
     const cd = p.dashCd01();
     this.dashRing.style.opacity = cd > 0 ? "0.85" : "0";
     if (cd > 0) this.dashRing.style.background = `conic-gradient(rgba(255,194,74,0.9) ${((1 - cd) * 360).toFixed(0)}deg, rgba(255,255,255,0.12) 0deg)`;
-    // damage-direction arc
-    if (this.dmgDirT > 0) { this.dmgDirT -= dt; this.dmgDir.style.opacity = Math.min(1, this.dmgDirT / 0.3).toFixed(2); }
+    // damage-direction chevron (+ overhead ABOVE cue)
+    if (this.dmgDirT > 0) { this.dmgDirT -= dt; this.dmgDir.style.opacity = Math.min(1, this.dmgDirT / 0.35).toFixed(2); }
     else this.dmgDir.style.opacity = "0";
+    if (this.dmgAboveT > 0) { this.dmgAboveT -= dt; this.dmgAbove.style.opacity = Math.min(1, this.dmgAboveT / 0.35).toFixed(2); }
+    else this.dmgAbove.style.opacity = "0";
     // fervor meter
     this.fervorFill.style.width = (this.fervorV * 100).toFixed(1) + "%";
     this.fervorEl.classList.toggle("full", this.fervorV >= 1);

@@ -17,6 +17,10 @@ export interface EnemyMeshParts {
   core: THREE.Mesh;
   weapon?: THREE.Group;
   wings?: { l: THREE.Object3D; r: THREE.Object3D };
+  /** Articulated legs (rat quadruped / ghoul biped) — kept live for footfall stride. */
+  legs?: THREE.Object3D[];
+  /** Breakable armor parts promoted out of the merge (keyed: "shield" / "pauldron"). */
+  parts?: Record<string, THREE.Object3D>;
 }
 
 // Shared materials — enemies are pooled and numerous; only the caller-owned
@@ -130,6 +134,8 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
   let core: THREE.Mesh;
   let weapon: THREE.Group | undefined;
   let wings: EnemyMeshParts["wings"];
+  let legs: THREE.Object3D[] | undefined;
+  let parts: Record<string, THREE.Object3D> | undefined; // promoted breakable armor (knight shield / brute pauldron)
 
   if (kind === "husk") {
     // risen footman: skull under a rusted kettle-helm, mail shirt, tattered surcoat,
@@ -316,12 +322,14 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
     core = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.045, 0.05), coreMat); // burning glare
     core.position.set(0, 1.28, 0.74);
     // haunches (it crouches on digitigrade legs)
+    legs = [];
     for (const sx of [-1, 1]) {
       const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.2, 7, 6), BONE_DK);
       haunch.position.set(sx * 0.3, 0.5, -0.35); haunch.scale.set(0.8, 1.2, 1.3);
       const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.04, 0.5, 5), BONE_DK);
       shin.position.set(sx * 0.34, 0.22, -0.2); shin.rotation.x = 0.7;
       group.add(haunch, shin);
+      legs.push(shin); // the digitigrade shin strides
     }
     const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.95, 5), BONE_DK);
     armL.position.set(-0.4, 0.75, 0.3); armL.rotation.set(0.9, 0, -0.3);
@@ -526,6 +534,7 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
     shield.position.set(-0.52, 1.35, 0.3);
     shield.rotation.y = 0.35;
     group.add(skirt, cuirass, plackart, helm, helmTop, visorSlit, core, plume, shield);
+    (parts ??= {}).shield = shield; // breakable → noblock
     tatters(group, 0.55, 0.1, 5, 0.42, CLOTH_RAG);
     // arming sword
     const sword = new THREE.Group();
@@ -558,10 +567,12 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
     }
     const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.035, 0.6, 5), BONE_DK);
     tail.position.set(0, 0.22, -0.62); tail.rotation.x = 1.35;
+    legs = [];
     for (const [lx, lz] of [[-0.16, 0.22], [0.16, 0.22], [-0.18, -0.24], [0.18, -0.24]] as const) {
       const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.025, 0.22, 4), BONE_DK);
       leg.position.set(lx, 0.1, lz);
       group.add(leg);
+      legs.push(leg); // FL, FR, BL, BR — swung in diagonal pairs
     }
     group.add(body, rump, head, core, tail);
     // teeth = the weapon (snaps forward on the bite)
@@ -611,6 +622,7 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
       horn.position.set(sx * 0.36, 3.4, 0); horn.rotation.z = sx * 0.75;
       const pauld = new THREE.Mesh(new THREE.SphereGeometry(0.52, 9, 7, 0, Math.PI * 2, 0, Math.PI / 2), IRON);
       pauld.position.set(sx * 1.05, 2.6, 0); pauld.castShadow = true;
+      if (sx === -1) (parts ??= {}).pauldron = pauld; // breakable → expose
       for (let rv = 0; rv < 4; rv++) { // rivets
         const a = (rv / 4) * Math.PI - Math.PI / 2;
         const rivet = new THREE.Mesh(new THREE.SphereGeometry(0.05, 5, 4), RUST);
@@ -647,7 +659,7 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
     weapon = cleaver;
   }
 
-  return { group, core, weapon, wings };
+  return { group, core, weapon, wings, legs, parts };
 }
 
 /** Merged body template per kind — built ONCE; instances share every geometry. */
@@ -656,6 +668,8 @@ interface BodyTemplate {
   core: THREE.Mesh;
   weapon?: THREE.Group;
   wings?: { l: THREE.Object3D; r: THREE.Object3D };
+  legs?: THREE.Object3D[];
+  parts?: Record<string, THREE.Object3D>;
 }
 const TEMPLATES = new Map<EnemyKind, BodyTemplate>();
 
@@ -668,13 +682,16 @@ export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.Me
   let t = TEMPLATES.get(kind);
   if (!t) {
     const built = buildBody(kind, color, accent(color));
-    mergeStatic(built.group, [built.core, built.weapon, built.wings?.l, built.wings?.r]);
+    const builtLegs = built.legs ?? [];
+    const builtParts = built.parts ? Object.values(built.parts) : [];
+    mergeStatic(built.group, [built.core, built.weapon, built.wings?.l, built.wings?.r, ...builtLegs, ...builtParts]);
+    const keepSet = new Set<THREE.Object3D>([...builtLegs, ...builtParts]);
     const statics: THREE.Mesh[] = [];
     for (const child of built.group.children) {
       const m = child as THREE.Mesh;
-      if (m.isMesh && m !== built.core) statics.push(m);
+      if (m.isMesh && m !== built.core && !keepSet.has(m)) statics.push(m);
     }
-    t = { statics, core: built.core, weapon: built.weapon, wings: built.wings };
+    t = { statics, core: built.core, weapon: built.weapon, wings: built.wings, legs: builtLegs, parts: built.parts };
     TEMPLATES.set(kind, t);
   }
   const group = new THREE.Group();
@@ -699,5 +716,14 @@ export function buildEnemyMesh(kind: EnemyKind, color: number, coreMat: THREE.Me
     group.add(l, r);
     wings = { l, r };
   }
-  return { group, core, weapon, wings };
+  let legs: THREE.Object3D[] | undefined;
+  if (t.legs && t.legs.length) {
+    legs = t.legs.map((l) => { const c = l.clone(true); group.add(c); return c; });
+  }
+  let parts: Record<string, THREE.Object3D> | undefined;
+  if (t.parts) {
+    parts = {};
+    for (const k in t.parts) { const c = t.parts[k].clone(true); group.add(c); parts[k] = c; }
+  }
+  return { group, core, weapon, wings, legs, parts };
 }

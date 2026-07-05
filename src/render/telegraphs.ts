@@ -103,7 +103,7 @@ export class Telegraphs {
     t.impact.scale.set(radius * 0.9, 1, radius * 0.9);
     t.outlineMat.color.set(color);
     t.fillMat.color.set(color);
-    t.impactMat.color.set(0xffffff);
+    t.impactMat.color.set(0xff6a55); // hot threat-red impact, not additive white (bloom-clip + off-hierarchy)
     t.outlineMat.opacity = 0.85;
     t.fillMat.opacity = 0.22;
     t.impactMat.opacity = 0;
@@ -187,7 +187,7 @@ export class Telegraphs {
         t.impact.scale.set(impactScale, 1, impactScale);
         t.fillMat.opacity = 0.14 + k * 0.24 + late * 0.18;
         t.outlineMat.opacity = Math.min(1, 0.72 * pulse + late * 0.38);
-        t.impactMat.opacity = late > 0 ? Math.min(0.95, (0.24 + late * 0.7) * pulse) : 0;
+        t.impactMat.opacity = late > 0 ? Math.min(0.85, (0.24 + late * 0.7) * pulse) : 0;
       } else if (t.shape === "ring") {
         t.fillMat.opacity = 0.14 + k * 0.34;
         t.outlineMat.opacity = Math.min(1, 0.78 * pulse + late * 0.28);

@@ -24,6 +24,7 @@ import { EnemyManager, type EnemyKind } from "./game/enemies";
 import { Projectiles } from "./game/projectiles";
 import { Pickups } from "./game/pickups";
 import { Boss } from "./game/boss";
+import { Tutorial } from "./game/tutorial";
 import { weaponComboSelfCheck, weaponById, WEAPONS } from "./game/weapons";
 import { Hud } from "./ui/hud";
 import { Menus } from "./ui/menus";
@@ -74,6 +75,8 @@ ctx.level.build();
 const perf = new PerfMonitor(ctx, () => state); // rolling frame stats + spike classifier (F8 HUD, __rh4perf)
 const hud = new Hud(ctx);
 const menus = new Menus(ctx);
+const tutorial = new Tutorial(ctx, hud);
+let inTutorial = false;
 menus.apply(); // push saved settings (audio/sensitivity/shake/quality/fov) into the live systems
 if (lowfx) ctx.stage.applyQuality("low"); // ?lowfx forces low for tests, overriding the saved quality
 
@@ -94,6 +97,7 @@ const CINE_LEN = 3.4; // boss-intro cutscene length
 let cineT = 0; // boss-intro cutscene timer (>0 = cutscene running)
 let cineBeatT = 0; // ticks down to fire the next scripted ripple/beam beat
 const cineTarget = new THREE.Vector3();
+const cinePose = new THREE.Vector3(); // scripted dolly vantage during the boss intro
 const BOSS_TEAL = PAL.soulfire; // matches Boss.hitColor
 const BOSS_NAME = "Mordrek · Barrow King";
 
@@ -113,7 +117,15 @@ ctx.events.on("KILL", (e) => {
 ctx.events.on("ENEMY_HIT", (e) => { runStats.dmgDealt += e.dmg; });
 ctx.events.on("COMBO_RESOLVE", () => { runStats.combos++; });
 ctx.events.on("PLAYER_HIT", (e) => { streak = 0; runStats.dmgTaken += e.dmg; });
-ctx.events.on("PLAYER_DIED", () => setState("dead"));
+ctx.events.on("PLAYER_DIED", () => {
+  if (inTutorial) { // training is non-lethal — pop back up and keep learning
+    ctx.player.hp = ctx.player.maxHp;
+    ctx.player.alive = true;
+    ctx.cam.addTrauma(0.3);
+    return;
+  }
+  setState("dead");
+});
 ctx.events.on("WEAPON_OFFER", (e) => { offeredWeapon = e.id; setState("swap"); });
 ctx.events.on("BOSS_PHASE", (e) => startPhaseCutscene(e.phase));
 ctx.events.on("BOSS_DEFEATED", (e) => {
@@ -122,6 +134,10 @@ ctx.events.on("BOSS_DEFEATED", (e) => {
   ctx.music.silence();
   // killcam beat: the world hangs, the camera locks onto the falling king, soulfire erupts
   ctx.slowmo = Math.max(ctx.slowmo, 1.1);
+  // guard the victory: state stays 'playing' for the ~1.8s killcam while phase-3 adds + in-flight
+  // projectiles are still live — without this an add's hit could flip us to the DEATH screen and
+  // eat the clear. player.reset() clears god so the next run isn't invincible.
+  ctx.player.god = true;
   if (ctx.boss) { ctx.boss.coreWorld(cineTarget); ctx.cam.setCinematic(true, cineTarget); }
   for (let i = 0; i < 3; i++) ctx.fx.beam(e.x + (i - 1) * 2.5, e.z, BOSS_TEAL);
   ctx.fx.burst({ x: e.x, y: 5, z: e.z, count: 70, color: [BOSS_TEAL, 0xffffff], speed: [6, 18], up: 1.2, size: [0.14, 0.42], life: [0.5, 1.2] });
@@ -132,14 +148,16 @@ function setState(s: State): void {
   state = s;
   ctx.playing = s === "playing";
   if (s === "title") {
+    inTutorial = false;
     ctx.stage.setLowCost(true);
     ctx.input.unlockPointer();
     hud.setVisible(false);
     ctx.music.menu();
-    menus.showTitle({ clears: save.clears, bestTime: save.bestTime }, () => {
-      unlockAudio();
-      startRun(newSeed());
-    });
+    menus.showTitle(
+      { clears: save.clears, bestTime: save.bestTime },
+      () => { unlockAudio(); if (!save.tutorialDone) startTutorial(); else startRun(newSeed()); }, // auto-launch the tutorial on the first DESCEND
+      () => { unlockAudio(); startTutorial(); }, // replayable from the TUTORIAL button
+    );
   } else if (s === "playing") {
     ctx.stage.setLowCost(false);
     menus.clear();
@@ -149,19 +167,17 @@ function setState(s: State): void {
     ctx.input.unlockPointer();
     menus.showPause(() => { ctx.input.lockPointer(); setState("playing"); }, () => setState("title"));
   } else if (s === "swap") {
-    // arsenal full: trade a carried weapon for the claimed one, or put it back down
+    // arsenal full: trade a carried weapon for the claimed one, or decline (either way the pickup is consumed — nothing re-drops)
     ctx.input.unlockPointer();
     const offer = weaponById(offeredWeapon);
     menus.showWeaponSwap(
       ctx.player.weapons.map((id) => weaponById(id)),
       offer,
       (dropId) => {
-        if (dropId) {
-          ctx.pickups.dropWeapon(dropId, ctx.player.pos.x, ctx.player.pos.z + 3);
-          ctx.player.swapWeapon(dropId, offeredWeapon);
-        } else {
-          ctx.pickups.dropWeapon(offeredWeapon, ctx.player.pos.x, ctx.player.pos.z + 3);
-        }
+        // trading DESTROYS the swapped-out weapon (and declining destroys the offered one) — do NOT
+        // re-drop it on the ground: the old re-drop landed at pos.z+3 (inside pickup range), so a step
+        // forward re-collided → WEAPON_OFFER → swap again → an endless swap-back-and-forth loop.
+        if (dropId) ctx.player.swapWeapon(dropId, offeredWeapon);
         offeredWeapon = "";
         ctx.input.lockPointer();
         setState("playing");
@@ -211,6 +227,7 @@ function newSeed(): number {
 }
 
 function startRun(seed = 20260629): void {
+  inTutorial = false;
   ctx.rng.reseed(seed);
   ctx.player.reset(PLAYER_SPAWN);
   ctx.cam.yaw = Math.PI;
@@ -245,6 +262,27 @@ function unlockAudio(): void {
   ctx.music.unlock();
 }
 
+// --------------------------------------------------------------------- tutorial
+// A safe training slice reusing the "playing" state: a cleared arena, two dummy husks, a
+// granted 2nd weapon for the swap lesson, and forgiveness (PLAYER_DIED revives; not recorded).
+function startTutorial(): void {
+  startRun(newSeed());     // full reset (level/enemies/player), then override into training
+  inTutorial = true;
+  ctx.enemies.clear();
+  ctx.pickups.clear();     // no on-ground weapon pickup during training
+  ctx.level.lockArena = false;
+  if (!ctx.player.weapons.includes("greatsword")) ctx.player.weapons.push("greatsword"); // 2nd weapon → the swap lesson works
+  tutorial.onComplete = finishTutorial;
+  tutorial.start();
+}
+
+function finishTutorial(): void {
+  save.tutorialDone = true;
+  writeSave(save);
+  inTutorial = false;
+  setState("title");
+}
+
 // re-lock pointer when the player clicks back into the game
 canvas.addEventListener("click", () => {
   if (state === "playing" && !ctx.input.pointerLocked) { unlockAudio(); ctx.input.lockPointer(); }
@@ -271,6 +309,8 @@ function updatePlaying(dt: number): void {
   ctx.combat.update(dt);
   ctx.pickups.update(dt);
 
+  if (inTutorial) { tutorial.update(dt); return; } // training slice: no gates / boss / victory flow
+
   // wave gates: trigger the next sealed gate's wave, open it when cleared
   const idx = ctx.level.gates.findIndex((g) => !g.open);
   if (idx >= 0) {
@@ -296,6 +336,7 @@ function updatePlaying(dt: number): void {
   // boss spawns when the path is fully open and the player steps into the arena
   if (!bossSpawned && ctx.boss && ctx.level.gates.every((g) => g.open) && ctx.level.inArena(ctx.player.pos.z)) {
     ctx.boss.activate(); // reveal the pre-warmed boss (no compile/relink stall here)
+    ctx.level.lockArena = true; // no retreat down the corridor once the fight starts
     bossSpawned = true;
     startBossCutscene(BOSS_NAME);
   }
@@ -316,13 +357,28 @@ function startBossCutscene(name: string): void {
   ctx.player.frozen = true;
   hud.setLetterbox(true);
   ctx.cam.setCinematic(true);
+  // start low and behind the player, framing the rising King — the dolly sweeps in over the cutscene
+  bossVantage(0, cinePose);
+  ctx.cam.setCinePose(cinePose, true);
   ctx.events.emit("BOSS_INTRO", { name });
   ctx.music.boss(1);
   ctx.sfx.bossRoar();
   ctx.cam.addTrauma(0.45);
   // an arena-wide shockwave the instant the rift tears open
   ctx.fx.ring(BOSS_ANCHOR.x, BOSS_ANCHOR.z, { radius: 26, color: BOSS_TEAL, duration: 0.9, y: 0.2, startRadius: 1 });
-  hud.showBanner(name.toUpperCase(), 0x9ff0e4);
+  hud.showBossCard(name.toUpperCase(), "THE BARROW KING RISES");
+}
+
+// The scripted intro vantage as a function of progress k (0→1): the camera orbits from
+// low-and-wide on the player's side of the King, sweeping across the front and pushing in as it rises.
+function bossVantage(k: number, out: THREE.Vector3): void {
+  const bx = ctx.boss?.pos.x ?? BOSS_ANCHOR.x, bz = ctx.boss?.pos.z ?? BOSS_ANCHOR.z;
+  const px = ctx.player.pos.x, pz = ctx.player.pos.z;
+  const baseA = Math.atan2(px - bx, pz - bz); // camera stays on the player's side (King faces us)
+  const ang = baseA + (0.65 - k * 1.15);       // sweep across the front
+  const rad = 14 - k * 5.5;                     // push in
+  const hy = 1.0 + k * 3.4;                     // rise with the King
+  out.set(bx + Math.sin(ang) * rad, hy, bz + Math.cos(ang) * rad);
 }
 
 function updateBossCutscene(dt: number): void {
@@ -333,6 +389,9 @@ function updateBossCutscene(dt: number): void {
     ctx.boss.coreWorld(cineTarget);
     ctx.cam.setCinematic(true, cineTarget);
   }
+  // sweep the dolly along its scripted path as the King rises
+  bossVantage(k, cinePose);
+  ctx.cam.setCinePose(cinePose);
   // scripted beats: rings ripple outward + soul-fire pillars erupt around the dais,
   // intensifying as the Warden rises — the cutscene now builds instead of just waiting.
   cineBeatT -= dt;
@@ -377,6 +436,7 @@ function endBossCutscene(): void {
   cineT = 0;
   ctx.player.frozen = false;
   hud.setLetterbox(false);
+  hud.hideBossCard();
   ctx.cam.setCinematic(false);
   if (ctx.boss) { ctx.boss.paused = false; ctx.boss.cineSurge = 0; }
   ctx.cam.addTrauma(0.5);
@@ -398,6 +458,18 @@ function frame(dt: number): void {
   else menus.navGamepad(); // any overlay state: let a controller drive the menu (no-op on mouse/kb)
 
   ctx.cam.update(dt, state === "playing" ? ctx.player.moveAmount : 0);
+  // keep the key light's shadow box centered on the player — its ortho box only covers ~60u, so
+  // pinned at the origin it left the whole causeway + boss arena shadowless (floating characters).
+  // Only existing lights move (no relink); snap the slide to shadow texels so shadows don't swim.
+  const kl = ctx.stage.keyLight;
+  if (kl.castShadow) {
+    const texel = 60 / kl.shadow.mapSize.x;
+    const tx = Math.round(ctx.player.pos.x / texel) * texel;
+    const tz = Math.round(ctx.player.pos.z / texel) * texel;
+    kl.target.position.set(tx, 0, tz);
+    kl.position.set(tx + 14, 26, tz + 8);
+    kl.target.updateMatrixWorld();
+  }
   ctx.level.update(dt);
   ctx.fx.update(dt);
   ctx.tele.update(dt);
@@ -446,6 +518,12 @@ w.__rh4debug = {
   checkCombos: weaponComboSelfCheck,
   spawn: (k: EnemyKind, x: number, z: number) => ctx.enemies.spawn(k, x, z),
   drainWave: () => ctx.enemies.drainBudget(),
+  // breakable-parts test seam: force-break a kind's / the boss's parts, or read their state
+  breakParts: (which: string) => {
+    if (which === "boss") { ctx.boss?.forceBreakParts(); return; }
+    for (const e of ctx.enemies.living()) if (e.kind === which) e.forceBreakParts();
+  },
+  partState: (which: string) => which === "boss" ? ctx.boss?.partState() : ctx.enemies.living().find((e) => e.kind === which)?.partState(),
   // grant the full arsenal (screenshot/manual showcase of weapon swapping)
   unlockAll: () => { for (const w of WEAPONS) if (!ctx.player.weapons.includes(w.id)) ctx.player.weapons.push(w.id); },
   swapWeapon: () => ctx.player.cycleWeapon(1),
@@ -456,6 +534,9 @@ w.__rh4debug = {
   god: (on: boolean) => { ctx.player.god = on; },
   cineActive: () => cineT > 0,
   skipCutscene: () => { if (cineT > 0) endBossCutscene(); },
+  tutorial: () => startTutorial(),
+  tutorialActive: () => tutorial.active,
+  inTutorial: () => inTutorial,
 };
 
 // --------------------------------------------------------------------- finish boot

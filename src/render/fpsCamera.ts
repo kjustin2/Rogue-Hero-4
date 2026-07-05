@@ -29,6 +29,10 @@ export class FpsCamera {
   /** Cinematic look: while on, the camera eases toward cineTarget and ignores the mouse. */
   cinematic = false;
   private cineTarget = new THREE.Vector3();
+  // optional cutscene camera POSITION (a dolly vantage); off = sit at the player's eye
+  private cinePosOn = false;
+  private cineDstPos = new THREE.Vector3();
+  private cineCurPos = new THREE.Vector3();
   private tmp = new THREE.Vector3();
 
   private cam: THREE.PerspectiveCamera;
@@ -80,6 +84,13 @@ export class FpsCamera {
   setCinematic(on: boolean, target?: THREE.Vector3): void {
     this.cinematic = on;
     if (target) this.cineTarget.copy(target);
+    if (!on) this.cinePosOn = false; // leaving a cutscene snaps back to the eye
+  }
+  /** Scripted cutscene camera POSITION (a dolly vantage). `snap` places it instantly (first frame). */
+  setCinePose(pos: THREE.Vector3, snap = false): void {
+    this.cinePosOn = true;
+    this.cineDstPos.copy(pos);
+    if (snap) this.cineCurPos.copy(pos);
   }
 
   /** moveAmount 0..1 drives head-bob. */
@@ -87,10 +98,19 @@ export class FpsCamera {
     // --- look input (cinematic auto-aim, else locked pointer + right stick) ---
     if (this.cinematic) {
       this.ctx.input.consumeMouseDelta(); // drain so control returns without a snap
-      const px = this.ctx.player.pos.x, pz = this.ctx.player.pos.z;
-      const dx = this.cineTarget.x - px;
-      const dy = this.cineTarget.y - EYE_HEIGHT;
-      const dz = this.cineTarget.z - pz;
+      // look FROM the dolly vantage (if one is set) toward the target, else from the player's eye
+      let ox: number, oy: number, oz: number;
+      if (this.cinePosOn) {
+        this.cineCurPos.x = damp(this.cineCurPos.x, this.cineDstPos.x, 2.4, dt);
+        this.cineCurPos.y = damp(this.cineCurPos.y, this.cineDstPos.y, 2.4, dt);
+        this.cineCurPos.z = damp(this.cineCurPos.z, this.cineDstPos.z, 2.4, dt);
+        ox = this.cineCurPos.x; oy = this.cineCurPos.y; oz = this.cineCurPos.z;
+      } else {
+        ox = this.ctx.player.pos.x; oy = EYE_HEIGHT; oz = this.ctx.player.pos.z;
+      }
+      const dx = this.cineTarget.x - ox;
+      const dy = this.cineTarget.y - oy;
+      const dz = this.cineTarget.z - oz;
       this.yaw = dampAngle(this.yaw, Math.atan2(-dx, -dz), 3.2, dt);
       this.pitch = clamp(damp(this.pitch, Math.atan2(dy, Math.hypot(dx, dz)), 3.2, dt), -1.2, 1.2);
     } else {
@@ -130,7 +150,8 @@ export class FpsCamera {
     }
 
     const p = this.ctx.player.pos;
-    this.cam.position.set(p.x + this.shoveX + sway, EYE_HEIGHT + bob, p.z + this.shoveZ);
+    if (this.cinematic && this.cinePosOn) this.cam.position.copy(this.cineCurPos);
+    else this.cam.position.set(p.x + this.shoveX + sway, EYE_HEIGHT + bob, p.z + this.shoveZ);
     this.cam.rotation.set(this.pitch + this.recoil + shPitch, this.yaw + shYaw, shRoll + this.rollKick);
 
     // cinematic frames zoom in (narrower FOV); eased so it pushes/pulls smoothly

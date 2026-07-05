@@ -113,20 +113,20 @@ export const WEAPONS: WeaponDef[] = [
     light: bolt({ damage: 11, cooldown: 0.17, speed: 50, knockback: 2 }),
     heavy: bolt({ damage: 30, cooldown: 0.7, speed: 38, big: true, pierce: true, windup: 0.18, recovery: 0.14, knockback: 6 }),
     combos: [
-      { name: "ARROWSTORM", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.2, effect: "barrage", radius: 4.5, color: GOLD },
-      { name: "SPLIT VOLLEY", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 1.7, effect: "bolts", radius: 0, color: GOLD },
-      { name: "THORNBURST", recipe: ["heavy", "heavy"], tier: 2, damageMult: 1.6, effect: "bolts", radius: 0, color: GOLD },
+      { name: "ARROWSTORM", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.0, effect: "barrage", radius: 4.5, color: GOLD },
+      { name: "SPLIT VOLLEY", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.2, effect: "bolts", radius: 0, color: GOLD },
+      { name: "THORNBURST", recipe: ["heavy", "heavy"], tier: 2, damageMult: 2.0, effect: "bolts", radius: 0, color: GOLD },
     ],
   },
   {
     // the one melee — roots you mid-swing but LUNGES you into range; heavy hits, shockwaves
     id: "greatsword", name: "EMBER GREATSWORD", kind: "melee", color: EMBER, moveMult: 0.4,
-    light: melee({ damage: 13, cooldown: 0.22, arc: 1.9, range: 3.3, active: 0.12, recovery: 0.07, knockback: 4, recoil: -5 }),
-    heavy: melee({ damage: 28, cooldown: 0.55, arc: 2.8, range: 3.9, windup: 0.1, active: 0.18, recovery: 0.15, knockback: 12, recoil: -9, chargeMax: 0.9, chargeMult: 2.0 }),
+    light: melee({ damage: 22, cooldown: 0.22, arc: 1.9, range: 3.3, active: 0.12, recovery: 0.07, knockback: 4, recoil: -5 }),
+    heavy: melee({ damage: 50, cooldown: 0.55, arc: 2.8, range: 3.9, windup: 0.1, active: 0.18, recovery: 0.15, knockback: 12, recoil: -9, chargeMax: 0.9, chargeMult: 2.0 }),
     combos: [
-      { name: "SUNDERSTRIKE", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.6, effect: "slam", radius: 5.0, color: EMBER },
-      { name: "EARTHSHAKER", recipe: ["heavy", "heavy"], tier: 2, damageMult: 2.2, effect: "slam", radius: 6.5, color: 0xffd24a },
-      { name: "BLADE FLURRY", recipe: ["light", "light", "light"], tier: 1, damageMult: 1.8, effect: "slam", radius: 4.5, color: EMBER },
+      { name: "SUNDERSTRIKE", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.4, effect: "slam", radius: 6.0, color: EMBER },
+      { name: "EARTHSHAKER", recipe: ["heavy", "heavy"], tier: 2, damageMult: 2.6, effect: "slam", radius: 6.5, color: 0xffd24a },
+      { name: "BLADE FLURRY", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.2, effect: "slam", radius: 4.5, color: EMBER },
     ],
   },
   {
@@ -136,8 +136,8 @@ export const WEAPONS: WeaponDef[] = [
     light: rocket({ damage: 16, cooldown: 0.5, explodeRadius: 3.4, speed: 30 }),
     heavy: rocket({ damage: 36, cooldown: 1.05, explodeRadius: 6.0, speed: 22, gravity: 26, windup: 0.2, recovery: 0.18, knockback: 12, recoil: 16, chargeMax: 0.9, chargeMult: 1.8 }),
     combos: [
-      { name: "CANNONADE", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 1.8, effect: "rocketvolley", radius: 3.6, color: RED },
-      { name: "SIEGEBREAKER", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.2, effect: "rocketvolley", radius: 4.6, color: RED },
+      { name: "CANNONADE", recipe: ["light", "light", "heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "rocketvolley", radius: 4.0, color: RED },
+      { name: "SIEGEBREAKER", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.6, effect: "rocketvolley", radius: 4.6, color: RED },
     ],
   },
   {
@@ -147,8 +147,8 @@ export const WEAPONS: WeaponDef[] = [
     light: laser({ damage: 13, cooldown: 0.26, beamWidth: 0.8, beamRange: 46, windup: 0.04 }),
     heavy: laser({ damage: 34, cooldown: 1.0, beamWidth: 3.0, beamRange: 56, windup: 0.32, recovery: 0.2, knockback: 6, recoil: 8, chargeMax: 0.9, chargeMult: 2.0 }),
     combos: [
-      { name: "RADIANT LANCE", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.0, effect: "megabeam", radius: 3.2, color: CYAN },
-      { name: "PRISM WRATH", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.4, effect: "megabeam", radius: 4.2, color: CYAN },
+      { name: "RADIANT LANCE", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.0, effect: "megabeam", radius: 3.6, color: CYAN },
+      { name: "PRISM WRATH", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "megabeam", radius: 4.2, color: CYAN },
     ],
   },
   {
@@ -157,18 +157,19 @@ export const WEAPONS: WeaponDef[] = [
     light: airstrike({ damage: 22, cooldown: 0.6, strikeCount: 1, strikeRadius: 4.0, strikeRange: 15 }),
     heavy: airstrike({ damage: 30, cooldown: 1.1, strikeCount: 3, strikeRadius: 4.2, strikeRange: 17, windup: 0.16, knockback: 8, recoil: 4 }),
     combos: [
-      { name: "STORMFALL", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 1.8, effect: "airstrike", radius: 4.4, color: VIOLET },
-      { name: "HEAVEN'S WRATH", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.2, effect: "airstrike", radius: 4.8, color: 0xffe6b0 },
+      { name: "STORMFALL", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 2.6, effect: "airstrike", radius: 4.6, color: VIOLET },
+      { name: "HEAVEN'S WRATH", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "airstrike", radius: 4.8, color: 0xffe6b0 },
     ],
   },
   {
     // the second melee — slower, harder, quake-flavored; every heavy is a tremor
     id: "warhammer", name: "GRAVE MAUL", kind: "melee", color: 0xff8c3a, moveMult: 0.35,
-    light: melee({ damage: 19, cooldown: 0.34, arc: 1.6, range: 3.4, windup: 0.08, active: 0.12, recovery: 0.12, knockback: 9, recoil: -4 }),
-    heavy: melee({ damage: 44, cooldown: 0.95, arc: 2.3, range: 4.2, windup: 0.22, active: 0.2, recovery: 0.22, knockback: 16, recoil: -7, chargeMax: 0.9, chargeMult: 2.2 }),
+    light: melee({ damage: 32, cooldown: 0.34, arc: 1.6, range: 3.4, windup: 0.08, active: 0.12, recovery: 0.12, knockback: 9, recoil: -4 }),
+    heavy: melee({ damage: 75, cooldown: 0.95, arc: 2.3, range: 4.2, windup: 0.22, active: 0.2, recovery: 0.22, knockback: 16, recoil: -7, chargeMax: 0.9, chargeMult: 2.2 }),
     combos: [
-      { name: "MOUNTAINFALL", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.4, effect: "slam", radius: 6.5, color: 0xff8c3a },
-      { name: "AFTERSHOCK", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.4, effect: "slam", radius: 8.0, color: 0xffd24a },
+      { name: "MOUNTAINFALL", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.2, effect: "slam", radius: 7.0, color: 0xff8c3a },
+      { name: "QUAKESTEP", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.6, effect: "slam", radius: 6.0, color: 0xff8c3a },
+      { name: "AFTERSHOCK", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "slam", radius: 8.0, color: 0xffd24a },
     ],
   },
   {
@@ -177,8 +178,8 @@ export const WEAPONS: WeaponDef[] = [
     light: bolt({ damage: 17, cooldown: 0.38, speed: 30, gravity: 9, knockback: 6, shape: "axe" }),
     heavy: bolt({ damage: 34, cooldown: 0.9, speed: 26, gravity: 7, pierce: true, big: true, windup: 0.14, recovery: 0.14, knockback: 10, recoil: 3, shape: "axe" }),
     combos: [
-      { name: "AXE TEMPEST", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.0, effect: "bolts", radius: 0, color: 0xe8d9a8 },
-      { name: "SKULLSPLITTER", recipe: ["light", "heavy"], tier: 2, damageMult: 1.9, effect: "barrage", radius: 4, color: 0xe8d9a8 },
+      { name: "AXE TEMPEST", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 2.8, effect: "bolts", radius: 0, color: 0xe8d9a8 },
+      { name: "SKULLSPLITTER", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.4, effect: "barrage", radius: 4, color: 0xe8d9a8 },
     ],
   },
 ];
@@ -216,8 +217,8 @@ export function weaponComboSelfCheck(): string[] {
     }
   }
   const bolt = WEAPONS[0];
-  if (matchWeaponCombo(["light", "light", "light"], bolt)?.name !== "ARROWSTORM") {
-    fail.push("starter ARROWSTORM should resolve for light,light,light");
+  if (matchWeaponCombo(["light", "light", "light", "heavy"], bolt)?.name !== "ARROWSTORM") {
+    fail.push("starter ARROWSTORM should resolve for light,light,light,heavy");
   }
   // handling-stat sanity (weapon identity): mobility must stay in (0,1]
   for (const w of WEAPONS) {

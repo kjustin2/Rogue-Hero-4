@@ -124,6 +124,18 @@ function poseFor(weaponId: string, slot: Slot, isMelee: boolean): PoseId {
   return slot === "light" ? pair[0] : pair[1];
 }
 
+// Reused scratch — animate() runs EVERY frame; samplePose used to allocate a fresh pose array +
+// closures + a result object each call (~2-4 heap objects/frame regardless of combat, a steady
+// GC sawtooth on the most-constant hot path). Both branches feed the same immediately-consumed writes.
+const POSE_SCRATCH: Pose = [0, 0, 0, 0, 0, 0];
+const SAMPLE_OUT: { pose: Pose; flash: number; stretch: number } = { pose: POSE_SCRATCH, flash: 0, stretch: 1 };
+
+/** The `t` of a pose's impact/flash keyframe (or 0.5) — used to align the visible swing with the hit. */
+function impactT(keys: SwingKey[]): number {
+  for (let i = 0; i < keys.length; i++) if (keys[i].flash) return keys[i].t;
+  return 0.5;
+}
+
 function samplePose(keys: SwingKey[], p: number): { pose: Pose; flash: number; stretch: number } {
   let a = keys[0];
   let b = keys[keys.length - 1];
@@ -133,16 +145,21 @@ function samplePose(keys: SwingKey[], p: number): { pose: Pose; flash: number; s
   const span = b.t - a.t || 1;
   const easeFn = b.flash ? ease.inCubic : a.flash ? ease.outCubic : ease.inOutCubic;
   const k = easeFn(clamp((p - a.t) / span, 0, 1));
-  const pose = a.pose.map((v, j) => v + (b.pose[j] - v) * k) as unknown as Pose;
-  const imp = keys.find((kf) => kf.flash);
+  for (let j = 0; j < 6; j++) POSE_SCRATCH[j] = a.pose[j] + (b.pose[j] - a.pose[j]) * k;
   let flash = 0;
   let stretch = 1;
-  if (imp) {
-    const bump = Math.max(0, 1 - Math.abs(p - imp.t) / 0.18);
-    flash = (imp.flash ?? 0) * bump;
-    stretch = 1 + ((imp.stretch ?? 1) - 1) * bump;
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i].flash) {
+      const imp = keys[i];
+      const bump = Math.max(0, 1 - Math.abs(p - imp.t) / 0.18);
+      flash = (imp.flash ?? 0) * bump;
+      stretch = 1 + ((imp.stretch ?? 1) - 1) * bump;
+      break;
+    }
   }
-  return { pose, flash, stretch };
+  SAMPLE_OUT.flash = flash;
+  SAMPLE_OUT.stretch = stretch;
+  return SAMPLE_OUT;
 }
 
 interface ActiveAttack { a: AttackDef; slot: Slot; color: number; pose: PoseId; dmgMult: number }
@@ -224,10 +241,15 @@ export class Player {
   private vel = new THREE.Vector3();
   private aim = new THREE.Vector3();
   private dir = new THREE.Vector3();
+  private stormAim = new THREE.Vector3();
+  private stormTgt = new THREE.Vector3();
+  // storm-caller ground reticle (world-space) — shows where a call-down lands; violet, NOT the red enemy tele
+  private stormReticle!: THREE.Group;
 
   constructor(private ctx: Ctx) {
     this.buildViewmodel();
     this.ctx.stage.camera.add(this.vm);
+    this.buildStormReticle();
     this.applyWeaponLook();
   }
 
@@ -241,6 +263,7 @@ export class Player {
     this.maxHp = 120; // boons may have raised it last run
     this.hp = this.maxHp;
     this.alive = true;
+    this.god = false; // clear any leftover invuln (killcam victory-guard or the debug toggle)
     this.iframes = 0;
     this.fervor = 0;
     this.chargeT = -1;
@@ -284,6 +307,41 @@ export class Player {
     this.vm.add(this.weaponGrp);
     this.vm.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
     this.vm.renderOrder = 10;
+  }
+
+  /** A flat violet target reticle laid on the ground — a ring + crosshair, unlit (pooled-FX rule). */
+  private buildStormReticle(): void {
+    const g = new THREE.Group();
+    const mat = new THREE.MeshBasicMaterial({ color: 0xb46cff, transparent: true, opacity: 0.85, depthWrite: false });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(2.9, 3.4, 40), mat);
+    ring.rotation.x = -Math.PI / 2;
+    g.add(ring);
+    const inner = new THREE.Mesh(new THREE.RingGeometry(0.35, 0.6, 20), mat);
+    inner.rotation.x = -Math.PI / 2;
+    g.add(inner);
+    g.position.y = 0.06;
+    g.visible = false;
+    g.renderOrder = 2;
+    this.stormReticle = g;
+    this.ctx.stage.scene.add(g);
+  }
+
+  /**
+   * Project the full 3D aim (pitch included) to the ground: aiming DOWN lands the strike
+   * CLOSER, level/up lands at max `range`. Horizontal reach clamped to [4, range].
+   */
+  private stormTarget(out: THREE.Vector3, range: number): void {
+    this.ctx.cam.forward(this.stormAim);
+    const a = this.stormAim;
+    const hd = Math.hypot(a.x, a.z) || 1e-4;
+    const dist = a.y < -0.05 ? Math.min(range, Math.max(4, (1.55 / -a.y) * hd)) : range;
+    out.set(this.pos.x + (a.x / hd) * dist, 0, this.pos.z + (a.z / hd) * dist);
+  }
+
+  /** Test seam: where the storm-caller call-down lands on the ground for the current aim. */
+  stormTargetXZ(range: number): { x: number; z: number } {
+    this.stormTarget(this.stormTgt, range);
+    return { x: this.stormTgt.x, z: this.stormTgt.z };
   }
 
   // shared medieval materials (one set; models reuse them)
@@ -501,7 +559,17 @@ export class Player {
     }
     if (this.frozen) this.moveAmount = damp(this.moveAmount, 0, 8, dt);
     else this.move(dt);
+    this.updateStormReticle();
     this.animate(dt);
+  }
+
+  /** While the Storm Caller is equipped, park a live violet reticle where the next call-down lands. */
+  private updateStormReticle(): void {
+    const show = this.alive && this.ctx.playing && this.weapon.id === "stormcaller";
+    this.stormReticle.visible = show;
+    if (!show) return;
+    this.stormTarget(this.stormTgt, this.weapon.light.strikeRange || 15);
+    this.stormReticle.position.set(this.stormTgt.x, 0.06, this.stormTgt.z);
   }
 
   private handleActions(): void {
@@ -548,9 +616,18 @@ export class Player {
 
   cycleWeapon(dir = 1): void {
     this.wi = (this.wi + dir + this.weapons.length) % this.weapons.length;
-    this.cooldowns.light = this.cooldowns.heavy = 0;
-    // the combo buffer SURVIVES the swap — chaining into the new weapon's finisher
-    // is the reward for swapping mid-string (SWAP FINISH, 1.25x)
+    // a swap must NOT refund an in-flight swing's recovery — the loop light→swap→light→swap fired
+    // far faster than any cooldown (a spammable dominant tempo). Gate re-fire by the recovery the
+    // cancelled swing still owed; an idle swap clears the stale cooldown as before.
+    if (this.cur) {
+      const rem = Math.max(0, attackDuration(this.cur.a) - this.moveT);
+      this.cooldowns.light = Math.max(this.cooldowns.light, rem);
+      this.cooldowns.heavy = Math.max(this.cooldowns.heavy, rem);
+    } else {
+      this.cooldowns.light = this.cooldowns.heavy = 0;
+    }
+    // the combo buffer SURVIVES the swap — chaining into the new weapon's finisher is the reward
+    // for swapping mid-string (SWAP FINISH, 1.25x), now gated by that same recovery
     this.chargeT = -1;
     this.cur = null;
     this.applyWeaponLook();
@@ -603,7 +680,6 @@ export class Player {
     if (a.recoil) { this.kb.x += -fx * a.recoil * c.dmgMult; this.kb.z += -fz * a.recoil * c.dmgMult; }
     // the weapon itself KICKS: shoved into the shoulder + muzzle climb, damped in animate()
     this.vmKick = Math.min(1.4, this.vmKick + (heavy ? 1 : 0.5));
-    if (heavy) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.02); // heavy discharge bites the frame
 
     if (a.type === "melee") {
       this.ctx.sfx.meleeSwing(heavy);
@@ -634,9 +710,10 @@ export class Player {
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
       this.muzzleFx(color, heavy);
     } else if (a.mode === "airstrike") {
-      // call down strike(s) on the zone ahead
+      // call down strike(s) where the 3D aim meets the ground — aim down = closer
       this.ctx.sfx.stormCall();
-      const cx = this.pos.x + fx * a.strikeRange, cz = this.pos.z + fz * a.strikeRange;
+      this.stormTarget(this.stormTgt, a.strikeRange);
+      const cx = this.stormTgt.x, cz = this.stormTgt.z;
       for (let i = 0; i < Math.max(1, a.strikeCount); i++) {
         const ang = this.ctx.rng.range(0, Math.PI * 2);
         // scatter multi-strikes on a wide ring so they pepper a zone instead of stacking on one spot
@@ -669,7 +746,7 @@ export class Player {
         const off = (i - (n - 1) / 2) * a.spread;
         const ca = Math.cos(off), sa = Math.sin(off);
         this.dir.set(this.aim.x * ca - this.aim.z * sa, this.aim.y, this.aim.x * sa + this.aim.z * ca);
-        if (a.gravity > 0) this.dir.y += 0.5; // mortar: launch upward, then arc down
+        if (a.gravity > 0) this.dir.y += Math.min(0.5, a.gravity * 0.02); // arc up, SCALED by gravity: the heavy mortar (grav 26) still lobs high; the francisca axes (grav 7-9) stay near the crosshair
         this.ctx.projectiles.spawn(this.pos.x, 1.55, this.pos.z, this.dir, a.speed, dmg, true, color, a.knockback, opts);
       }
       this.ctx.cam.kick(-fx, -fz, heavy ? 0.3 : 0.15);
@@ -686,7 +763,7 @@ export class Player {
     if (combo) {
       // a chain that spans a weapon swap finishes 1.25x harder — the swap reward
       const swapped = this.bufferWeapons.some((id) => id !== this.weapon.id);
-      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, this.aim, a.damage * (swapped ? 1.25 : 1) * this.mods.comboDmgMult);
+      this.ctx.combat.resolveCombo(combo, this.pos.x, this.pos.z, this.aim, a.damage * (swapped ? 1.25 : 1) * this.mods.comboDmgMult, a.shape);
       if (swapped) this.ctx.floaters.spawn(this.pos.x, 2.1, this.pos.z, "SWAP FINISH", "label", "#ffc24a");
       this.lastCombo = combo.name;
       this.lastComboT = 2.4;
@@ -800,7 +877,7 @@ export class Player {
     this.pos.addScaledVector(this.kb, dt);
     this.kb.x = damp(this.kb.x, 0, 9, dt);
     this.kb.z = damp(this.kb.z, 0, 9, dt);
-    this.ctx.level.clampPosition(this.pos, this.radius);
+    this.ctx.level.clampPosition(this.pos, this.radius, true); // player: honor the boss-fight arena lock
     const target = this.dashTime > 0 ? 1 : clamp(Math.hypot(this.vel.x, this.vel.z) / WALK_SPEED, 0, 1);
     this.moveAmount = damp(this.moveAmount, target, 8, dt);
   }
@@ -815,7 +892,8 @@ export class Player {
     let trailActive = false;
 
     if (!c) {
-      pose = [...REST] as Pose;
+      for (let j = 0; j < 6; j++) POSE_SCRATCH[j] = REST[j];
+      pose = POSE_SCRATCH;
       pose[0] += this.moveAmount * 0.03 * Math.cos(t * 5.5);
       pose[1] += -this.moveAmount * 0.03;
       pose[2] += this.moveAmount * 0.04 * Math.sin(t * 11);
@@ -827,11 +905,23 @@ export class Player {
         pose[0] += Math.sin(t * 40) * ch * 0.01; // full-draw tremble
       }
     } else {
-      const p = clamp(this.moveT / attackDuration(c.a), 0, 1);
-      const s = samplePose(SWINGS[c.pose], p);
+      // Time-warp the pose sample so the swing's IMPACT keyframe lands exactly when damage fires
+      // (moveT >= windup): anticipation compresses into [0,hp], follow-through stretches into
+      // [hp,1] — the blade visibly connects on the hit instead of ~0.1s after. No timing retuned.
+      const keys = SWINGS[c.pose];
+      const impT = impactT(keys);
+      const dur = attackDuration(c.a);
+      const hp = clamp(c.a.windup / dur, 0.05, 0.95);
+      const rawP = clamp(this.moveT / dur, 0, 1);
+      const p = rawP <= hp ? (rawP / hp) * impT : impT + ((rawP - hp) / (1 - hp)) * (1 - impT);
+      const s = samplePose(keys, p);
       pose = s.pose;
       flash = s.flash;
       stretch = s.stretch;
+      // residual locomotion sway so a swing while strafing isn't a rigid viewmodel disconnected
+      // from the head-bob (phase matches the idle branch; amplitude stays under the swing keyframes)
+      pose[0] += this.moveAmount * 0.012 * Math.cos(t * 5.5);
+      pose[2] += this.moveAmount * 0.015 * Math.sin(t * 11);
       trailActive = c.a.type === "melee" && p > 0.18 && p < 0.62;
     }
 

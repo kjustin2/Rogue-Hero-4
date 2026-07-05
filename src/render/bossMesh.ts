@@ -12,6 +12,9 @@ export interface BossMeshParts {
   cloak: THREE.Mesh;
   blade: THREE.Group;
   orbit: THREE.Group;
+  /** Breakable pauldrons — shoot both off to sunder his armor (core exposed). */
+  pauldronL: THREE.Object3D;
+  pauldronR: THREE.Object3D;
 }
 
 export function buildBossMesh(coreMat: THREE.MeshStandardMaterial): BossMeshParts {
@@ -125,9 +128,11 @@ function buildProcedural(coreMat: THREE.MeshStandardMaterial): BossMeshParts {
   }
 
   // ---- broad pauldrons with hanging chain + skull mount ----
+  let pauldronL!: THREE.Object3D, pauldronR!: THREE.Object3D; // promoted breakable pauldrons
   for (const sx of [-1, 1]) {
     const pauld = new THREE.Mesh(new THREE.SphereGeometry(1.05, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), IRON);
     pauld.position.set(sx * 1.9, 6.4, 0); pauld.castShadow = true;
+    if (sx < 0) pauldronL = pauld; else pauldronR = pauld;
     const pauldTrim = new THREE.Mesh(new THREE.TorusGeometry(1.02, 0.07, 5, 14), trim);
     pauldTrim.position.set(sx * 1.9, 6.42, 0); pauldTrim.rotation.x = Math.PI / 2;
     const spike = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.1, 5), BONE_DK);
@@ -219,7 +224,7 @@ function buildProcedural(coreMat: THREE.MeshStandardMaterial): BossMeshParts {
 
   // PERF: the King was ~90 draw calls of trim and rivets — merge everything static
   // (coreMat pieces merge together and still flash as one; the cage stays with them)
-  mergeStatic(group, [cloak, blade, orbit]);
+  mergeStatic(group, [cloak, blade, orbit, pauldronL, pauldronR]);
 
-  return { group, cloak, blade, orbit };
+  return { group, cloak, blade, orbit, pauldronL, pauldronR };
 }

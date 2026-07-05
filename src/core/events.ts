@@ -12,7 +12,7 @@ export interface EventMap {
   /** Running kill streak count (resets when the player is idle/hit). */
   KILL_STREAK: { count: number };
   /** The player was hit. */
-  PLAYER_HIT: { dmg: number; srcX: number; srcZ: number };
+  PLAYER_HIT: { dmg: number; srcX: number; srcZ: number; srcY: number };
   PLAYER_DIED: Record<string, never>;
   /** Player dash with i-frames. */
   DODGE: Record<string, never>;

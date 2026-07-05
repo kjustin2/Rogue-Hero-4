@@ -51,6 +51,7 @@ export class Particles {
   private beams: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number }[] = [];
   private slashes: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; dur: number; radius: number; spin: number }[] = [];
   private bolts: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; t: number; dur: number; w: number }[] = [];
+  private chunks: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; vel: THREE.Vector3; spin: THREE.Vector3; t: number; dur: number }[] = [];
 
   constructor(private scene: THREE.Scene) {
     this.positions = new Float32Array(MAX_PARTICLES * 3);
@@ -165,6 +166,20 @@ export class Particles {
       mesh.frustumCulled = false;
       this.scene.add(mesh);
       this.bolts.push({ mesh, mat, t: 0, dur: 0, w: 0.3 });
+    }
+
+    // Broken-armor chunk pool — tumbling shards flung off when a part is shot off. Each slot owns its
+    // own material (NEVER the shared/merged body material), so color + opacity fade are safe.
+    // Invisible at rest → 0 draw calls; MeshStandard so it's warmed with the scene at boot.
+    const chunkGeo = new THREE.BoxGeometry(0.24, 0.2, 0.07);
+    for (let i = 0; i < 10; i++) {
+      // unlit MeshBasic (like every other FX pool) so the first VISIBLE draw never triggers the
+      // complex-shader pipeline stall a transparent+lit material does mid-fight. Solid, not additive.
+      const mat = new THREE.MeshBasicMaterial({ color: 0x35322e, transparent: true, opacity: 0 });
+      const mesh = new THREE.Mesh(chunkGeo, mat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.chunks.push({ mesh, mat, vel: new THREE.Vector3(), spin: new THREE.Vector3(), t: 0, dur: 1.2 });
     }
   }
 
@@ -288,6 +303,30 @@ export class Particles {
     s.mesh.scale.setScalar(s.radius * 0.45);
   }
 
+  /** Tumbling shard(s) flung off a broken armor part — ballistic, spins, floor-bounces, fades ~1.1s. */
+  chunk(x: number, y: number, z: number, color: number, opts?: { vx?: number; vy?: number; vz?: number; count?: number }): void {
+    const n = opts?.count ?? 1;
+    const TAU = Math.PI * 2;
+    for (let c = 0; c < n; c++) {
+      const s = this.chunks.find((s) => !s.mesh.visible);
+      if (!s) return;
+      s.mesh.visible = true;
+      s.mesh.position.set(x, y, z);
+      s.mesh.rotation.set(Math.random() * TAU, Math.random() * TAU, Math.random() * TAU);
+      s.mat.color.set(color);
+      s.mat.opacity = 1;
+      s.t = 0;
+      s.dur = 1.0 + Math.random() * 0.5;
+      const a = Math.random() * TAU;
+      s.vel.set(
+        (opts?.vx ?? 0) + Math.cos(a) * (2 + Math.random() * 3),
+        (opts?.vy ?? 0) + 3 + Math.random() * 3,
+        (opts?.vz ?? 0) + Math.sin(a) * (2 + Math.random() * 3),
+      );
+      s.spin.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14);
+    }
+  }
+
   update(dt: number): void {
     // Ambient embers
     if (this.ambientRate > 0) {
@@ -388,6 +427,20 @@ export class Particles {
       b.mesh.scale.x = w; b.mesh.scale.y = w;
       b.mat.opacity = 0.92 * (1 - k);
       if (k >= 1) b.mesh.visible = false;
+    }
+
+    for (const s of this.chunks) {
+      if (!s.mesh.visible) continue;
+      s.t += dt;
+      s.vel.y -= 14 * dt; // gravity
+      s.mesh.position.addScaledVector(s.vel, dt);
+      if (s.mesh.position.y < 0.1) { s.mesh.position.y = 0.1; s.vel.y *= -0.35; s.vel.x *= 0.6; s.vel.z *= 0.6; }
+      s.mesh.rotation.x += s.spin.x * dt;
+      s.mesh.rotation.y += s.spin.y * dt;
+      s.mesh.rotation.z += s.spin.z * dt;
+      const k = s.t / s.dur;
+      s.mat.opacity = Math.max(0, 1 - k * k);
+      if (k >= 1) s.mesh.visible = false;
     }
   }
 }

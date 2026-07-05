@@ -2,6 +2,9 @@ import * as THREE from "three";
 
 export type FloaterKind = "dmg" | "crit" | "heal" | "tempo" | "label" | "playerdmg" | "shieldbreak";
 
+// kinds whose CSS uses the crit keyframes (vs the default rise) — see style.css
+const CRIT_KINDS = new Set<FloaterKind>(["crit", "tempo", "label", "shieldbreak"]);
+
 /**
  * DOM-based floating combat text. Projected to screen once at spawn;
  * CSS animation handles the rise/fade so per-frame cost is zero.
@@ -40,10 +43,12 @@ export class Floaters {
     el.style.left = `${sx.toFixed(0)}px`;
     el.style.top = `${sy.toFixed(0)}px`;
     el.style.display = "block";
-    // Restart the CSS animation
-    el.style.animation = "none";
-    void el.offsetWidth;
-    el.style.animation = "";
+    // Restart the animation with ZERO forced reflow: flip between two IDENTICAL @keyframes so the
+    // changed animation-name replays it. The old `animation='none'; void offsetWidth` trick forced
+    // a synchronous layout flush PER floater — a frame spike on multi-hit (AoE/combo/slam) frames.
+    const base = CRIT_KINDS.has(kind) ? "floater-crit" : "floater-rise";
+    const suffix = el.style.animationName.endsWith("-b") ? "" : "-b";
+    el.style.animation = `${base}${suffix} 0.95s ease-out forwards`;
     window.setTimeout(() => (el.style.display = "none"), 950);
   }
 }

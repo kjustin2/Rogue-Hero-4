@@ -52,9 +52,11 @@ export class SwordTrail {
         uniform vec3 uColor;
         varying float vAlpha;
         void main() {
-          // brighter core toward the leading edge + a white-hot lift for a juicier ribbon
-          vec3 c = uColor * (1.3 + vAlpha * 1.7) + vec3(vAlpha * vAlpha * 0.6);
-          gl_FragColor = vec4(c, vAlpha * 0.8);
+          // weapon-tinted leading edge — kept below a white-hot clip so a heavy sweep a few
+          // cm from the camera doesn't smear an additive-white streak across the view (this is
+          // a raw ShaderMaterial, so it is NOT ACES-tonemapped and clips harder than the scene)
+          vec3 c = uColor * (0.8 + vAlpha * 0.7) + vec3(vAlpha * vAlpha * 0.12);
+          gl_FragColor = vec4(c, vAlpha * 0.55);
         }
       `,
     });

@@ -2,6 +2,8 @@ import * as THREE from "three";
 import type { Ctx } from "./ctx";
 import type { WeaponComboDef } from "./weapons";
 
+type ProjShape = "dart" | "cannonball" | "comet" | "skull" | "axe";
+
 export interface HitOpts {
   knockback?: number;
   fromX?: number;
@@ -29,6 +31,10 @@ export interface Hittable {
   isWeakHit?(x: number, y: number, z: number): boolean;
   /** Optional incoming-damage hook (shielded elites reduce frontal hits). */
   modifyIncoming?(dmg: number, opts: HitOpts): number;
+  /** Chip the breakable armor/limb parts near the exact impact point (px,py,pz). Body HP is separate. */
+  hitPart?(px: number, py: number, pz: number, dmg: number): void;
+  /** Boss body-armor damage multiplier (dynamic — softens as pauldrons break). Default 0.45. */
+  armorMult?: number;
   /** Elite tag — killed elites always drop a shard. */
   elite?: string | null;
   /** Boss-summoned adds always drop a shard. */
@@ -88,15 +94,22 @@ export class Combat {
   dealDamage(t: Hittable, dmg: number, opts: HitOpts = {}): void {
     const weak = !!opts.weak;
     const isBoss = t.kind === "boss";
-    // Boss body is armored — chip damage unless you land the core (vertical aim matters).
-    if (isBoss && !weak) dmg *= 0.45;
+    dmg *= this.ctx.player.mods.strikeDmgMult; // MORTAL EDGE boon: all outgoing damage
+    // Boss body is armored — chip damage unless you land the core (vertical aim matters). The mult is
+    // DYNAMIC (t.armorMult) so breaking both pauldrons softens it (more chip everywhere).
+    if (isBoss && !weak) dmg *= t.armorMult ?? 0.45;
     // long-range falloff: full damage inside 18u, tapering to 45% by ~50u —
     // sniping the whole causeway from the spawn line shouldn't be the best play
     const pd = Math.hypot(t.pos.x - this.ctx.player.pos.x, t.pos.z - this.ctx.player.pos.z);
     if (pd > 18) dmg *= Math.max(0.45, 1 - (pd - 18) / 58);
     if (t.modifyIncoming) dmg = t.modifyIncoming(dmg, opts);
     dmg = Math.max(1, Math.round(dmg));
+    // EXECUTIONER boon: a strike that would leave a non-boss enemy under the threshold finishes it
+    const exe = this.ctx.player.mods.executeBelow;
+    const executed = exe > 0 && !isBoss && t.hp - dmg > 0 && t.hp - dmg <= t.maxHp * exe;
+    if (executed) dmg = Math.ceil(t.hp);
     const killed = t.takeDamage(dmg, opts);
+    if (executed && killed) this.ctx.floaters.spawn(t.pos.x, 2.1, t.pos.z, "EXECUTE", "crit", "#ff5a4a");
     const heavy = !!opts.heavy;
     const crit = heavy || (weak && isBoss);
     // where the feedback shows: at the core for a weak hit, else mid-body
@@ -114,9 +127,9 @@ export class Combat {
     });
     if (crit) this.ctx.fx.ring(t.pos.x, t.pos.z, { radius: 2.2, color: 0xffd9b0, duration: 0.26, y: 1 });
     this.ctx.cam.addTrauma(crit ? 0.22 : 0.08);
-    // every landed hit gets a micro-stop (crits a longer one) — contact you can FEEL
-    this.ctx.hitstop = Math.max(this.ctx.hitstop, crit ? 0.05 : 0.02);
-    if (killed) this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.07);
+    // ponytail: NO hit-stop on hits you land — it dilated the whole frame (player movement
+    // included), reading as "the game slows down when I attack". Impact still lands on shake +
+    // sparks + floater + sfx. Hit-stop is now defense-only (wounds / perfect-dodge / pickups).
     // SOUL LEECH boon: a slice of every dealt hit comes back as vitality
     const p = this.ctx.player;
     if (p.mods.lifesteal > 0 && p.alive && p.hp < p.maxHp) {
@@ -147,6 +160,12 @@ export class Combat {
       // a melee swing crits the boss only if you're looking up at its core
       const weak = t.kind === "boss" && this.isAimingWeak();
       this.dealDamage(t, dmg, { heavy, knockback: kb, fromX: ox, fromZ: oz, weak });
+      // coarse part hit: synthesize a contact on the target's FRONT face (toward the attacker) so a
+      // melee swing chips front-mounted shields/weapons — you hack the raised guard, thematically.
+      if (t.hitPart) {
+        const fx = ox - t.pos.x, fz = oz - t.pos.z, fd = Math.hypot(fx, fz) || 1;
+        t.hitPart(t.pos.x + (fx / fd) * t.radius * 0.6, 1.4, t.pos.z + (fz / fd) * t.radius * 0.6, dmg);
+      }
     }
   }
 
@@ -186,6 +205,7 @@ export class Combat {
       if (rayY < bot - width || rayY > top + width) continue;
       const weak = t.kind === "boss" && weakAim;
       this.dealDamage(t, dmg, { heavy: true, knockback: kb, fromX: ox, fromZ: oz, weak });
+      t.hitPart?.(ox + dirX * along, rayY, oz + dirZ * along, dmg); // the ray's contact point on this target
     }
     const sx = ox + dirX * 2.2, sy = oy + slope * 2.2, sz = oz + dirZ * 2.2;
     this.ctx.fx.laser(sx, sy, sz, aim.x, aim.y, aim.z, range - 2.2, color, Math.max(0.2, width * 0.6));
@@ -232,13 +252,12 @@ export class Combat {
    * reads downrange, not as a flash in the player's face. Only the melee weapon's slam
    * lands a ground shockwave just ahead. Camera/sfx feel kept; the screen flash removed.
    */
-  resolveCombo(combo: WeaponComboDef, x: number, z: number, aim: THREE.Vector3, baseDmg: number): void {
+  resolveCombo(combo: WeaponComboDef, x: number, z: number, aim: THREE.Vector3, baseDmg: number, shape: ProjShape = "dart"): void {
     const dmg = baseDmg * combo.damageMult;
     this.ctx.events.emit("COMBO_RESOLVE", { name: combo.name, tier: combo.tier });
     this.ctx.stage.punch(0.3 + combo.tier * 0.1);
     this.ctx.cam.addTrauma(0.32 + combo.tier * 0.1);
     this.ctx.cam.pulseFov(0.3);
-    this.ctx.hitstop = Math.max(this.ctx.hitstop, 0.09);
     this.ctx.sfx.critical();
     if (combo.tier >= 3) this.ctx.sfx.bossRoar();
     // ground-projected heading for area/melee finishers; full 3D aim (incl. pitch) for
@@ -253,7 +272,7 @@ export class Combat {
     switch (combo.effect) {
       case "barrage": {
         // a single colossal piercing comet along the look ray
-        this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 2.2, pierce: true, shape: "dart" }); // a colossal ballista javelin
+        this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, dir, 32, dmg, true, combo.color, 14, { scale: 2.2, pierce: true, shape }); // a colossal ballista javelin / cleaving axe — the weapon's own shot
         this.ctx.fx.burst({ x: muzzleX, y: my, z: muzzleZ, count: 10, color: combo.color, speed: [3, 9], size: [0.12, 0.3], life: [0.18, 0.4] });
         break;
       }
@@ -264,7 +283,7 @@ export class Combat {
           const off = (i - (n - 1) / 2) * 0.12;
           const ca = Math.cos(off), sa = Math.sin(off);
           FAN_DIR.set(dir.x * ca - dir.z * sa, dir.y, dir.x * sa + dir.z * ca);
-          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, FAN_DIR, 46, dmg / 3, true, combo.color, 3, { shape: "dart" });
+          this.ctx.projectiles.spawn(muzzleX, my, muzzleZ, FAN_DIR, 46, dmg / 3, true, combo.color, 3, { shape });
         }
         break;
       }
@@ -309,7 +328,7 @@ export class Combat {
   }
 
   /** The only inbound HP path for the player. */
-  damagePlayer(dmg: number, srcX: number, srcZ: number): "hit" | "dodged" | "dead" {
+  damagePlayer(dmg: number, srcX: number, srcZ: number, srcY = 1.6): "hit" | "dodged" | "dead" {
     const p = this.ctx.player;
     if (!p.alive) return "dead";
     if (p.god) return "dodged";
@@ -328,7 +347,7 @@ export class Combat {
     }
     dmg = Math.max(1, Math.round(dmg * p.mods.dmgTakenMult));
     p.hp -= dmg;
-    this.ctx.events.emit("PLAYER_HIT", { dmg, srcX, srcZ });
+    this.ctx.events.emit("PLAYER_HIT", { dmg, srcX, srcZ, srcY });
     const dx = p.pos.x - srcX;
     const dz = p.pos.z - srcZ;
     const d = Math.hypot(dx, dz) || 1;
