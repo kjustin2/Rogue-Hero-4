@@ -251,6 +251,7 @@ function startRun(seed = 20260629): void {
   ctx.player.frozen = false;
   ctx.cam.setCinematic(false);
   hud.setLetterbox(false); // a run aborted mid-cutscene must not carry its black bars into the next
+  hud.hideBossCard();      // ...nor the MORDREK title card
   runTime = 0;
   kills = 0;
   streak = 0;
@@ -315,6 +316,12 @@ function updatePlaying(dt: number): void {
   ctx.projectiles.update(dt);
   ctx.combat.update(dt);
   ctx.pickups.update(dt);
+
+  // ONE transition per frame: a subsystem event above may have already changed state this frame
+  // (PLAYER_DIED→dead, WEAPON_OFFER→swap). Stop here — else the wave-clear setState("boon"),
+  // boss-spawn, or victory logic below would CLOBBER it, trapping a dead player in a live run with
+  // no death screen (and silently eating a weapon offer).
+  if (state !== "playing") return;
 
   if (inTutorial) { tutorial.update(dt); return; } // training slice: no gates / boss / victory flow
 

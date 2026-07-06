@@ -236,12 +236,19 @@ export class Input {
   /** Net mouse-wheel notches since last call (scroll down = +1) — for weapon cycling. */
   consumeWheelStep(): number { const s = this.wheelSteps; this.wheelSteps = 0; return s; }
 
+  // per-frame scratch returns — these run every frame on the hottest paths; a fresh literal each
+  // call was steady GC churn. Callers read the result immediately, so a reused object is safe.
+  private _md = { dx: 0, dy: 0 };
+  private _mv = { x: 0, z: 0 };
+  private _aim = { x: 0, z: 0 };
+
   /** Drain accumulated locked-pointer motion (pixels) since last call. */
   consumeMouseDelta(): { dx: number; dy: number } {
-    const d = { dx: this.mouseDX, dy: this.mouseDY };
+    this._md.dx = this.mouseDX;
+    this._md.dy = this.mouseDY;
     this.mouseDX = 0;
     this.mouseDY = 0;
-    return d;
+    return this._md;
   }
 
   // ------------------------------------------------------------ low level
@@ -266,30 +273,40 @@ export class Input {
   // ------------------------------------------------------------ action layer
   actionDown(a: Action): boolean {
     if (!this.enabled) return false;
-    if (this.bindings[a].some((c) => this.codeDown(c))) return true;
-    return (PAD_ACTION[a] ?? []).some((b) => this.padHeld[b]);
+    const codes = this.bindings[a];
+    for (let i = 0; i < codes.length; i++) if (this.codeDown(codes[i])) return true;
+    const pad = PAD_ACTION[a];
+    if (pad) for (let i = 0; i < pad.length; i++) if (this.padHeld[pad[i]]) return true;
+    return false;
   }
 
   actionPressed(a: Action): boolean {
     if (!this.enabled) return false;
-    if (this.bindings[a].some((c) => this.codePressed(c))) return true;
-    return (PAD_ACTION[a] ?? []).some((b) => this.padPressed[b]);
+    const codes = this.bindings[a];
+    for (let i = 0; i < codes.length; i++) if (this.codePressed(codes[i])) return true;
+    const pad = PAD_ACTION[a];
+    if (pad) for (let i = 0; i < pad.length; i++) if (this.padPressed[pad[i]]) return true;
+    return false;
   }
 
   /** Pause edge, ignoring `enabled` (must work while paused) — gamepad Start only; keyboard handled by main. */
   pauseEdgeRaw(): boolean {
-    return (PAD_ACTION.pause ?? []).some((b) => this.padPressed[b]);
+    const pad = PAD_ACTION.pause;
+    if (pad) for (let i = 0; i < pad.length; i++) if (this.padPressed[pad[i]]) return true;
+    return false;
   }
 
   /** Combined keyboard/stick movement direction, magnitude 0..1 (analog from a stick). */
   moveVector(): { x: number; z: number } {
-    if (!this.enabled) return { x: 0, z: 0 };
+    const mv = this._mv;
+    if (!this.enabled) { mv.x = 0; mv.z = 0; return mv; }
     const gx = this.padAxes[0] ?? 0;
     const gz = this.padAxes[1] ?? 0;
     if (Math.hypot(gx, gz) > DEADZONE) {
       const len = Math.hypot(gx, gz);
       const m = Math.min(1, len);
-      return { x: (gx / len) * m, z: (gz / len) * m };
+      mv.x = (gx / len) * m; mv.z = (gz / len) * m;
+      return mv;
     }
     let x = 0, z = 0;
     if (this.actionDown("left")) x -= 1;
@@ -298,7 +315,8 @@ export class Input {
     if (this.actionDown("down")) z += 1;
     const len = Math.hypot(x, z);
     if (len > 1) { x /= len; z /= len; }
-    return { x, z };
+    mv.x = x; mv.z = z;
+    return mv;
   }
 
   /** Right-stick aim direction (world XZ), or null when centered. */
@@ -307,7 +325,8 @@ export class Input {
     const z = this.padAxes[3] ?? 0;
     if (Math.hypot(x, z) < DEADZONE) return null;
     const len = Math.hypot(x, z) || 1;
-    return { x: x / len, z: z / len };
+    this._aim.x = x / len; this._aim.z = z / len;
+    return this._aim;
   }
 
   get usingGamepad(): boolean {
@@ -360,18 +379,19 @@ export class Input {
       if (this.padIndex >= 0 && pads[this.padIndex]) gp = pads[this.padIndex];
       if (!gp) for (const p of pads) if (p && p.connected) { gp = p; break; }
     }
-    this.padPressed = [];
+    this.padPressed.length = 0; // reuse the array (was a fresh [] every frame → GC churn)
     if (!gp) {
       // Backstop the disconnect event (some setups never fire it).
       if (this.gamepadConnected) this.setPadConnected(false);
-      this.padHeld = [];
-      this.padAxes = [];
+      this.padHeld.length = 0;
+      this.padAxes.length = 0;
       return;
     }
     // Backstop the connect event (e.g. a pad already held down before page load).
     if (!this.gamepadConnected) this.setPadConnected(true, gp);
     else { this.padIndex = gp.index; this.padId = gp.id; this.padMapping = gp.mapping; }
-    this.padAxes = Array.from(gp.axes);
+    this.padAxes.length = 0;
+    for (let i = 0; i < gp.axes.length; i++) this.padAxes[i] = gp.axes[i];
     let activity = false;
     for (let i = 0; i < gp.buttons.length; i++) {
       const p = gp.buttons[i].pressed;

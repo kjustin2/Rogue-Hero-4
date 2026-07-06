@@ -4,7 +4,6 @@ import { weaponById } from "./weapons";
 
 interface Shard {
   mesh: THREE.Mesh;
-  mat: THREE.MeshStandardMaterial;
   t: number;
   heal: number;
   alive: boolean;
@@ -35,6 +34,8 @@ export class Pickups {
   private list: Shard[] = [];
   private drops: WeaponDrop[] = [];
   private geo = new THREE.OctahedronGeometry(0.38);
+  // one shared shard material — was a fresh MeshStandardMaterial per drop (never disposed) → per-kill churn
+  private shardMat = new THREE.MeshStandardMaterial({ color: 0x05130d, emissive: COLOR, emissiveIntensity: 2.4, roughness: 0.3 });
 
   constructor(private ctx: Ctx) {}
 
@@ -129,11 +130,10 @@ export class Pickups {
   }
 
   drop(x: number, z: number, heal = 16): void {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x05130d, emissive: COLOR, emissiveIntensity: 2.4, roughness: 0.3 });
-    const mesh = new THREE.Mesh(this.geo, mat);
+    const mesh = new THREE.Mesh(this.geo, this.shardMat);
     mesh.position.set(x, 1, z);
     this.ctx.stage.scene.add(mesh);
-    this.list.push({ mesh, mat, t: 0, heal, alive: true });
+    this.list.push({ mesh, t: 0, heal, alive: true });
   }
 
   clear(): void {

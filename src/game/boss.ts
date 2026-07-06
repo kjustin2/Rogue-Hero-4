@@ -145,6 +145,7 @@ export class Boss implements Hittable {
     this.attacksSinceShift = 0;
     this.anchorIdx = 0;
     this.shiftT = -1;
+    this.spinT = 0; // else a leftover mid-swing reap-spin bleeds into the next boss's rise
     this.fissures.length = 0;
     this.fissHinted = false;
     this.summonT = 25;
@@ -234,8 +235,8 @@ export class Boss implements Hittable {
     this.hp -= dmg;
     this.flash = 1;
     this.ctx.events.emit("BOSS_HP", { hp: Math.max(0, this.hp), maxHp: this.maxHp });
-    if (this.phase === 1 && this.hp <= this.maxHp * 0.5) this.enterPhase2();
-    else if (this.phase === 2 && this.hp <= this.maxHp * 0.25) this.enterPhase3();
+    // death is checked FIRST — a killing blow must never also trip a phase cutscene (which would
+    // freeze the fight and stall/discard the victory killcam).
     if (this.hp <= 0) {
       this.hp = 0;
       this.alive = false;
@@ -244,6 +245,8 @@ export class Boss implements Hittable {
       this.ctx.events.emit("BOSS_DEFEATED", { x: this.pos.x, z: this.pos.z });
       return true;
     }
+    if (this.phase === 1 && this.hp <= this.maxHp * 0.5) this.enterPhase2();
+    else if (this.phase === 2 && this.hp <= this.maxHp * 0.25) this.enterPhase3();
     return false;
   }
 
@@ -600,7 +603,7 @@ export class Boss implements Hittable {
       const along = dx * Math.sin(this.aimAngle) + dz * Math.cos(this.aimAngle);
       const perp = Math.abs(dx * Math.cos(this.aimAngle) - dz * Math.sin(this.aimAngle));
       this.ctx.fx.burst({ x: this.pos.x, y: 1, z: this.pos.z, count: 40, color: this.hitColor, speed: [8, 18], vertical: 0.3, life: [0.3, 0.6] });
-      if (along > 0 && perp <= 3.0) this.ctx.combat.damagePlayer(42, this.pos.x, this.pos.z);
+      if (along > 0 && perp <= 2.5) this.ctx.combat.damagePlayer(42, this.pos.x, this.pos.z); // match the width-5 telegraph strip (half-width 2.5) — was 3.0 = hit 0.5u outside the red lane
     } else if (a === "collapse") {
       for (const t of this.teles) t.cancel();
       this.teles = [];

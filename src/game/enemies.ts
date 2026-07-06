@@ -57,6 +57,10 @@ const COST: Record<EnemyKind, number> = { husk: 2, ghoul: 2, wraith: 3, spitter:
 
 let NEXT_ID = 1;
 const SHOT_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
+// reusable burst options for the PER-FRAME lunge/dive streak trails — burst() reads opts immediately
+// and never retains them, so one shared object per trail avoids an object+3-array alloc every frame.
+const GHOUL_TRAIL = { x: 0, y: 0.8, z: 0, count: 2, color: 0, speed: [0.5, 2] as [number, number], size: [0.16, 0.36] as [number, number], life: [0.12, 0.28] as [number, number], gravity: 0, drag: 4 };
+const DIVE_TRAIL = { x: 0, y: 0, z: 0, count: 2, color: PAL.threat, speed: [0.5, 2] as [number, number], size: [0.12, 0.28] as [number, number], life: [0.1, 0.24] as [number, number], gravity: 0, drag: 4 };
 
 /** A live breakable part on one enemy instance — its own HP pool (the body HP is separate). */
 interface BreakablePart {
@@ -459,8 +463,11 @@ export class Enemy implements Hittable {
           color: PAL.threat, radius: heavy ? 2.2 : 1.3, tilt: heavy ? -0.05 : -0.6, duration: 0.16,
         });
         this.ctx.fx.burst({ x: this.pos.x + fdx * 1.4, y: sy, z: this.pos.z + fdz * 1.4, count: heavy ? 12 : 8, color: PAL.threat, speed: [3, heavy ? 10 : 7], life: [0.2, 0.4] });
-        // in range AND (brute = any direction) OR (others = within the telegraphed lane's cone)
-        const inLane = heavy || nx * fdx + nz * fdz > 0.2; // ~78° each side of the struck line
+        // hit only within the TELEGRAPHED STRIP (line width 1.4 → ~0.9 half incl. the player's body),
+        // not a wide cone — a visible sidestep off the red line must actually dodge it. (brute = radial.)
+        const along = nx * fdx + nz * fdz;                     // player must be in front of the struck lane
+        const perp = dist * Math.abs(nx * fdz - nz * fdx);     // player's perpendicular distance from the lane
+        const inLane = heavy || (along > 0 && perp <= 0.9);
         if (dist <= cfg.attackRange + 0.8 && inLane && !this.disarmed) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
         if (heavy) this.ctx.fx.ring(this.pos.x, this.pos.z, { radius: cfg.attackRange, color: PAL.threat, duration: 0.3 });
         this.state = "recover";
@@ -487,10 +494,17 @@ export class Enemy implements Hittable {
         this.atkLunge = 1; // staff thrusts / bow snaps forward on the shot
         if (!this.disarmed) {
           if (pj.gravity) {
-            // mortar lob along the LOCKED lane; gravity brings it down where the telegraph pointed.
-            // the vertical term uses the stored distance too (live `dist` would re-track the arc)
-            SHOT_DIR.set(this.lungeDir.x * this.atkDist, this.atkDist * 0.55, this.lungeDir.z * this.atkDist);
-            this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 1.6, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape, gravity: pj.gravity, explode: pj.explode });
+            // BALLISTIC lob: solve the horizontal speed so the shell LANDS at the locked range
+            // (atkDist), along the telegraphed lane. Fixed launch pitch (vy0) → constant arc height;
+            // the air time sets vx. spawn() normalizes dir & scales by `speed`, so we encode the true
+            // velocity in SHOT_DIR and pass its magnitude as the speed. (The old code baked atkDist
+            // into a dir that spawn then normalized away → every shell landed at a fixed ~14u.)
+            const y0 = this.cfg.bodyY + 1.6;
+            const g = pj.gravity, vy0 = 7.2;
+            const t = (vy0 + Math.sqrt(vy0 * vy0 + 2 * g * (y0 - 0.25))) / g; // air time back to ground
+            const vx = Math.max(4, this.atkDist) / t;
+            SHOT_DIR.set(this.lungeDir.x * vx, vy0, this.lungeDir.z * vx);
+            this.ctx.projectiles.spawn(this.pos.x, y0, this.pos.z, SHOT_DIR, SHOT_DIR.length(), cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape, gravity: pj.gravity, explode: pj.explode });
           } else {
             SHOT_DIR.set(this.lungeDir.x * this.atkDist, 1.4 - this.cfg.bodyY, this.lungeDir.z * this.atkDist);
             this.ctx.projectiles.spawn(this.pos.x, this.cfg.bodyY + 0.2, this.pos.z, SHOT_DIR, pj.speed, cfg.contactDmg, false, PAL.threat, 2, { shape: pj.shape });
@@ -561,8 +575,9 @@ export class Enemy implements Hittable {
       this.atkLunge = 1; // stay stretched through the dash
       this.pos.x += this.lungeDir.x * 42 * this.speedMult * dt;
       this.pos.z += this.lungeDir.z * 42 * this.speedMult * dt;
-      // streak trail behind the blur
-      this.ctx.fx.burst({ x: this.pos.x, y: 0.8, z: this.pos.z, count: 2, color: cfg.color, speed: [0.5, 2], size: [0.16, 0.36], life: [0.12, 0.28], gravity: 0, drag: 4 });
+      // streak trail behind the blur (reused opts — no per-frame alloc)
+      GHOUL_TRAIL.x = this.pos.x; GHOUL_TRAIL.z = this.pos.z; GHOUL_TRAIL.color = cfg.color;
+      this.ctx.fx.burst(GHOUL_TRAIL);
       if (!this.didHit && dist < this.radius + this.ctx.player.radius + 0.8) {
         this.didHit = true;
         if (!this.disarmed) this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
@@ -632,7 +647,8 @@ export class Enemy implements Hittable {
       this.alt = damp(this.alt, 1.1, 9, dt); // the stoop
       this.pos.x += this.lungeDir.x * 26 * this.speedMult * dt;
       this.pos.z += this.lungeDir.z * 26 * this.speedMult * dt;
-      this.ctx.fx.burst({ x: this.pos.x, y: this.alt, z: this.pos.z, count: 2, color: PAL.threat, speed: [0.5, 2], size: [0.12, 0.28], life: [0.1, 0.24], gravity: 0, drag: 4 });
+      DIVE_TRAIL.x = this.pos.x; DIVE_TRAIL.y = this.alt; DIVE_TRAIL.z = this.pos.z;
+      this.ctx.fx.burst(DIVE_TRAIL);
       if (!this.didHit && this.alt < 2.4 && dist < this.radius + this.ctx.player.radius + 0.9) {
         this.didHit = true;
         this.ctx.combat.damagePlayer(cfg.contactDmg, this.pos.x, this.pos.z);
