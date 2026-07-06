@@ -44,6 +44,9 @@ export class Level {
   readonly group = new THREE.Group();
   /** Boss fight: lock the player into the arena bowl (no retreat down the corridor). Set when the boss activates. */
   lockArena = false;
+  /** Solid free-standing props inside the play area (headstones, sentinels, braziers) — the player is
+   *  pushed out of these so you can't walk through them. Built once in build(); static thereafter. */
+  readonly colliders: { x: number; z: number; r: number }[] = [];
   readonly gates: Gate[] = [];
   private barrierMat: THREE.MeshBasicMaterial[] = [];
   private vt = 0;
@@ -294,6 +297,7 @@ export class Level {
       const fl = this.makeFlame(1.8, false);
       fl.position.set(px, 6.1, pz);
       this.group.add(col, bowl, fl);
+      this.colliders.push({ x: px, z: pz, r: 1.2 }); // solid brazier column — no walking through
     }
 
     // --- warm iron inlay strips across the flags (instanced — ~18 boxes → 1 draw) ---
@@ -340,10 +344,13 @@ export class Level {
     for (const sx of [-1, 1]) {
       for (let z = GATES_Z[0] + 4; z < GATES_Z[1] && gi < graveN; z += 7) {
         const jit = Math.sin(gi * 12.9898); // deterministic lean/scatter, no RNG needed
-        gd.position.set(sx * (HALF_WIDTH - 1.7) - sx * jit * 0.4, 0, z + (sx > 0 ? 7 : 0));
+        const gx = sx * (HALF_WIDTH - 1.7) - sx * jit * 0.4, gz = z + (sx > 0 ? 7 : 0);
+        gd.position.set(gx, 0, gz);
         gd.rotation.set(jit * 0.13, sx * 0.5 + jit * 0.6, Math.sin(gi * 7.13) * 0.14);
         gd.updateMatrix();
         graves.setMatrixAt(gi++, gd.matrix);
+        this.colliders.push({ x: gx, z: gz, r: 0.5 }); // headstone — no walking through
+
       }
     }
     graves.count = gi;
@@ -374,6 +381,7 @@ export class Level {
       st.position.set(sx * (HALF_WIDTH - 2.4), 0, ARENA_BLEND_Z - 3);
       st.rotation.y = sx > 0 ? -0.5 : 0.5; // turned in toward the path
       this.group.add(st);
+      this.colliders.push({ x: sx * (HALF_WIDTH - 2.4), z: ARENA_BLEND_Z - 3, r: 1.5 }); // hulking sentinel — solid
     }
 
     // --- gradient sky dome behind everything ---
@@ -1094,7 +1102,22 @@ export class Level {
   }
 
   /** Keep a body (player or enemy) inside the playable causeway + arena. Mutates pos. */
-  clampPosition(pos: THREE.Vector3, radius: number, keepInArena = false): void {
+  clampPosition(pos: THREE.Vector3, radius: number, keepInArena = false, pushColliders = false): void {
+    // push out of solid props (headstones / sentinels / braziers) FIRST — player-only, so enemy pathing
+    // (which lacks obstacle avoidance) can never wedge on a prop and soft-lock a wave. The world-boundary
+    // clamps below run AFTER, so a push toward a wall can never shove the player through it.
+    if (pushColliders) {
+      for (const c of this.colliders) {
+        const dx = pos.x - c.x, dz = pos.z - c.z;
+        const min = c.r + radius;
+        const d = Math.hypot(dx, dz);
+        if (d < min) {
+          if (d > 1e-4) { pos.x = c.x + (dx / d) * min; pos.z = c.z + (dz / d) * min; }
+          else { pos.x = c.x + min; } // dead-center: shove out along +x
+        }
+      }
+    }
+
     pos.z = Math.max(pos.z, START_Z + radius);
     const closed = this.firstClosedGate();
     if (closed && pos.z > closed.z - radius - 0.6) pos.z = closed.z - radius - 0.6;

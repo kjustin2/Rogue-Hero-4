@@ -84,6 +84,9 @@ REMOVED by user decision (they read worse than the stylized primitives); do not 
 - New materials must be in-scene before `stage.warmUp()` or their first use stalls a frame.
 
 ## Harness (real renderer, never a mock)
+- **ALL Electron test harnesses MUST run MUTED** — every `.cjs` harness calls
+  `win.webContents.setAudioMuted(true)` right after `showInactive()` (a background test must NEVER
+  blare music/sfx). Any new harness/probe adds this line. Hard rule.
 - `npm run typecheck` / `npm run build` — static gates.
 - `npm run smoke` — builds, boots the BUILT game hidden in Electron, drives the full slice
   (title → wave → **boon pick** → arsenal showcase → **charged-heavy/fervor/swap-combo/elite**

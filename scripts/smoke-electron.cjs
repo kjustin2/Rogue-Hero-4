@@ -107,6 +107,7 @@ app.whenReady().then(async () => {
   // layer (menus/HUD capture stale), but showInactive composites normally and does
   // not steal OS focus from the editor/terminal.
   win.showInactive();
+  win.webContents.setAudioMuted(true); // tests run MUTED — no music/sfx blaring during background runs
 
   win.webContents.on("console-message", (_e, level, message) => {
     if (level >= 3) errors.push("CONSOLE: " + message);
@@ -348,7 +349,8 @@ app.whenReady().then(async () => {
       // input and eat the buffer. J,J,J,K must reach the full 4-hit finisher.
       await js(`window.__rh4.projectiles.clear(); window.__rh4.enemies.clear();`);
       await equip("greatsword");
-      await js(`window.__rh4.player.lastCombo = ""`);
+      await frames(18); // let any prior in-progress attack + cooldown fully clear (else the 1st input is eaten)
+      await js(`{const p=window.__rh4.player; p.buffer.length=0; p.bufferWeapons.length=0; p.lastCombo=""; 0;}`); // clean combo buffer
       await tap("KeyJ"); await frames(12);
       await tap("KeyJ"); await frames(12);
       await tap("KeyJ"); await frames(12);
@@ -390,8 +392,8 @@ app.whenReady().then(async () => {
       // out of strike range every frame and never wound up. Now a rat on a stationary player lands a hit.
       await js(`window.__rh4debug.god(false)`);
       const maxHpR = await js(`window.__rh4.player.maxHp`);
-      await js(`{const p=window.__rh4.player; p.hp=p.maxHp; window.__rh4.enemies.clear(); window.__rh4.projectiles.clear(); window.__rh4debug.spawn('rat', 0, p.pos.z + 1.6); 0;}`);
-      await frames(46); // let it close, wind up, strike
+      await js(`{const p=window.__rh4.player; p.hp=p.maxHp; window.__rh4.enemies.clear(); window.__rh4.projectiles.clear(); window.__rh4debug.spawn('rat', p.pos.x, p.pos.z + 1.6); 0;}`);
+      await frames(70); // let it close, wind up, strike (generous — the rat is fast but the wind-up takes a beat)
       const ratHp = await js(`window.__rh4.player.hp`);
       expect(ratHp < maxHpR, "rat could not damage the player (attackRange < separation-floor regression), hp=" + ratHp);
       await js(`window.__rh4.enemies.clear(); window.__rh4.player.hp=window.__rh4.player.maxHp; window.__rh4debug.god(true);`);

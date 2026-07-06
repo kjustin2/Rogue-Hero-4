@@ -13,6 +13,8 @@
     "start": "npm run build && electron .",
     "standalone": "npm run build && electron .",
     "smoke": "npm run build && electron scripts/smoke-electron.cjs",
+    "chaos": "npm run build && electron scripts/chaos-electron.cjs",
+    "soak": "npm run build && electron scripts/soak-electron.cjs",
     "beauty": "npm run build && electron scripts/smoke-electron.cjs",
     "verify": "tsc --noEmit && vite build",
     "package": "npm run build && electron-builder --win portable",

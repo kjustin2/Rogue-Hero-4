@@ -878,7 +878,7 @@ export class Player {
     this.pos.addScaledVector(this.kb, dt);
     this.kb.x = damp(this.kb.x, 0, 9, dt);
     this.kb.z = damp(this.kb.z, 0, 9, dt);
-    this.ctx.level.clampPosition(this.pos, this.radius, true); // player: honor the boss-fight arena lock
+    this.ctx.level.clampPosition(this.pos, this.radius, true, true); // player: arena lock + push out of solid props
     const target = this.dashTime > 0 ? 1 : clamp(Math.hypot(this.vel.x, this.vel.z) / WALK_SPEED, 0, 1);
     this.moveAmount = damp(this.moveAmount, target, 8, dt);
   }

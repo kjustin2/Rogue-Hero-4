@@ -37,6 +37,7 @@ app.whenReady().then(async () => {
     backgroundColor: "#05070a", webPreferences: { backgroundThrottling: false },
   });
   win.showInactive();
+  win.webContents.setAudioMuted(true); // tests run MUTED
   const js = (s) => win.webContents.executeJavaScript(s);
   const tap = async (code) => {
     await js(`window.dispatchEvent(new KeyboardEvent("keydown",{code:"${code}"}))`);

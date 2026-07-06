@@ -31,6 +31,7 @@ app.whenReady().then(async () => {
     backgroundColor: "#05070a", webPreferences: { backgroundThrottling: false },
   });
   win.showInactive();
+  win.webContents.setAudioMuted(true); // tests run MUTED
   const js = (s) => win.webContents.executeJavaScript(s);
   const shot = async (label) => { const img = await win.webContents.capturePage(); fs.writeFileSync(path.join(shotDir, `probe-feel-${label}.png`), img.toPNG()); console.log(`  probe-feel-${label}.png`); };
   await win.loadURL(`http://127.0.0.1:${port}/`);

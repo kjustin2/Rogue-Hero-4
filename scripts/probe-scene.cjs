@@ -40,6 +40,7 @@ app.whenReady().then(async () => {
     backgroundColor: "#05070a", webPreferences: { backgroundThrottling: false },
   });
   win.showInactive();
+  win.webContents.setAudioMuted(true); // tests run MUTED
   const js = (s) => win.webContents.executeJavaScript(s);
   await win.loadURL(`http://127.0.0.1:${port}/`);
   await sleep(4200);

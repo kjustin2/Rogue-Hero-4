@@ -30,6 +30,7 @@ app.whenReady().then(async () => {
   const port = await startServer();
   const win = new BrowserWindow({ width: 1000, height: 700, show: false, paintWhenInitiallyHidden: true, backgroundColor: "#05070a", webPreferences: { backgroundThrottling: false } });
   win.showInactive();
+  win.webContents.setAudioMuted(true); // tests run MUTED
   const js = (s) => win.webContents.executeJavaScript(s);
   const key = (code, type) => js(`window.dispatchEvent(new KeyboardEvent(${JSON.stringify(type)},{code:${JSON.stringify(code)}}))`);
   const tap = async (code) => { await key(code, "keydown"); await key(code, "keyup"); };
