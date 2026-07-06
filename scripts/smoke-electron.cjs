@@ -343,6 +343,22 @@ app.whenReady().then(async () => {
       await tap("KeyK"); await frames(8);
       expect((await js(`window.__rh4.player.lastCombo`)) === "ARROWSTORM", "swap combo did not resolve ARROWSTORM");
 
+      // 4-hit MELEE combo: greatsword SUNDERSTRIKE [L,L,L,H]. Regression for the "4-hit combos don't
+      // fire on melee" bug — a shorter prefix combo (BLADE FLURRY [L,L,L]) used to resolve on the 3rd
+      // input and eat the buffer. J,J,J,K must reach the full 4-hit finisher.
+      await js(`window.__rh4.projectiles.clear(); window.__rh4.enemies.clear();`);
+      await equip("greatsword");
+      await js(`window.__rh4.player.lastCombo = ""`);
+      await tap("KeyJ"); await frames(12);
+      await tap("KeyJ"); await frames(12);
+      await tap("KeyJ"); await frames(12);
+      await tap("KeyK"); await frames(12);
+      expect((await js(`window.__rh4.player.lastCombo`)) === "SUNDERSTRIKE", "greatsword 4-hit SUNDERSTRIKE did not resolve (got '" + (await js(`window.__rh4.player.lastCombo`)) + "')");
+
+      // BOONS never repeat: a claimed boon is excluded from every later offer this run.
+      const boonDupe = await js(`(() => { const taken=['leech','wind','execute','bulwark']; for (let i=0;i<40;i++){ const ids=window.__rh4debug.boonSample(taken); if (ids.some(id=>taken.includes(id))) return ids; } return null; })()`);
+      expect(boonDupe === null, "a claimed boon was re-offered: " + JSON.stringify(boonDupe));
+
       // elite: promoted enemy is tougher and always drops a shard on death
       // (clear the swap-combo's in-flight ARROWSTORM barrage first, or it shreds the fresh spawn)
       await js(`window.__rh4.projectiles.clear(); window.__rh4.enemies.clear();`);

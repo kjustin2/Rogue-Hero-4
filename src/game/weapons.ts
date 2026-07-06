@@ -126,7 +126,9 @@ export const WEAPONS: WeaponDef[] = [
     combos: [
       { name: "SUNDERSTRIKE", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.4, effect: "slam", radius: 6.0, color: EMBER },
       { name: "EARTHSHAKER", recipe: ["heavy", "heavy", "heavy"], tier: 2, damageMult: 2.6, effect: "slam", radius: 6.5, color: 0xffd24a },
-      { name: "BLADE FLURRY", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.2, effect: "slam", radius: 4.5, color: EMBER },
+      // NB: must NOT be a prefix of SUNDERSTRIKE [L,L,L,H] — a shorter prefix combo resolves first on
+      // the 3rd input and clears the buffer, making the 4-hit finisher unreachable (see self-check).
+      { name: "BLADE FLURRY", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.2, effect: "slam", radius: 4.5, color: EMBER },
     ],
   },
   {
@@ -212,6 +214,20 @@ export function weaponComboSelfCheck(): string[] {
       if (m?.name !== c.name) fail.push(`${w.id}: recipe ${c.name} did not self-match (got ${m?.name ?? "null"})`);
       // hard rule: no combo may be a 2-move (or shorter) recipe — every combo needs >= 3 inputs
       if (c.recipe.length < 3) fail.push(`${w.id}: combo ${c.name} has only ${c.recipe.length} moves (min 3)`);
+      // REACHABILITY: replay the recipe input-by-input the way combat resolves it (greedily, clearing
+      // the buffer on the first match). If any SHORTER combo resolves before the full recipe is entered,
+      // this combo can never fire (a shorter prefix combo shadows it — the un-completable-4-hit bug).
+      const buf: Slot[] = [];
+      for (let k = 0; k < c.recipe.length; k++) {
+        buf.push(c.recipe[k]);
+        const hit = matchWeaponCombo(buf, w);
+        if (hit) { // greedy resolution would fire here and clear the buffer
+          if (!(k === c.recipe.length - 1 && hit.name === c.name)) {
+            fail.push(`${w.id}: combo ${c.name} is UNREACHABLE — ${hit.name} resolves first after ${k + 1} input(s)`);
+          }
+          break;
+        }
+      }
     }
     const first = w.combos[0];
     if (first && matchWeaponCombo(["heavy", ...first.recipe], w)?.name !== first.name) {

@@ -93,6 +93,7 @@ let bossSpawned = false;
 let triggered: boolean[] = ctx.level.gates.map(() => false);
 let victoryQueued = 0;
 let offeredWeapon = ""; // claimed at the 5-weapon cap — resolved on the swap screen
+const takenBoons = new Set<string>(); // boons claimed this run — never re-offered
 const CINE_LEN = 3.4; // boss-intro cutscene length
 let cineT = 0; // boss-intro cutscene timer (>0 = cutscene running)
 let cineBeatT = 0; // ticks down to fire the next scripted ripple/beam beat
@@ -187,7 +188,8 @@ function setState(s: State): void {
   } else if (s === "boon") {
     // between-gate decision beat: the world holds while the player claims a boon
     ctx.input.unlockPointer();
-    menus.showBoons(pick3(ctx.rng), (b) => {
+    menus.showBoons(pick3(ctx.rng, takenBoons), (b) => {
+      takenBoons.add(b.id); // never offer the same boon twice in a run
       b.apply(ctx.player.mods);
       if (b.id === "vigor") { ctx.player.maxHp += 25; ctx.player.hp = Math.min(ctx.player.maxHp, ctx.player.hp + 25); }
       ctx.sfx.unlockFanfare();
@@ -229,6 +231,7 @@ function newSeed(): number {
 
 function startRun(seed = 20260629): void {
   inTutorial = false;
+  takenBoons.clear();
   ctx.rng.reseed(seed);
   ctx.player.reset(PLAYER_SPAWN);
   ctx.cam.yaw = Math.PI;
@@ -541,6 +544,9 @@ w.__rh4debug = {
   tutorial: () => startTutorial(),
   tutorialActive: () => tutorial.active,
   inTutorial: () => inTutorial,
+  // boon-dedup test seam: sample a boon offer given a set of already-claimed ids
+  boonSample: (taken: string[] = []) => pick3(ctx.rng, new Set(taken)).map((b) => b.id),
+  takenBoons: () => [...takenBoons],
 };
 
 // --------------------------------------------------------------------- finish boot

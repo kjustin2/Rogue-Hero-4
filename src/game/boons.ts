@@ -60,9 +60,9 @@ export const BOONS: BoonDef[] = [
   { id: "vigor", name: "WARDEN'S VIGOR", desc: "+25 max vitality, fully healed now", icon: "❤️", accent: GUARD, tier: "epic", apply: () => { /* handled at pick: raises maxHp+hp */ } },
 ];
 
-/** Three distinct random boons for the choice screen. */
-export function pick3(rng: Rng): BoonDef[] {
-  const pool = [...BOONS];
+/** Three distinct random boons for the choice screen, excluding any already claimed this run. */
+export function pick3(rng: Rng, taken?: ReadonlySet<string>): BoonDef[] {
+  const pool = BOONS.filter((b) => !taken?.has(b.id));
   const out: BoonDef[] = [];
   for (let i = 0; i < 3 && pool.length; i++) {
     out.push(pool.splice(rng.int(0, pool.length - 1), 1)[0]);
