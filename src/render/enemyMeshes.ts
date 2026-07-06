@@ -34,7 +34,8 @@ const RUST = new THREE.MeshStandardMaterial({ color: 0x50301c, roughness: 0.78, 
 const STONE = new THREE.MeshStandardMaterial({ color: 0x4c463e, roughness: 0.9, metalness: 0.08, envMapIntensity: 0.6, emissive: 0x14110c, emissiveIntensity: 0.4 });
 const WOOD = new THREE.MeshStandardMaterial({ color: 0x4a341e, roughness: 0.9, metalness: 0.04, envMapIntensity: 0.4 });
 const VOID = new THREE.MeshBasicMaterial({ color: 0x030204 });
-for (const m of [BONE, BONE_DK, CLOTH, CLOTH_RAG, IRON, RUST, STONE, WOOD, VOID]) m.userData.shared = true;
+const FLESH = new THREE.MeshStandardMaterial({ color: 0x515c44, roughness: 0.95, metalness: 0.03, envMapIntensity: 0.35, emissive: 0x121509, emissiveIntensity: 0.35 }); // sickly grey-green necrotic (ghoul)
+for (const m of [BONE, BONE_DK, CLOTH, CLOTH_RAG, IRON, RUST, STONE, WOOD, VOID, FLESH]) m.userData.shared = true;
 
 /** The shared medieval material language — bossMesh builds from the same box. */
 export const MATS = { BONE, BONE_DK, CLOTH, CLOTH_RAG, IRON, RUST, STONE, WOOD, VOID } as const;
@@ -177,11 +178,11 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
     shield.rotation.set(0, 0.5, 0.1);
     const tabard = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.7, 0.03), CLOTH_RAG);
     tabard.position.set(0, 1.35, 0.36);
-    const chevron = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.035), acc);
-    chevron.position.set(0, 1.42, 0.37); chevron.rotation.z = 0.5;
-    const chevron2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.06, 0.035), acc);
-    chevron2.position.set(0, 1.42, 0.37); chevron2.rotation.z = -0.5;
-    group.add(shield, tabard, chevron, chevron2);
+    // a faded heraldic PALE (single vertical bar) painted on the tabard — muted rust, not a bright
+    // crossed-chevron "bowtie" (the old two-acc-box device read as a cartoon bowtie).
+    const device = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.52, 0.035), RUST);
+    device.position.set(0, 1.34, 0.37);
+    group.add(shield, tabard, device);
     tatters(group, 0.56, 0.15, 6, 0.5, CLOTH_RAG);
     // the falchion: broad single-edge blade, iron guard, leather grip
     const sword = new THREE.Group();
@@ -261,14 +262,17 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
     }
     const shroud = new THREE.Mesh(new THREE.LatheGeometry(shroudPts, 9), CLOTH);
     shroud.castShadow = true;
-    const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.8, 9), CLOTH_RAG);
-    cowl.position.y = 0.95;
-    const cowlMouth = new THREE.Mesh(new THREE.SphereGeometry(0.2, 9, 7), VOID);
-    cowlMouth.position.set(0, 0.72, 0.08);
-    core = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 6), coreMat); // the baleful eye
-    core.position.set(0, 0.72, 0.2);
+    // a narrow, tall HOOD (not a wide traffic-cone) — the pointed cowl of a shrouded specter
+    const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.98, 9), CLOTH_RAG);
+    cowl.position.y = 1.0;
+    const cowlMouth = new THREE.Mesh(new THREE.SphereGeometry(0.22, 9, 7), VOID);
+    cowlMouth.position.set(0, 0.74, 0.08);
+    core = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), coreMat); // a small baleful eye deep in the hood (not a bloom-blown blob)
+    core.position.set(0, 0.74, 0.22);
     group.add(shroud, cowl, cowlMouth, core);
-    tatters(group, 0.34, -0.9, 5, 0.8, CLOTH_RAG);
+    // a shredded, drifting shroud — many long torn strips so the silhouette reads as tattered cloth, not a solid cone
+    tatters(group, 0.44, -0.7, 9, 1.3, CLOTH_RAG);
+    tatters(group, 0.3, 0.4, 6, 0.9, CLOTH);
     for (const sx of [-1, 1]) {
       const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.035, 0.85, 5), CLOTH);
       arm.position.set(sx * 0.42, 0.35, 0.24); arm.rotation.set(0.7, 0, sx * 1.15);
@@ -292,18 +296,20 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
     const bladeGlint = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.018, 4, 14, Math.PI * 0.75), acc);
     bladeGlint.position.copy(bladeArc.position); bladeGlint.rotation.copy(bladeArc.rotation);
     scythe.add(haft, tang, bladeArc, bladeGlint);
-    scythe.position.set(0.5, 0.0, 0.15);
-    scythe.rotation.set(0.2, 0, 0.15);
+    // held forward and across the body so the curved blade breaks the cone outline (reads as a reaper)
+    scythe.position.set(0.42, 0.0, 0.45);
+    scythe.rotation.set(0.25, -0.5, 0.12);
     group.add(scythe);
     weapon = scythe;
   } else if (kind === "ghoul") {
     // feral flesh-eater: deep hunch, spine ridge, rib cage, skull with a hanging jaw,
     // knuckle-walking claw arms
-    const torso = new THREE.Mesh(new THREE.SphereGeometry(0.42, 9, 7), BONE_DK);
-    torso.position.set(0, 0.9, 0); torso.scale.set(0.85, 1.15, 1.25); torso.rotation.x = 0.7;
+    // gaunt necrotic torso — narrow (not a pale round marshmallow), sickly grey-green flesh
+    const torso = new THREE.Mesh(new THREE.SphereGeometry(0.42, 9, 7), FLESH);
+    torso.position.set(0, 0.9, 0); torso.scale.set(0.62, 1.2, 1.15); torso.rotation.x = 0.7;
     torso.castShadow = true;
-    const hips = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), CLOTH_RAG);
-    hips.position.set(0, 0.62, -0.42);
+    const hips = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 6), FLESH);
+    hips.position.set(0, 0.62, -0.42); hips.scale.set(0.75, 1, 1);
     // spine ridge spikes
     for (let i = 0; i < 5; i++) {
       const sp = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.22 - i * 0.02, 4), BONE);
@@ -317,10 +323,10 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
       group.add(rib);
     }
     const head = skull(1.1);
-    head.position.set(0, 1.3, 0.5);
-    head.rotation.x = 0.25;
-    core = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.045, 0.05), coreMat); // burning glare
-    core.position.set(0, 1.28, 0.74);
+    head.position.set(0, 1.22, 0.62); // lunged forward + low — the emaciated skull leads the silhouette
+    head.rotation.x = 0.32;
+    core = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.04, 0.05), coreMat); // burning glare
+    core.position.set(0, 1.2, 0.86);
     // haunches (it crouches on digitigrade legs)
     legs = [];
     for (const sx of [-1, 1]) {
@@ -588,25 +594,21 @@ function buildBody(kind: EnemyKind, color: number, coreMat: THREE.MeshStandardMa
   } else {
     // brute: an ogre-sized executioner — stacked furnace plates with ember seams,
     // riveted pauldrons, horned great-helm, a chained colossal cleaver
-    const hips2 = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.0, 1.0, 9), CLOTH);
+    const hips2 = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 1.0, 1.0, 8), CLOTH);
     hips2.position.y = 0.6; hips2.castShadow = true;
-    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.95, 10, 8), IRON);
-    belly.position.y = 1.6; belly.scale.set(1, 0.9, 0.85); belly.castShadow = true;
-    const chest2 = new THREE.Mesh(new THREE.SphereGeometry(0.85, 10, 8), IRON);
-    chest2.position.y = 2.35; chest2.scale.set(1.15, 0.8, 0.9); chest2.castShadow = true;
+    // stacked ANGULAR armor plates (octagonal drums), not round beach-balls
+    const belly = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 1.06, 0.95, 8), IRON);
+    belly.position.y = 1.6; belly.scale.set(1, 1, 0.82); belly.castShadow = true;
+    const chest2 = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.94, 0.9, 8), IRON);
+    chest2.position.y = 2.4; chest2.scale.set(1.12, 1, 0.9); chest2.castShadow = true;
     // ember seams between the plates
-    for (const [y, r] of [[1.98, 0.86], [1.22, 0.8]] as const) {
-      const seam = new THREE.Mesh(new THREE.TorusGeometry(r, 0.04, 5, 14), acc);
+    for (const [y, r] of [[1.98, 0.9], [1.16, 0.86]] as const) {
+      const seam = new THREE.Mesh(new THREE.TorusGeometry(r, 0.04, 5, 20), acc);
       seam.position.y = y; seam.rotation.x = Math.PI / 2;
       group.add(seam);
     }
-    core = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.12), coreMat); // furnace heart grate
-    core.position.set(0, 1.75, 0.82);
-    for (let i = 0; i < 4; i++) {
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.45, 0.06), IRON);
-      bar.position.set(-0.18 + i * 0.12, 1.75, 0.9);
-      group.add(bar);
-    }
+    core = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.56, 0.1), coreMat); // a vertical furnace CRACK (heat leaking from the plates) — not a grille "mouth" with teeth
+    core.position.set(0, 1.75, 0.86);
     const aventail = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.62, 0.5, 8, 1, true), RUST);
     aventail.position.y = 2.78;
     group.add(aventail);

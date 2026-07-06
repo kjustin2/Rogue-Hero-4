@@ -36,13 +36,16 @@ app.whenReady().then(async () => {
   await sleep(4200);
   await js(`document.getElementById('rift-loader')?.remove()`);
   await js(`window.__rh4debug.start(); window.__rh4debug.god(true); window.__rh4.input.pointerLocked = true;`);
-  await js(`[0,1,2].forEach(i=>window.__rh4.level.openGate(i)); window.__rh4.enemies.clear();`);
+  // PORTRAIT MODE: hide HUD + the weapon viewmodel + clear pickups so the creature is the only subject
+  await js(`[0,1,2].forEach(i=>window.__rh4.level.openGate(i)); window.__rh4.enemies.clear(); window.__rh4.pickups.clear();`);
+  await js(`{const h=document.getElementById('hud'); if(h) h.style.display='none'; window.__rh4.player.vm.visible=false; 0;}`);
 
   for (const k of KINDS) {
-    await js(`window.__rh4.enemies.clear()`);
-    // spawn one, hold it in place facing the camera, frame it at portrait distance
-    await js(`{const p=window.__rh4.player; const e=window.__rh4debug.spawn('${k}', p.pos.x, p.pos.z + 6); window.__rh4.cam.yaw=Math.PI; window.__rh4.cam.pitch=0.02; 0;}`);
-    await js(`window.__rh4debug.frames(30)`); // let it settle into a stance / low pass (gargoyle)
+    await js(`window.__rh4.enemies.clear(); window.__rh4.tele.clear && window.__rh4.tele.clear();`);
+    // spawn one ~6.5u ahead, FREEZE it (no attack/telegraph), frame its whole body (look slightly down at its centre)
+    await js(`{const p=window.__rh4.player; const e=window.__rh4debug.spawn('${k}', p.pos.x, p.pos.z + 6.5); e.frozen = 999; window.__rh4.cam.yaw=Math.PI; window.__rh4.cam.pitch=-0.05; 0;}`);
+    await js(`window.__rh4debug.frames(24)`); // settle stance / gargoyle low pass
+    await js(`{const e=window.__rh4.enemies.living()[0]; if(e){e.frozen=999;} window.__rh4.tele.clear && window.__rh4.tele.clear(); 0;}`);
     await sleep(220);
     await shot(k);
   }

@@ -26,7 +26,7 @@ interface KindCfg {
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
   husk: { hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
-  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x8ad26a, bodyY: 1.0, proj: { speed: 17, shape: "skull", interval: 1.45 } }, // witchfire caster: hurls wailing skulls
+  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x4fd6b0, bodyY: 1.0, proj: { speed: 17, shape: "skull", interval: 1.45 } }, // witchfire caster: hurls wailing skulls (sickly jade-teal, on-palette — was cartoon lime green)
   brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
   wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
   ghoul: { hp: 20, radius: 0.5, speed: 13.5, contactDmg: 12, attackRange: 2.2, windup: 0.26, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast (base speed stays under the player's 14)
@@ -143,7 +143,7 @@ export class Enemy implements Hittable {
     this.hp = this.maxHp = this.cfg.hp;
     this.hitColor = this.cfg.color;
 
-    this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.cfg.color, emissiveIntensity: 1.6, roughness: 0.4, metalness: 0.2 });
+    this.coreMat = new THREE.MeshStandardMaterial({ color: 0x05060d, emissive: this.cfg.color, emissiveIntensity: 1.1, roughness: 0.4, metalness: 0.2 });
     const parts = buildEnemyMesh(kind, this.cfg.color, this.coreMat);
     this.group = parts.group;
     this.core = parts.core;
@@ -201,7 +201,7 @@ export class Enemy implements Hittable {
     this.burstT = -1;
     if (this.crown) this.crown.visible = false;
     this.radius = this.cfg.radius;
-    this.coreMat.emissiveIntensity = 1.6;
+    this.coreMat.emissiveIntensity = 1.1;
     this.group.visible = true;
     this.group.scale.setScalar(1);
     this.group.rotation.set(0, 0, 0);
@@ -354,7 +354,7 @@ export class Enemy implements Hittable {
     this.flash = Math.max(0, this.flash - dt * 4);
     this.flinch = Math.max(0, this.flinch - dt * 5);
     // ponytail: charge glow capped lower (2.0, was 3.5) — a clustered pack winding up at 5x emissive bloomed to a full-white frame
-    this.coreMat.emissiveIntensity = 1.4 + this.flash * 2.2 + this.atkCharge * 1.2;
+    this.coreMat.emissiveIntensity = 0.95 + this.flash * 2.4 + this.atkCharge * 1.3; // rest dimmer so teal cores survive bloom as teal (not white blobs); flash/charge still spike bright
     if (this.core) { this.core.rotation.y += dt * 2.2; this.core.rotation.x += dt * 1.4; }
     if (this.crown?.visible) this.crown.rotation.y += dt * 3;
 
