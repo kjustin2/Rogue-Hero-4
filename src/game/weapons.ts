@@ -115,7 +115,7 @@ export const WEAPONS: WeaponDef[] = [
     combos: [
       { name: "ARROWSTORM", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.0, effect: "barrage", radius: 4.5, color: GOLD },
       { name: "SPLIT VOLLEY", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.2, effect: "bolts", radius: 0, color: GOLD },
-      { name: "THORNBURST", recipe: ["heavy", "heavy"], tier: 2, damageMult: 2.0, effect: "bolts", radius: 0, color: GOLD },
+      { name: "THORNBURST", recipe: ["heavy", "heavy", "heavy"], tier: 2, damageMult: 2.4, effect: "bolts", radius: 0, color: GOLD },
     ],
   },
   {
@@ -125,7 +125,7 @@ export const WEAPONS: WeaponDef[] = [
     heavy: melee({ damage: 50, cooldown: 0.55, arc: 2.8, range: 3.9, windup: 0.1, active: 0.18, recovery: 0.15, knockback: 12, recoil: -9, chargeMax: 0.9, chargeMult: 2.0 }),
     combos: [
       { name: "SUNDERSTRIKE", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.4, effect: "slam", radius: 6.0, color: EMBER },
-      { name: "EARTHSHAKER", recipe: ["heavy", "heavy"], tier: 2, damageMult: 2.6, effect: "slam", radius: 6.5, color: 0xffd24a },
+      { name: "EARTHSHAKER", recipe: ["heavy", "heavy", "heavy"], tier: 2, damageMult: 2.6, effect: "slam", radius: 6.5, color: 0xffd24a },
       { name: "BLADE FLURRY", recipe: ["light", "light", "light"], tier: 2, damageMult: 2.2, effect: "slam", radius: 4.5, color: EMBER },
     ],
   },
@@ -137,7 +137,7 @@ export const WEAPONS: WeaponDef[] = [
     heavy: rocket({ damage: 36, cooldown: 1.05, explodeRadius: 6.0, speed: 22, gravity: 26, windup: 0.2, recovery: 0.18, knockback: 12, recoil: 16, chargeMax: 0.9, chargeMult: 1.8 }),
     combos: [
       { name: "CANNONADE", recipe: ["light", "light", "heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "rocketvolley", radius: 4.0, color: RED },
-      { name: "SIEGEBREAKER", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.6, effect: "rocketvolley", radius: 4.6, color: RED },
+      { name: "SIEGEBREAKER", recipe: ["heavy", "heavy", "heavy"], tier: 3, damageMult: 2.6, effect: "rocketvolley", radius: 4.6, color: RED },
     ],
   },
   {
@@ -148,7 +148,7 @@ export const WEAPONS: WeaponDef[] = [
     heavy: laser({ damage: 34, cooldown: 1.0, beamWidth: 3.0, beamRange: 56, windup: 0.32, recovery: 0.2, knockback: 6, recoil: 8, chargeMax: 0.9, chargeMult: 2.0 }),
     combos: [
       { name: "RADIANT LANCE", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.0, effect: "megabeam", radius: 3.6, color: CYAN },
-      { name: "PRISM WRATH", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "megabeam", radius: 4.2, color: CYAN },
+      { name: "PRISM WRATH", recipe: ["heavy", "heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "megabeam", radius: 4.2, color: CYAN },
     ],
   },
   {
@@ -158,7 +158,7 @@ export const WEAPONS: WeaponDef[] = [
     heavy: airstrike({ damage: 30, cooldown: 1.1, strikeCount: 3, strikeRadius: 4.2, strikeRange: 17, windup: 0.16, knockback: 8, recoil: 4 }),
     combos: [
       { name: "STORMFALL", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 2.6, effect: "airstrike", radius: 4.6, color: VIOLET },
-      { name: "HEAVEN'S WRATH", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "airstrike", radius: 4.8, color: 0xffe6b0 },
+      { name: "HEAVEN'S WRATH", recipe: ["heavy", "heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "airstrike", radius: 4.8, color: 0xffe6b0 },
     ],
   },
   {
@@ -169,7 +169,7 @@ export const WEAPONS: WeaponDef[] = [
     combos: [
       { name: "MOUNTAINFALL", recipe: ["light", "light", "light", "heavy"], tier: 3, damageMult: 3.2, effect: "slam", radius: 7.0, color: 0xff8c3a },
       { name: "QUAKESTEP", recipe: ["light", "light", "heavy"], tier: 2, damageMult: 2.6, effect: "slam", radius: 6.0, color: 0xff8c3a },
-      { name: "AFTERSHOCK", recipe: ["heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "slam", radius: 8.0, color: 0xffd24a },
+      { name: "AFTERSHOCK", recipe: ["heavy", "heavy", "heavy"], tier: 3, damageMult: 2.8, effect: "slam", radius: 8.0, color: 0xffd24a },
     ],
   },
   {
@@ -210,6 +210,8 @@ export function weaponComboSelfCheck(): string[] {
     for (const c of w.combos) {
       const m = matchWeaponCombo(c.recipe, w);
       if (m?.name !== c.name) fail.push(`${w.id}: recipe ${c.name} did not self-match (got ${m?.name ?? "null"})`);
+      // hard rule: no combo may be a 2-move (or shorter) recipe — every combo needs >= 3 inputs
+      if (c.recipe.length < 3) fail.push(`${w.id}: combo ${c.name} has only ${c.recipe.length} moves (min 3)`);
     }
     const first = w.combos[0];
     if (first && matchWeaponCombo(["heavy", ...first.recipe], w)?.name !== first.name) {

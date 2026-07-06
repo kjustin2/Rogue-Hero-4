@@ -29,7 +29,15 @@ REMOVED by user decision (they read worse than the stylized primitives); do not 
   recorded), run stats, meta-save writes, and the **`window.__rh4`**
   seam (`__rh4debug.scenario/frames/checkCombos/drainWave/tutorial/tutorialActive`, `__rh4perf`).
 - **`src/game/tutorial.ts`** — verb-gated first-run training (move→light→dodge→heavy→combo→swap),
-  flags latched off the event bus, reuses `hud.setTutorial()`; replayable from the title's TUTORIAL button.
+  reuses `hud.setTutorial()`; replayable from the title's TUTORIAL button. Each step latches on the
+  ACTION PERFORMED, never on landing a hit: light/heavy off the **`ATTACK`** event (`ENEMY_HIT.heavy`
+  is the CRIT flag AND projectiles drop heavy identity, so a ranged heavy never latched it — that was
+  the un-completable-heavy-step bug), dodge off `DODGE` (fires on the dash INPUT), combo off
+  `COMBO_RESOLVE`, swap off `WEAPON_SWITCH`. Latches are **step-gated** (only the current step's verb
+  counts — else a stray input pre-skips a later lesson). Training is **god-mode** (`ctx.player.god`
+  set in `startTutorial`, cleared in `finishTutorial` AND on `setState("title")` so it never leaks) —
+  you cannot die; the 2nd weapon is granted only when the SWAP step begins (so no early swap breaks
+  the boltcaster-only combo hint).
 - **`src/game/`** — sim: `ctx.ts` (type-only hub), `weapons.ts` (arsenal catalog + chargeable
   heavies + `matchWeaponCombo`/self-check), `player.ts` (FP controller, charge/fervor/swap-combo
   buffer, PlayerMods read sites, per-weapon procedural viewmodels), `combat.ts` (the one damage funnel; `modifyIncoming` hook for shielded elites;
@@ -140,6 +148,9 @@ REMOVED by user decision (they read worse than the stylized primitives); do not 
 - **Arena lock**: `level.lockArena` (set true when the boss activates in main; cleared in `Level.reset`)
   makes `clampPosition(pos, radius, keepInArena=true)` pin the player inside the arena bowl — no
   retreating down the corridor once the boss fight starts. The player passes `keepInArena=true`.
+- **No 2-move combos**: every weapon combo recipe MUST be ≥3 inputs (`weaponComboSelfCheck` fails
+  otherwise; the smoke asserts `checkCombos()` is empty). Recipes ≤1.3s between inputs to stay in the
+  combo window (`COMBO_WINDOW`); all heavy cooldowns are <1.3s so `[H,H,H]` is chainable everywhere.
 - `shots/` is gitignored and accumulates stale files — wipe or mtime-filter before judging
   screenshots.
 - Windows/Git Bash: large heredocs fail — write a script file to the scratchpad and run it.

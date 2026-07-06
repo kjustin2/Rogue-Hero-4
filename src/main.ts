@@ -149,6 +149,7 @@ function setState(s: State): void {
   ctx.playing = s === "playing";
   if (s === "title") {
     inTutorial = false;
+    ctx.player.god = false; // never carry training invulnerability out of an abandoned tutorial
     ctx.stage.setLowCost(true);
     ctx.input.unlockPointer();
     hud.setVisible(false);
@@ -268,10 +269,12 @@ function unlockAudio(): void {
 function startTutorial(): void {
   startRun(newSeed());     // full reset (level/enemies/player), then override into training
   inTutorial = true;
+  ctx.player.god = true;   // training is non-lethal — you CANNOT die (dodge still latches on the dash input, not on being hit)
   ctx.enemies.clear();
   ctx.pickups.clear();     // no on-ground weapon pickup during training
   ctx.level.lockArena = false;
-  if (!ctx.player.weapons.includes("greatsword")) ctx.player.weapons.push("greatsword"); // 2nd weapon → the swap lesson works
+  // the 2nd weapon is granted only at the SWAP step (tutorial.ts) — until then there's just the
+  // boltcaster, so the player can't swap away and break the combo lesson's "L,L,RMB" hint.
   tutorial.onComplete = finishTutorial;
   tutorial.start();
 }
@@ -280,6 +283,7 @@ function finishTutorial(): void {
   save.tutorialDone = true;
   writeSave(save);
   inTutorial = false;
+  ctx.player.god = false;  // lift the training invulnerability
   setState("title");
 }
 

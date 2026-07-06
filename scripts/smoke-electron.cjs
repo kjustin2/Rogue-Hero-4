@@ -524,15 +524,17 @@ app.whenReady().then(async () => {
       await js(`window.__rh4debug.tutorial()`);
       expect(await js(`window.__rh4debug.tutorialActive()`), "tutorial did not start");
       await shot(win, "tutorial");
+      expect(await js(`window.__rh4.player.god === true`), "training must be invulnerable (god on)");
       await js(`window.__rh4.player.pos.z += 5`); await frames(3);                                    // move
-      await js(`window.__rh4.events.emit('ENEMY_HIT', {x:0,y:1,z:0,dmg:5,heavy:false,killed:false})`); await frames(3); // light hit
-      await js(`window.__rh4.events.emit('DODGE', {})`); await frames(3);                              // dodge
-      await js(`window.__rh4.events.emit('ENEMY_HIT', {x:0,y:1,z:0,dmg:9,heavy:true,killed:false})`); await frames(3);  // heavy
-      await js(`window.__rh4.events.emit('COMBO_RESOLVE', {name:'ARROWSTORM'})`); await frames(3);     // combo finisher
+      await js(`window.__rh4.events.emit('ATTACK', {slot:'light'})`); await frames(3);                // light attack (performed, not a hit)
+      await js(`window.__rh4.events.emit('DODGE', {})`); await frames(3);                             // dodge
+      await js(`window.__rh4.events.emit('ATTACK', {slot:'heavy'})`); await frames(3);                // heavy attack (performed)
+      await js(`window.__rh4.events.emit('COMBO_RESOLVE', {name:'SPLIT VOLLEY', tier:2})`); await frames(3); // combo finisher
       await js(`window.__rh4.events.emit('WEAPON_SWITCH', {id:'boltcaster', name:'HEAVY CROSSBOW'})`); await frames(3); // swap
       await frames(95); // run out the "training complete" hold
       expect(await js(`window.__rh4state()==='title'`), "tutorial did not finish back to the main menu");
       expect(await js(`!window.__rh4debug.tutorialActive()`), "tutorial still active after completing");
+      expect(await js(`window.__rh4.player.god === false`), "training invulnerability leaked past the tutorial");
       expect(await js(`JSON.parse(localStorage.getItem('rh4-save')||'{}').tutorialDone === true`), "tutorial completion did not persist tutorialDone");
 
     } catch (e) {

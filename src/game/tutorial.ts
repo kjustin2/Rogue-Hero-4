@@ -9,10 +9,10 @@ import type { Hud } from "../ui/hud";
  */
 const STEPS: string[] = [
   "Move with  W A S D   ·   (or the left stick)",
-  "Aim with the mouse — LEFT-CLICK to strike the husk",
-  "Press  SPACE  to DASH — roll through a blow for a PERFECT DODGE",
-  "Hold  RIGHT-CLICK  for a heavy strike",
-  "String hits together into a COMBO FINISHER",
+  "Aim with the mouse — LEFT-CLICK for a light strike",
+  "Press  SPACE  to DASH — its i-frames roll you through danger",
+  "RIGHT-CLICK for a HEAVY strike  ·  (hold to charge some weapons)",
+  "Chain  LEFT, LEFT, RIGHT-CLICK  into a COMBO FINISHER",
   "Press  E  to SWAP your weapon",
   "TRAINING COMPLETE  ·  The Rift awaits.",
 ];
@@ -25,13 +25,17 @@ export class Tutorial {
   private doneTimer = -1;
   private lastX = 0;
   private lastZ = 0;
-  private flags = { hit: false, dodged: false, heavy: false, combo: false, swapped: false };
+  // verbs latch on the ACTION performed (ATTACK/DODGE/COMBO_RESOLVE/WEAPON_SWITCH) — never on
+  // landing a hit, so a missed shot or an absent target can't soft-lock a step.
+  private flags = { light: false, dodged: false, heavy: false, combo: false, swapped: false };
 
   constructor(private ctx: Ctx, private hud: Hud) {
-    ctx.events.on("ENEMY_HIT", (e) => { if (this.active) { this.flags.hit = true; if (e.heavy) this.flags.heavy = true; } });
-    ctx.events.on("DODGE", () => { if (this.active) this.flags.dodged = true; });
-    ctx.events.on("COMBO_RESOLVE", () => { if (this.active) this.flags.combo = true; });
-    ctx.events.on("WEAPON_SWITCH", () => { if (this.active) this.flags.swapped = true; });
+    // latch ONLY the current step's verb — else experimenting early (a stray RMB during the light
+    // lesson, an E while a 2nd weapon is already granted) pre-completes a later step and skips it.
+    ctx.events.on("ATTACK", (e) => { if (!this.active) return; if (this.step === 1 && e.slot === "light") this.flags.light = true; else if (this.step === 3 && e.slot === "heavy") this.flags.heavy = true; });
+    ctx.events.on("DODGE", () => { if (this.active && this.step === 2) this.flags.dodged = true; });
+    ctx.events.on("COMBO_RESOLVE", () => { if (this.active && this.step === 4) this.flags.combo = true; });
+    ctx.events.on("WEAPON_SWITCH", () => { if (this.active && this.step === 5) this.flags.swapped = true; });
   }
 
   start(): void {
@@ -39,7 +43,7 @@ export class Tutorial {
     this.step = 0;
     this.moved = 0;
     this.doneTimer = -1;
-    this.flags = { hit: false, dodged: false, heavy: false, combo: false, swapped: false };
+    this.flags = { light: false, dodged: false, heavy: false, combo: false, swapped: false };
     this.lastX = this.ctx.player.pos.x;
     this.lastZ = this.ctx.player.pos.z;
     this.hud.setTutorial(`TRAINING  ·  ${STEPS[0]}`);
@@ -77,7 +81,7 @@ export class Tutorial {
     let advance = false;
     switch (this.step) {
       case 0: advance = this.moved > 3; break;
-      case 1: advance = this.flags.hit; break;
+      case 1: advance = this.flags.light; break;
       case 2: advance = this.flags.dodged; break;
       case 3: advance = this.flags.heavy; break;
       case 4: advance = this.flags.combo; break;
@@ -92,6 +96,8 @@ export class Tutorial {
       this.doneTimer = 2.8;
       return;
     }
+    // entering the SWAP lesson: grant a 2nd weapon now so E can cycle (kept single-weapon until here)
+    if (this.step === 5 && !this.ctx.player.weapons.includes("greatsword")) this.ctx.player.weapons.push("greatsword");
     this.hud.setTutorial(`TRAINING  ·  ${STEPS[this.step]}`);
   }
 }

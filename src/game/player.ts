@@ -652,6 +652,7 @@ export class Player {
     this.moveT = 0;
     this.hitDone = false;
     this.cooldowns[slot] = fervorFree ? 0 : a.cooldown;
+    this.ctx.events.emit("ATTACK", { slot }); // fires on commit — training gates on this, not on landing a hit
   }
 
   private advanceMove(dt: number): void {

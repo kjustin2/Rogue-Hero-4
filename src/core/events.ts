@@ -14,6 +14,8 @@ export interface EventMap {
   /** The player was hit. */
   PLAYER_HIT: { dmg: number; srcX: number; srcZ: number; srcY: number };
   PLAYER_DIED: Record<string, never>;
+  /** The player committed a light/heavy attack (fires on input, independent of hitting). */
+  ATTACK: { slot: "light" | "heavy" };
   /** Player dash with i-frames. */
   DODGE: Record<string, never>;
   HEAL: { amount: number };
