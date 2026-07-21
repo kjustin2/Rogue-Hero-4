@@ -47,7 +47,7 @@ REMOVED by user decision (they read worse than the stylized primitives); do not 
   as the game slowing down when you attack); `ctx.hitstop` fires only on player wounds /
   perfect-dodge / weapon-pickup, main runs the frame at dt×0.08 while it drains; **`hitPart`** — the
   shootable-parts funnel: call sites (projectiles/beam/melee) resolve the impact point and chip
-  breakable armor/limbs), `enemies.ts` (6 archetypes,
+  breakable armor/limbs), `enemies.ts` (10 archetypes,
   **pooled** per kind, roles/flanking, **ELITES** catalog, **spawn director** — per-gate
   {budget,cap,pack,eliteChance}, trickle + hp-reading pacing, `waveDone()`; **breakable parts** from
   `breakables.ts` — shoot off the weapon (disarm), knight shield (noblock), brute pauldron (expose),
@@ -99,6 +99,9 @@ REMOVED by user decision (they read worse than the stylized primitives); do not 
   freeze-class frames = 0, classified spikes (compile vs gc).
 - `npm start` — standalone window (fixed port 41730 keeps origin-keyed saves alive).
 - `npm run package` — electron-builder portable exe.
+- **Stop dev servers before ending the turn** — the owner only tests via `npm start` / the exe.
+  Never hand back with a Vite server running; kill the process tree (`taskkill /T`) so no orphan
+  squats a port or serves stale code.
 
 ## Hard-won constraints (do not re-derive)
 - `stage.ts` look/bloom config (intensity 0.92 / threshold 0.45, per-tier chains) is deliberately

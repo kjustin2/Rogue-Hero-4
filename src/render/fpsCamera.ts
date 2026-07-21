@@ -14,6 +14,8 @@ export class FpsCamera {
   yaw = Math.PI; // face down the path (+Z) at spawn
   pitch = 0;
   sensitivity = 0.0022;
+  /** Gamepad right-stick look multiplier (Settings → Gamepad Sensitivity). */
+  padSensitivity = 1;
   /** Screen-shake multiplier (Settings → Screen Shake / Reduce Motion). */
   shakeScale = 1;
 
@@ -119,8 +121,8 @@ export class FpsCamera {
       this.pitch -= d.dy * this.sensitivity;
       const gx = this.ctx.input.padAxis(2);
       const gy = this.ctx.input.padAxis(3);
-      if (Math.abs(gx) > 0.2) this.yaw -= gx * 2.8 * dt;
-      if (Math.abs(gy) > 0.2) this.pitch -= gy * 2.2 * dt;
+      if (Math.abs(gx) > 0.2) this.yaw -= gx * 2.8 * this.padSensitivity * dt;
+      if (Math.abs(gy) > 0.2) this.pitch -= gy * 2.2 * this.padSensitivity * dt;
       this.pitch = clamp(this.pitch, -1.2, 1.2);
     }
 

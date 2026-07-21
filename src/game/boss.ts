@@ -57,6 +57,8 @@ export class Boss implements Hittable {
   private charge = 0; // attack wind-up inflate
   private lunge = 0; // strike snap
   private spots: THREE.Vector3[] = [];
+  // collapse-cast scratch — spots point into this fixed pool, so a cast allocates nothing
+  private readonly spotPool = Array.from({ length: 5 }, () => new THREE.Vector3());
   private teles: TelegraphHandle[] = [];
   private cd = 1.3;
   private attack: Attack = null;
@@ -141,7 +143,7 @@ export class Boss implements Hittable {
   reset(): void {
     this.tele?.cancel(); this.tele = null;
     for (const t of this.teles) t.cancel();
-    this.teles = []; this.spots = [];
+    this.teles.length = 0; this.spots.length = 0;
     this.attacksSinceShift = 0;
     this.anchorIdx = 0;
     this.shiftT = -1;
@@ -526,7 +528,7 @@ export class Boss implements Hittable {
       const n = this.phase === 2 ? 7 : 5;
       const base = Math.atan2(p.pos.x - this.pos.x, p.pos.z - this.pos.z);
       for (const t of this.teles) t.cancel();
-      this.teles = [];
+      this.teles.length = 0;
       for (let i = 0; i < n; i++) {
         // same (sin,cos) convention as the bolts themselves — lanes match flight paths
         this.teles.push(this.ctx.tele.line(this.pos.x, this.pos.z, base + (i - (n - 1) / 2) * 0.18, 26, 1.1, this.windupMax, c));
@@ -535,14 +537,14 @@ export class Boss implements Hittable {
     else if (this.attack === "collapse") {
       // rift collapse: several slam zones bloom across the arena at once — keep moving
       for (const t of this.teles) t.cancel();
-      this.teles = [];
-      this.spots = [];
+      this.teles.length = 0;
+      this.spots.length = 0;
       for (let i = 0; i < 5; i++) {
         const ang = this.ctx.rng.range(0, Math.PI * 2);
         const r = this.ctx.rng.range(0, ARENA_RADIUS - 6);
         const sx = i === 0 ? p.pos.x : ARENA_CENTER.x + Math.cos(ang) * r;
         const sz = i === 0 ? p.pos.z : ARENA_CENTER.y + Math.sin(ang) * r;
-        this.spots.push(new THREE.Vector3(sx, 0, sz));
+        this.spots.push(this.spotPool[i].set(sx, 0, sz));
         this.teles.push(this.ctx.tele.circle(sx, sz, 4.5, this.windupMax, c));
       }
     }
@@ -567,7 +569,7 @@ export class Boss implements Hittable {
       if (Math.hypot(p.pos.x - this.aim.x, p.pos.z - this.aim.z) <= 5) this.ctx.combat.damagePlayer(38, this.aim.x, this.aim.z, 6); // overhead pound → ABOVE cue
     } else if (a === "volley") {
       for (const t of this.teles) t.cancel();
-      this.teles = [];
+      this.teles.length = 0;
       const n = this.phase === 2 ? 7 : 5;
       // aim DOWN to the player's torso so bolts arrive at chest height, not over the head
       const sy = 4.4, ty = 1.3;
@@ -606,7 +608,7 @@ export class Boss implements Hittable {
       if (along > 0 && perp <= 2.5) this.ctx.combat.damagePlayer(42, this.pos.x, this.pos.z); // match the width-5 telegraph strip (half-width 2.5) — was 3.0 = hit 0.5u outside the red lane
     } else if (a === "collapse") {
       for (const t of this.teles) t.cancel();
-      this.teles = [];
+      this.teles.length = 0;
       let hit = false;
       for (const s of this.spots) {
         this.ctx.fx.ring(s.x, s.z, { radius: 4.5, color: this.hitColor, duration: 0.4 });
@@ -618,7 +620,7 @@ export class Boss implements Hittable {
       this.ctx.cam.addTrauma(0.5);
       this.ctx.stage.punch(0.4);
       if (hit) this.ctx.combat.damagePlayer(40, this.pos.x, this.pos.z, 6.5); // pillars from above → ABOVE cue
-      this.spots = [];
+      this.spots.length = 0;
     } else if (a === "fissure") {
       // RIFT FISSURE: eruptions march down the telegraphed lane (aimAngle locked at wind-up) —
       // sidestep OFF the line. Each schedules its own delay, resolved in tick().

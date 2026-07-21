@@ -10,7 +10,11 @@ import { BREAKABLES, type BreakEffect } from "./breakables";
 
 export type EnemyKind = "husk" | "spitter" | "brute" | "wraith" | "ghoul" | "archer" | "gargoyle" | "bomber" | "knight" | "rat";
 
+/** Behavior family — tick() dispatches on this, and enemyCatalogSelfCheck keys its invariants off it. */
+export type EnemyRole = "melee" | "ranged" | "lunge" | "fly";
+
 interface KindCfg {
+  role: EnemyRole;
   hp: number;
   radius: number;
   speed: number;
@@ -25,16 +29,16 @@ interface KindCfg {
 
 // the rift-born are the cursed undead of the keep — cold, unholy colors against the firelight
 const KIND: Record<EnemyKind, KindCfg> = {
-  husk: { hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
-  spitter: { hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x4fd6b0, bodyY: 1.0, proj: { speed: 17, shape: "skull", interval: 1.45 } }, // witchfire caster: hurls wailing skulls (sickly jade-teal, on-palette — was cartoon lime green)
-  brute: { hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
-  wraith: { hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
-  ghoul: { hp: 20, radius: 0.5, speed: 13.5, contactDmg: 12, attackRange: 2.2, windup: 0.26, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast (base speed stays under the player's 14)
-  archer: { hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: 0x8fb4ff, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
-  gargoyle: { hp: 24, radius: 0.6, speed: 11, contactDmg: 15, attackRange: 11, windup: 0.55, color: 0xffa24a, bodyY: 0 }, // stone flyer: circles high, telegraphed dive
-  bomber: { hp: 60, radius: 0.95, speed: 4.2, contactDmg: 18, attackRange: 17, windup: 0.6, color: 0xff8038, bodyY: 0, proj: { speed: 15, shape: "cannonball", interval: 2.6, gravity: 15, explode: 3.4 } }, // crypt bombard: lobbed exploding skulls
-  knight: { hp: 72, radius: 0.7, speed: 5.4, contactDmg: 17, attackRange: 2.9, windup: 0.42, color: 0xc9d4e4, bodyY: 0 }, // revenant knight: kite shield blocks frontal shots — flank him
-  rat: { hp: 8, radius: 0.32, speed: 13.8, contactDmg: 7, attackRange: 1.9, windup: 0.2, color: 0xd06a3a, bodyY: 0 }, // plague rats: cheap, fast, NEVER alone. NOTE: attackRange MUST exceed separate()'s floor (radius+0.5+0.6=1.42) or the body is shoved out of strike range every frame and can never wind up
+  husk: { role: "melee", hp: 30, radius: 0.6, speed: 9.6, contactDmg: 10, attackRange: 2.4, windup: 0.22, color: 0xbfccd9, bodyY: 0 }, // bone-pale risen wight
+  spitter: { role: "ranged", hp: 22, radius: 0.6, speed: 6.0, contactDmg: 9, attackRange: 13, windup: 0.36, color: 0x4fd6b0, bodyY: 1.0, proj: { speed: 17, shape: "skull", interval: 1.45 } }, // witchfire caster: hurls wailing skulls (sickly jade-teal, on-palette — was cartoon lime green)
+  brute: { role: "melee", hp: 90, radius: 1.05, speed: 5.6, contactDmg: 26, attackRange: 4.4, windup: 0.52, color: 0xff5a2a, bodyY: 0 }, // molten-iron ogre
+  wraith: { role: "lunge", hp: 26, radius: 0.55, speed: 13.5, contactDmg: 15, attackRange: 9, windup: 0.26, color: 0xb9a6ff, bodyY: 0.7 }, // spectral banshee
+  ghoul: { role: "melee", hp: 20, radius: 0.5, speed: 13.5, contactDmg: 12, attackRange: 2.2, windup: 0.26, color: 0xd06a3a, bodyY: 0 }, // feral flesh-eater: sprints in, swings fast (base speed stays under the player's 14)
+  archer: { role: "ranged", hp: 20, radius: 0.55, speed: 5.5, contactDmg: 12, attackRange: 17, windup: 0.3, color: 0x8fb4ff, bodyY: 0.5, proj: { speed: 42, shape: "dart", interval: 1.05 } }, // skeletal bowman: fast straight bolts
+  gargoyle: { role: "fly", hp: 24, radius: 0.6, speed: 11, contactDmg: 15, attackRange: 11, windup: 0.55, color: 0xffa24a, bodyY: 0 }, // stone flyer: circles high, telegraphed dive
+  bomber: { role: "ranged", hp: 60, radius: 0.95, speed: 4.2, contactDmg: 18, attackRange: 17, windup: 0.6, color: 0xff8038, bodyY: 0, proj: { speed: 15, shape: "cannonball", interval: 2.6, gravity: 15, explode: 3.4 } }, // crypt bombard: lobbed exploding skulls
+  knight: { role: "melee", hp: 72, radius: 0.7, speed: 5.4, contactDmg: 17, attackRange: 2.9, windup: 0.42, color: 0xc9d4e4, bodyY: 0 }, // revenant knight: kite shield blocks frontal shots — flank him
+  rat: { role: "melee", hp: 8, radius: 0.32, speed: 13.8, contactDmg: 7, attackRange: 1.9, windup: 0.2, color: 0xd06a3a, bodyY: 0 }, // plague rats: cheap, fast, NEVER alone. NOTE: attackRange MUST exceed separate()'s floor (radius+0.5+0.6=1.42) or the body is shoved out of strike range every frame and can never wind up
 };
 
 // Elite modifiers — a data catalog, rolled by the spawn director on gate 2+.
@@ -54,6 +58,38 @@ const GATE_WAVES: GateWaveCfg[] = [
   { budget: 38, cap: 8, eliteChance: 0.28, pack: [["brute", 2], ["wraith", 2], ["spitter", 2], ["archer", 2], ["ghoul", 3], ["husk", 2], ["gargoyle", 2], ["bomber", 2], ["knight", 2]] },
 ];
 const COST: Record<EnemyKind, number> = { husk: 2, ghoul: 2, wraith: 3, spitter: 3, archer: 3, brute: 6, gargoyle: 3, bomber: 5, knight: 5, rat: 1 };
+
+/**
+ * Data-catalog invariants — asserted by the smoke beside checkCombos(), so the
+ * recurring bug classes are structural instead of re-found in playtests:
+ *  - a melee kind whose attackRange sits inside separate()'s personal-space floor
+ *    (radius + playerRadius 0.5 + 0.6) can NEVER land a wind-up (the rat bug);
+ *  - a wave-table typo (unknown kind, unaffordable pack row, runaway cap) is a
+ *    silent director stall or an O(n²) separate() blowup.
+ */
+export function enemyCatalogSelfCheck(): string[] {
+  const errs: string[] = [];
+  for (const kind of Object.keys(KIND) as EnemyKind[]) {
+    const cfg = KIND[kind];
+    if (cfg.role === "melee") {
+      const floor = cfg.radius + 0.5 + 0.6;
+      if (cfg.attackRange <= floor + 0.05) errs.push(`${kind}: attackRange ${cfg.attackRange} inside separation floor ${floor.toFixed(2)}`);
+    }
+    if (cfg.role === "ranged" && !cfg.proj) errs.push(`${kind}: ranged but no proj config`);
+    if (cfg.hp <= 0 || cfg.speed <= 0 || cfg.windup <= 0 || cfg.radius <= 0) errs.push(`${kind}: non-positive stat`);
+    if (!(COST[kind] > 0)) errs.push(`${kind}: missing/zero COST`);
+  }
+  GATE_WAVES.forEach((w, g) => {
+    if (w.cap > 12) errs.push(`gate ${g}: cap ${w.cap} > 12 (separate() is O(n²) — keep waves small)`);
+    if (w.eliteChance < 0 || w.eliteChance > 1) errs.push(`gate ${g}: eliteChance ${w.eliteChance} outside [0,1]`);
+    for (const [k, weight] of w.pack) {
+      if (!KIND[k]) errs.push(`gate ${g}: unknown kind ${k}`);
+      else if (COST[k] > w.budget) errs.push(`gate ${g}: ${k} costs ${COST[k]} > budget ${w.budget}`);
+      if (!(weight > 0)) errs.push(`gate ${g}: ${k} has non-positive pack weight`);
+    }
+  });
+  return errs;
+}
 
 let NEXT_ID = 1;
 const SHOT_DIR = new THREE.Vector3(); // scratch — projectiles.spawn copies it
@@ -396,11 +432,11 @@ export class Enemy implements Hittable {
     const nx = dx / dist;
     const nz = dz / dist;
 
-    switch (this.kind) {
-      case "husk": case "brute": case "ghoul": case "knight": case "rat": this.tickMelee(dt, dist, nx, nz); break;
-      case "spitter": case "archer": case "bomber": this.tickRanged(dt, dist, nx, nz); break;
-      case "wraith": this.tickLunge(dt, dist, nx, nz); break;
-      case "gargoyle": this.tickFly(dt, dist, nx, nz); break;
+    switch (this.cfg.role) {
+      case "melee": this.tickMelee(dt, dist, nx, nz); break;
+      case "ranged": this.tickRanged(dt, dist, nx, nz); break;
+      case "lunge": this.tickLunge(dt, dist, nx, nz); break;
+      case "fly": this.tickFly(dt, dist, nx, nz); break;
     }
     this.ctx.level.clampPosition(this.pos, this.radius);
 
@@ -871,7 +907,7 @@ export class EnemyManager {
     }
   }
 
-  // ponytail: O(n²) push-apart, fine for the handful of enemies a wave spawns.
+  // ponytail: O(n²) push-apart — fine because wave caps are ≤ 12 (enforced by enemyCatalogSelfCheck).
   private separate(): void {
     const live = this.living();
     // personal space: bodies never overlap the player (they were walking into the

@@ -208,10 +208,12 @@ export class Menus {
         <div class="set-row"><span>SFX VOLUME</span><input type="range" min="0" max="1" step="0.05" value="${s.sfx}" data-set="sfx"></div>
         <div class="set-row"><span>MUSIC VOLUME</span><input type="range" min="0" max="1" step="0.05" value="${s.music}" data-set="music"></div>
         <div class="set-row"><span>MOUSE SENSITIVITY</span><input type="range" min="0.3" max="2.5" step="0.05" value="${s.sensitivity}" data-set="sensitivity"></div>
+        <div class="set-row"><span>GAMEPAD SENSITIVITY</span><input type="range" min="0.3" max="2.5" step="0.05" value="${s.padSensitivity}" data-set="padSensitivity"></div>
         <div class="set-row"><span>SCREEN SHAKE</span><input type="range" min="0" max="1.5" step="0.1" value="${s.shake}" data-set="shake"></div>
         <div class="set-row"><span>FIELD OF VIEW</span><input type="range" min="68" max="100" step="1" value="${s.fov}" data-set="fov"></div>
         <div class="set-row"><span>REDUCE MOTION</span>${seg(s.reduceMotion, "ON", "OFF", "rm")}</div>
         <div class="set-row"><span>GRAPHICS QUALITY</span><div class="seg">${qbtns}</div></div>
+        <div class="set-row"><span>RESOLUTION SCALE</span><input type="range" min="0.5" max="1.5" step="0.05" value="${s.renderScale}" data-set="renderScale"></div>
         ${window.rh3native ? `<div class="set-row"><span>DISPLAY</span>${seg(this.fs, "FULLSCREEN", "WINDOWED", "fs")}</div>` : ""}
       </div>
       <div class="menu-buttons">

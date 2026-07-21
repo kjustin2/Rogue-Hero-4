@@ -20,7 +20,7 @@ import { Music } from "./audio/music";
 import { Level, PLAYER_SPAWN, ARENA_BLEND_Z, BOSS_ANCHOR, GATES_Z } from "./game/level";
 import { Player } from "./game/player";
 import { Combat } from "./game/combat";
-import { EnemyManager, type EnemyKind } from "./game/enemies";
+import { EnemyManager, enemyCatalogSelfCheck, type EnemyKind } from "./game/enemies";
 import { Projectiles } from "./game/projectiles";
 import { Pickups } from "./game/pickups";
 import { Boss } from "./game/boss";
@@ -530,6 +530,8 @@ w.__rh4debug = {
   start: startRun,
   setState: (s: State) => setState(s),
   checkCombos: weaponComboSelfCheck,
+  // one gate for every data catalog's invariants (waves/kinds/costs; more catalogs join here)
+  checkData: () => [...weaponComboSelfCheck(), ...enemyCatalogSelfCheck()],
   spawn: (k: EnemyKind, x: number, z: number) => ctx.enemies.spawn(k, x, z),
   drainWave: () => ctx.enemies.drainBudget(),
   // breakable-parts test seam: force-break a kind's / the boss's parts, or read their state
